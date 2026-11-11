@@ -33,12 +33,10 @@ class VoiceInputController(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val finalPass = Executors.newSingleThreadExecutor()
-    private val tones = runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 70) }.getOrNull()
+    private val chimes = VoiceChimes()
 
-    /** Short click so you can hear the mic turn on (higher) and off (lower). */
-    private fun click(on: Boolean) {
-        tones?.startTone(if (on) android.media.ToneGenerator.TONE_PROP_BEEP else android.media.ToneGenerator.TONE_PROP_ACK, if (on) 80 else 120)
-    }
+    /** Rising chime when the mic turns on, falling chime when it turns off. */
+    private fun click(on: Boolean) = chimes.play(on)
 
     @Volatile private var running = false
     private var audioThread: Thread? = null
@@ -105,7 +103,7 @@ class VoiceInputController(
     fun release() {
         cancel()
         finalPass.shutdownNow()
-        tones?.release()
+        chimes.release()
     }
 
     private fun ic(): InputConnection? = ime.currentInputConnection
@@ -125,7 +123,7 @@ class VoiceInputController(
             runCatching { android.media.audiofx.NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull()
         else null
         // start recording before loading the model, so the first words aren't lost (the buffer holds 5 s)
-        Thread.sleep(150) // let the start click finish so it isn't heard as speech
+        Thread.sleep(chimes.onLengthMs) // let the start chime finish so it isn't heard as speech
         record.startRecording()
         val recognizer = try {
             VoiceEngine.onlineRecognizer(ime)
