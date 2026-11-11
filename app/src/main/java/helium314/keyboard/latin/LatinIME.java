@@ -86,6 +86,8 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import androidx.annotation.NonNull;
+import helium314.keyboard.voice.VoiceEngine;
+import helium314.keyboard.voice.VoiceInputController;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
@@ -117,6 +119,7 @@ public class LatinIME extends InputMethodService implements
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private SuggestionStripView mSuggestionStripView;
+    private VoiceInputController mVoiceInput;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -486,6 +489,9 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onCreate() {
+        mVoiceInput = new VoiceInputController(this, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; },
+                listening -> { if (mSuggestionStripView != null) mSuggestionStripView.setVoiceActive(listening); return kotlin.Unit.INSTANCE; },
+                (selStart, selEnd) -> { mInputLogic.resyncAfterVoiceInput(selStart, selEnd); return kotlin.Unit.INSTANCE; });
         mSettings.startListener();
         KeyboardIconsSet.Companion.getInstance().loadIcons(this);
         mRichImm = RichInputMethodManager.getInstance();
@@ -614,6 +620,8 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onDestroy() {
+        mVoiceInput.release();
+        VoiceEngine.INSTANCE.release();
         mClipboardHistoryManager.onDestroy();
         mDictionaryFacilitator.closeDictionaries();
         mSettings.onDestroy();
@@ -707,6 +715,7 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onFinishInputView(final boolean finishingInput) {
+        mVoiceInput.cancel();
         StatsUtils.onFinishInputView();
         mHandler.onFinishInputView(finishingInput);
         mStatsUtilsManager.onFinishInputView();
@@ -974,6 +983,8 @@ public class LatinIME extends InputMethodService implements
         // not attempt recorrection. This is true even with a hardware keyboard connected: if the
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
+        // voice typing manages its own composing text; don't let the typing logic reset it
+        if (mVoiceInput != null && mVoiceInput.isActive()) return;
         SettingsValues settingsValues = mSettings.getCurrent();
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
@@ -1244,7 +1255,7 @@ public class LatinIME extends InputMethodService implements
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
-            mRichImm.switchToShortcutIme(this);
+            mVoiceInput.toggle(); // Open Keyboard: voice typing runs inside the keyboard
         }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
@@ -1614,6 +1625,7 @@ public class LatinIME extends InputMethodService implements
         if (level > TRIM_MEMORY_BACKGROUND) {
             KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
             mKeyboardSwitcher.trimMemory();
+            if (!mVoiceInput.isListening()) VoiceEngine.INSTANCE.release();
         }
     }
 

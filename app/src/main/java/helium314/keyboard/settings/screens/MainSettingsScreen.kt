@@ -54,6 +54,13 @@ fun MainSettingsScreen(
             Column(
                 Modifier.verticalScroll(rememberScrollState()).then(Modifier.padding(innerPadding))
             ) {
+                val ctx = LocalContext.current
+                Preference(
+                    name = "Voice typing",
+                    description = "Microphone, speech models and accuracy check",
+                    onClick = { ctx.startActivity(android.content.Intent(ctx, helium314.keyboard.voice.VoiceSetupActivity::class.java)) },
+                    icon = R.drawable.sym_keyboard_voice_rounded
+                ) { NextScreenIcon() }
                 Preference(
                     name = stringResource(R.string.language_and_layouts_title),
                     description = enabledSubtypes.joinToString(", ") { it.displayName() },

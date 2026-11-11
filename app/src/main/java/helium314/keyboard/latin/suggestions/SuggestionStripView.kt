@@ -504,6 +504,15 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
     }
 
+    /** Highlights the mic keys while voice typing is listening. */
+    fun setVoiceActive(active: Boolean) {
+        val colors = Settings.getValues().mColors
+        listOf(toolbar.findViewWithTag<View>(ToolbarKey.VOICE), pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE))
+            .filterIsInstance<ImageButton>().forEach {
+                if (active) it.setColorFilter(VOICE_ACTIVE_COLOR) else colors.setColor(it, ColorType.TOOL_BAR_KEY)
+            }
+    }
+
     private fun updateKeys() {
         updateVoiceKey()
         val settingsValues = Settings.getValues()
@@ -550,6 +559,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         @JvmField
         var DEBUG_SUGGESTIONS = false
         private const val DEBUG_INFO_TEXT_SIZE_IN_DIP = 6.5f
+        private const val VOICE_ACTIVE_COLOR = 0xFFE53935.toInt() // red mic while listening
         private val TAG = SuggestionStripView::class.java.simpleName
     }
 }

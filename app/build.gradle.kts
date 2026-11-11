@@ -17,7 +17,7 @@ android {
         versionName = "4.3-beta1"
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a")) // phones only, keeps the APK small enough for GitHub
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
@@ -116,8 +116,8 @@ android {
 }
 
 dependencies {
-    // offline voice typing (adapted from Whisper+)
-    implementation(project(":voice"))
+    // offline voice typing: sherpa-onnx speech recognition (Apache-2.0)
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v2.0.1")
 
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23

@@ -2107,6 +2107,11 @@ public final class InputLogic {
      * @param newSelEnd the new selection end, in java characters.
      * @param clearSuggestionStrip whether this method should clear the suggestion strip.
      */
+    /** Called after voice typing edited the text directly, so the caches match the text field again. */
+    public void resyncAfterVoiceInput(final int selStart, final int selEnd) {
+        resetEntireInputState(selStart, selEnd, true);
+    }
+
     // TODO: how is this different from startInput ?!
     private void resetEntireInputState(final int newSelStart, final int newSelEnd,
             final boolean clearSuggestionStrip) {

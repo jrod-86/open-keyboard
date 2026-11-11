@@ -9,6 +9,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
+    <!-- Open Keyboard voice typing: microphone, and internet only to download speech models -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
@@ -61,6 +64,11 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name="helium314.keyboard.voice.VoiceSetupActivity"
+            android:label="Voice typing setup"
+            android:theme="@style/platformActivityTheme"
+            android:exported="false" />
 
         <!-- separate activity that's used internally, only necessary in case the launcher icon is disabled on Android < 10 -->
         <activity android:name="helium314.keyboard.settings.SettingsActivity2"

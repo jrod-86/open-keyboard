@@ -20,5 +20,10 @@ allprojects {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        // sherpa-onnx is only published on JitPack; don't ask other repositories for it
+        exclusiveContent {
+            forRepository { maven { url = uri("https://jitpack.io") } }
+            filter { includeGroup("com.github.k2-fsa.sherpa-onnx") }
+        }
     }
 }

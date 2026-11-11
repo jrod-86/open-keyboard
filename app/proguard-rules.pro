@@ -12,3 +12,6 @@
 # after upgrading to gradle 8, stack traces contain "unknown source"
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate
+
+# sherpa-onnx speech recognition uses JNI, keep its classes and fields as they are
+-keep class com.k2fsa.sherpa.onnx.** { *; }
