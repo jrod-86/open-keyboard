@@ -165,7 +165,7 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
             Text("4. Use it", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Tap the mic at the top right of the keyboard and start talking. Tap it again, " +
-                        "or stop talking for a few seconds, to finish.",
+                        "or stay quiet for 30 seconds, to finish.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedButton(onClick = onBack) { Text("Done") }

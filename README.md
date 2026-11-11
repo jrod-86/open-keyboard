@@ -14,7 +14,7 @@ Gboard-style voice typing built in, powered by [sherpa-onnx](https://github.com/
   pinned at the top right.
 - Voice typing like Gboard: tap the mic once, words appear as you speak, and each sentence
   is re-checked by an accurate model (NVIDIA Parakeet or OpenAI Whisper) when you pause.
-  Tap again or stay quiet for a few seconds to stop.
+  Tap again, or stay quiet for 30 seconds, to stop.
 - Speech recognition runs fully on the phone. The internet permission is only used to
   download the speech models once.
 

@@ -21,7 +21,7 @@ import kotlin.concurrent.thread
 /**
  * Gboard-style voice typing inside the keyboard: one tap starts listening, words appear as
  * underlined text while you speak, and each sentence is replaced by the accuracy model's version
- * when you pause. Tap again, or stay quiet for a few seconds, to stop.
+ * when you pause. Tap again, or stay quiet for 30 seconds, to stop.
  */
 class VoiceInputController(
     private val ime: InputMethodService,
@@ -137,7 +137,7 @@ class VoiceInputController(
         val chunk = ShortArray(VoiceEngine.SAMPLE_RATE / 10) // 100 ms
         var segment = SampleBuffer()
         var lastPartial = ""
-        var silentEndpoints = 0
+        var lastSpeechAt = android.os.SystemClock.uptimeMillis()
         try {
             while (running && session == sessionId) {
                 val n = record.read(chunk, 0, chunk.size)
@@ -147,21 +147,21 @@ class VoiceInputController(
                 segment.add(samples)
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
                 val partial = recognizer.getResult(stream).text.trim()
+                if (partial.isNotEmpty()) lastSpeechAt = android.os.SystemClock.uptimeMillis()
                 if (partial != lastPartial) {
                     lastPartial = partial
                     main.post { if (session == sessionId) showPartial(partial) }
                 }
                 if (recognizer.isEndpoint(stream)) {
-                    if (partial.isEmpty()) {
-                        // about 2.4 s of silence each; stop like Gboard after a quiet spell
-                        if (++silentEndpoints >= 2) main.post { if (session == sessionId) stop() }
-                    } else {
-                        silentEndpoints = 0
-                        endSentence(session, partial, segment.toArray())
-                    }
+                    if (partial.isNotEmpty()) endSentence(session, partial, segment.toArray())
                     recognizer.reset(stream)
                     segment = SampleBuffer()
                     lastPartial = ""
+                }
+                // stop after a long quiet spell
+                if (android.os.SystemClock.uptimeMillis() - lastSpeechAt > SILENCE_TIMEOUT_MS) {
+                    main.post { if (session == sessionId) stop() }
+                    lastSpeechAt = Long.MAX_VALUE / 2 // only ask once
                 }
             }
             // stopped by the user: finish the sentence in progress
@@ -254,5 +254,7 @@ class VoiceInputController(
 
     companion object {
         private const val TAG = "VoiceInput"
+        /** Voice typing turns itself off after this much silence. */
+        private const val SILENCE_TIMEOUT_MS = 30_000L
     }
 }
