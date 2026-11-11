@@ -10,8 +10,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "helium314.keyboard"
-        minSdk = 21
+        applicationId = "io.github.jrod86.openkeyboard"
+        minSdk = 28
         targetSdk = 37
         versionCode = 4300
         versionName = "4.3-beta1"
@@ -66,7 +66,7 @@ android {
             }
             variant.outputs.forEach { output ->
                 if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                    output.outputFileName = "HeliBoard_${defaultConfig.versionName}-${variant.buildType}.apk"
+                    output.outputFileName = "OpenKeyboard_${defaultConfig.versionName}-${variant.buildType}.apk"
                 }
             }
         }
@@ -116,6 +116,9 @@ android {
 }
 
 dependencies {
+    // offline voice typing (adapted from Whisper+)
+    implementation(project(":voice"))
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")

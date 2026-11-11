@@ -2,6 +2,8 @@ name: Build debug APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
@@ -28,7 +30,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: HeliBoard-debug
+          name: OpenKeyboard-debug
           path: app/build/outputs/apk/debug/*-debug*.apk
 
       - name: Archive reports for failed job
