@@ -20,6 +20,8 @@ import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
+import android.text.TextUtils;
+import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InlineSuggestion;
@@ -985,7 +987,15 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         // voice typing manages its own composing text; don't let the typing logic reset it
-        if (mVoiceInput != null && mVoiceInput.isActive()) return;
+        if (mVoiceInput != null && mVoiceInput.isActive()) {
+            // Open Keyboard: the app emptied the field (e.g. its send button) while voice text was
+            // still being finished. Drop the rest instead of writing it into the empty box.
+            final InputConnection voiceIc = getCurrentInputConnection();
+            final boolean fieldCleared = newSelStart == 0 && newSelEnd == 0 && composingSpanStart == -1
+                    && voiceIc != null && TextUtils.isEmpty(voiceIc.getTextAfterCursor(1, 0));
+            if (!fieldCleared) return;
+            mVoiceInput.cancel();
+        }
         SettingsValues settingsValues = mSettings.getCurrent();
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
@@ -1257,6 +1267,9 @@ public class LatinIME extends InputMethodService implements
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
             mVoiceInput.toggle(); // Open Keyboard: voice typing runs inside the keyboard
+        } else if (mVoiceInput.isActive()) {
+            // a key while voice typing: keep the text as shown and stop, so e.g. send gets the whole text
+            mVoiceInput.cancel();
         }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
@@ -1266,6 +1279,7 @@ public class LatinIME extends InputMethodService implements
 
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
+        if (mVoiceInput.isActive()) mVoiceInput.cancel();
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),

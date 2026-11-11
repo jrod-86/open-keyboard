@@ -93,11 +93,12 @@ class VoiceInputController(
 
     /** Stops immediately when the text field goes away, keeping what is on screen. */
     fun cancel() {
+        val wasActive = isActive
         if (running) stop()
         sessionId++
-        val hadText = pending.isNotEmpty() || current.isNotEmpty()
         pending.clear(); current = ""
-        if (hadText) { ic()?.finishComposingText(); resync() }
+        // keep what is on screen, and let the typing logic catch up with the text voice typing wrote
+        if (wasActive) { ic()?.finishComposingText(); resync() }
     }
 
     fun release() {
