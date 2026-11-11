@@ -14,6 +14,11 @@ import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiser
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserGtcrnModelConfig
+import com.k2fsa.sherpa.onnx.OfflineSpeechDenoiserModelConfig
+import helium314.keyboard.latin.utils.Log
 
 /**
  * Holds the loaded sherpa-onnx recognizers. Loading takes a second or two, so it happens on a
@@ -72,7 +77,7 @@ object VoiceEngine {
                     tokens = f(wanted.files[3])
                     modelType = "nemo_transducer"
                 }
-                VoiceModel.WHISPER_SMALL_EN -> {
+                VoiceModel.WHISPER_SMALL_EN, VoiceModel.WHISPER_TURBO -> {
                     whisper = OfflineWhisperModelConfig().apply {
                         encoder = f(wanted.files[0]); decoder = f(wanted.files[1])
                         language = "en"; task = "transcribe"
@@ -90,9 +95,37 @@ object VoiceEngine {
         return OfflineRecognizer(null, config).also { offline = it; offlineModel = wanted }
     }
 
+    @Volatile private var denoiser: OfflineSpeechDenoiser? = null
+
+    /** GTCRN noise remover (MIT licence, about 0.5 MB, shipped inside the app). */
+    @Synchronized
+    private fun denoiser(context: Context): OfflineSpeechDenoiser? {
+        denoiser?.let { return it }
+        return runCatching {
+            val config = OfflineSpeechDenoiserConfig(
+                model = OfflineSpeechDenoiserModelConfig(
+                    gtcrn = OfflineSpeechDenoiserGtcrnModelConfig(model = "gtcrn_simple.onnx"),
+                    numThreads = 1,
+                )
+            )
+            OfflineSpeechDenoiser(context.assets, config)
+        }.onFailure { Log.e("VoiceEngine", "could not load noise remover", it) }.getOrNull().also { denoiser = it }
+    }
+
+    /** Removes background noise from a finished sentence, if turned on in settings. */
+    private fun clean(context: Context, samples: FloatArray): FloatArray {
+        if (!VoicePrefs.noiseReduction(context)) return samples
+        val d = denoiser(context) ?: return samples
+        return runCatching {
+            val out = d.run(samples, SAMPLE_RATE)
+            if (out.sampleRate == SAMPLE_RATE && out.samples.isNotEmpty()) out.samples else samples
+        }.getOrDefault(samples)
+    }
+
     /** Run the accuracy model on a finished sentence. Returns null if there is no accuracy model. */
-    fun transcribeFinal(context: Context, samples: FloatArray): String? {
+    fun transcribeFinal(context: Context, rawSamples: FloatArray): String? {
         val recognizer = offlineRecognizer(context) ?: return null
+        val samples = clean(context, rawSamples)
         val stream = recognizer.createStream()
         try {
             stream.acceptWaveform(samples, SAMPLE_RATE)
@@ -107,5 +140,6 @@ object VoiceEngine {
     fun release() {
         online?.release(); online = null
         offline?.release(); offline = null; offlineModel = null
+        denoiser?.release(); denoiser = null
     }
 }

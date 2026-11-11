@@ -48,6 +48,7 @@ class VoiceInputController(
     private var current = ""
     private var needsLeadingSpace = false
     private var sessionId = 0
+    private var region = EnglishRegion.US
 
     val isListening get() = running
 
@@ -74,6 +75,7 @@ class VoiceInputController(
         }
         finishKeyboardComposing()
         pending.clear(); current = ""
+        region = VoicePrefs.region(ime)
         val before = ic()?.getTextBeforeCursor(1, 0)
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
         running = true
@@ -118,6 +120,10 @@ class VoiceInputController(
             record.release()
             return
         }
+        // the phone's own noise suppression, when turned on and the phone has it
+        val suppressor = if (VoicePrefs.noiseReduction(ime) && android.media.audiofx.NoiseSuppressor.isAvailable())
+            runCatching { android.media.audiofx.NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true } }.getOrNull()
+        else null
         // start recording before loading the model, so the first words aren't lost (the buffer holds 5 s)
         Thread.sleep(150) // let the start click finish so it isn't heard as speech
         record.startRecording()
@@ -127,6 +133,7 @@ class VoiceInputController(
             Log.e(TAG, "could not load streaming model", e)
             main.post { toast("Voice model could not be loaded"); stop() }
             runCatching { record.stop() }
+            suppressor?.release()
             record.release()
             return
         }
@@ -175,6 +182,7 @@ class VoiceInputController(
             main.post { toast("Voice typing stopped because of an error"); stop() }
         } finally {
             runCatching { record.stop() }
+            suppressor?.release()
             record.release()
             stream.release()
             finalPass.execute { main.post { if (session == sessionId) finishIfIdle() } }
@@ -192,7 +200,8 @@ class VoiceInputController(
         finalPass.execute {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
-            main.post { if (session == sessionId) commitOldest(final?.takeIf { it.isNotBlank() } ?: shown) }
+            val text = VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime))
+            main.post { if (session == sessionId) commitOldest(text) }
         }
     }
 
@@ -235,7 +244,7 @@ class VoiceInputController(
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
         val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
-        return lower.replaceFirstChar { it.titlecase() }
+        return VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region)
     }
 
     private fun toast(message: String) = Toast.makeText(ime, message, Toast.LENGTH_SHORT).show()

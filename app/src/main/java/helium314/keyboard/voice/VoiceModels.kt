@@ -43,6 +43,15 @@ enum class VoiceModel(
         "csukuangfj/sherpa-onnx-whisper-small.en",
         listOf("small.en-encoder.int8.onnx", "small.en-decoder.int8.onnx", "small.en-tokens.txt"),
         375, "MIT",
+    ),
+
+    /** Largest model: best with accents and noise, but slower and a big download. */
+    WHISPER_TURBO(
+        "OpenAI Whisper large-v3-turbo",
+        "Best with strong accents and background noise. Slower and a large download.",
+        "csukuangfj/sherpa-onnx-whisper-turbo",
+        listOf("turbo-encoder.int8.onnx", "turbo-decoder.int8.onnx", "turbo-tokens.txt"),
+        1036, "MIT",
     );
 
     fun dir(context: Context) = File(context.filesDir, "voice-models/$name")
@@ -52,7 +61,7 @@ enum class VoiceModel(
 
     companion object {
         /** Models that can re-check a finished sentence. */
-        val accuracyModels = listOf(PARAKEET_EN, WHISPER_SMALL_EN)
+        val accuracyModels = listOf(PARAKEET_EN, WHISPER_SMALL_EN, WHISPER_TURBO)
     }
 }
 
@@ -73,4 +82,13 @@ object VoicePrefs {
     fun setAccuracyModel(context: Context, model: VoiceModel?) {
         prefs(context).edit().putString(KEY_ACCURACY_MODEL, model?.name ?: NONE).apply()
     }
+
+    /** Clean up background noise before recognition. On by default. */
+    fun noiseReduction(context: Context) = prefs(context).getBoolean("noise_reduction", true)
+    fun setNoiseReduction(context: Context, on: Boolean) = prefs(context).edit().putBoolean("noise_reduction", on).apply()
+
+    /** Where you're from: sets the spelling used for voice typing. */
+    fun region(context: Context): EnglishRegion =
+        EnglishRegion.entries.firstOrNull { it.name == prefs(context).getString("region", null) } ?: EnglishRegion.US
+    fun setRegion(context: Context, region: EnglishRegion) = prefs(context).edit().putString("region", region.name).apply()
 }

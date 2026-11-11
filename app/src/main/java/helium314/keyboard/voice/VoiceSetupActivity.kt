@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -75,6 +76,8 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
     val errors = remember { mutableStateMapOf<VoiceModel, String>() }
     var installedTick by remember { mutableStateOf(0) }
     var accuracy by remember { mutableStateOf(VoicePrefs.accuracyModel(ctx)) }
+    var noiseReduction by remember { mutableStateOf(VoicePrefs.noiseReduction(ctx)) }
+    var region by remember { mutableStateOf(VoicePrefs.region(ctx)) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -162,7 +165,46 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 }
             }
 
-            Text("4. Use it", style = MaterialTheme.typography.titleMedium)
+            Text("4. Background noise", style = MaterialTheme.typography.titleMedium)
+            Row(
+                Modifier.fillMaxWidth().selectable(selected = noiseReduction, onClick = {
+                    noiseReduction = !noiseReduction
+                    VoicePrefs.setNoiseReduction(ctx, noiseReduction)
+                }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Reduce background noise")
+                    Text(
+                        "Uses your phone's noise suppression on the mic and cleans each sentence before the " +
+                                "accuracy check. Turn off if it makes quiet speech worse.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = noiseReduction, onCheckedChange = null)
+            }
+
+            Text("5. Where you're from", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Sets the spelling (colour or color, realise or realize). For strong accents, try Whisper " +
+                        "large-v3-turbo as the accuracy check: it was trained on the widest range of accents.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            EnglishRegion.entries.forEach { r ->
+                Row(
+                    Modifier.fillMaxWidth().selectable(selected = region == r, onClick = {
+                        region = r
+                        VoicePrefs.setRegion(ctx, r)
+                    }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = region == r, onClick = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(r.title)
+                }
+            }
+
+            Text("6. Use it", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Tap the mic at the top right of the keyboard and start talking. Tap it again, " +
                         "or stay quiet for 30 seconds, to finish.",

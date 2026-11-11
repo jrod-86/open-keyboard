@@ -48,6 +48,7 @@ It includes code under other compatible licences, kept with their notices:
 | HeliBoard icon artwork | CC-BY-SA-4.0 (`LICENSE-CC-BY-SA-4.0`) | https://github.com/HeliBorg/HeliBoard |
 | sherpa-onnx (speech engine) | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | ONNX Runtime (inside sherpa-onnx) | MIT | https://github.com/microsoft/onnxruntime |
+| GTCRN noise remover (`assets/gtcrn_simple.onnx`) | MIT (`LICENSE-MIT-GTCRN`) | https://github.com/Xiaobin-Rong/gtcrn |
 
 Speech models are not bundled; the app downloads them when you ask it to:
 
@@ -56,6 +57,7 @@ Speech models are not bundled; the app downloads them when you ask it to:
 | Streaming Zipformer English (icefall) | Apache-2.0 | https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26 |
 | NVIDIA Parakeet TDT 0.6B v2 | CC-BY-4.0, credit: NVIDIA | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2 |
 | OpenAI Whisper small.en | MIT | https://github.com/openai/whisper |
+| OpenAI Whisper large-v3-turbo | MIT | https://github.com/openai/whisper |
 
 ## Credits
 
