@@ -33,6 +33,12 @@ class VoiceInputController(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val finalPass = Executors.newSingleThreadExecutor()
+    private val tones = runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 70) }.getOrNull()
+
+    /** Short click so you can hear the mic turn on (higher) and off (lower). */
+    private fun click(on: Boolean) {
+        tones?.startTone(if (on) android.media.ToneGenerator.TONE_PROP_BEEP else android.media.ToneGenerator.TONE_PROP_ACK, if (on) 80 else 120)
+    }
 
     @Volatile private var running = false
     private var audioThread: Thread? = null
@@ -48,7 +54,15 @@ class VoiceInputController(
     /** True while listening or while spoken text is still being finished. */
     val isActive get() = running || pending.isNotEmpty() || current.isNotEmpty()
 
-    fun toggle() = if (running) stop() else start()
+    private var lastToggle = 0L
+
+    fun toggle() {
+        // ignore a second event from the same tap
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastToggle < 400) return
+        lastToggle = now
+        if (running) stop() else start()
+    }
 
     fun start() {
         if (running) return
@@ -64,6 +78,7 @@ class VoiceInputController(
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
         running = true
         val session = ++sessionId
+        click(true)
         onListeningChanged(true)
         audioThread = thread(name = "voice-input") { listen(session) }
     }
@@ -72,6 +87,7 @@ class VoiceInputController(
     fun stop() {
         if (!running) return
         running = false
+        click(false)
         onListeningChanged(false)
     }
 
@@ -87,6 +103,7 @@ class VoiceInputController(
     fun release() {
         cancel()
         finalPass.shutdownNow()
+        tones?.release()
     }
 
     private fun ic(): InputConnection? = ime.currentInputConnection
@@ -102,6 +119,7 @@ class VoiceInputController(
             return
         }
         // start recording before loading the model, so the first words aren't lost (the buffer holds 5 s)
+        Thread.sleep(150) // let the start click finish so it isn't heard as speech
         record.startRecording()
         val recognizer = try {
             VoiceEngine.onlineRecognizer(ime)

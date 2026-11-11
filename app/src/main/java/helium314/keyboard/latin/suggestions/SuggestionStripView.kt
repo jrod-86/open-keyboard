@@ -506,10 +506,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     /** Highlights the mic keys while voice typing is listening. */
     fun setVoiceActive(active: Boolean) {
-        val colors = Settings.getValues().mColors
         listOf(toolbar.findViewWithTag<View>(ToolbarKey.VOICE), pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE))
             .filterIsInstance<ImageButton>().forEach {
-                if (active) it.setColorFilter(VOICE_ACTIVE_COLOR) else colors.setColor(it, ColorType.TOOL_BAR_KEY)
+                if (active) it.setColorFilter(VOICE_ACTIVE_COLOR) else it.clearColorFilter() // the normal colour is on the drawable
             }
     }
 
