@@ -162,5 +162,9 @@ class KeyboardWrapperView @JvmOverloads constructor(
         stopOneHandedModeBtn.setLayout((keyboardView.measuredHeight * 0.2f).toInt())
         switchOneHandedModeBtn.setLayout((keyboardView.measuredHeight * 0.5f).toInt())
         resizeOneHandedModeBtn.setLayout((keyboardView.measuredHeight * 0.8f).toInt())
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.tag == KeyboardMenu.OVERLAY_TAG) child.layout(0, 0, width, bottom - top)
+        }
     }
 }

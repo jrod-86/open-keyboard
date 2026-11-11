@@ -78,6 +78,7 @@ fun SettingsNavHost(
                 onClickLanguage = { navController.navigate(SettingsDestination.Languages) },
                 onClickLayouts = { navController.navigate(SettingsDestination.Layouts) },
                 onClickDictionaries = { navController.navigate(SettingsDestination.Dictionaries) },
+                onClickTheme = { navController.navigate(SettingsDestination.Theme) },
                 onClickBack = ::goBack,
             )
         }
@@ -107,6 +108,10 @@ fun SettingsNavHost(
         }
         composable(SettingsDestination.Debug) {
             DebugScreen(onClickBack = ::goBack)
+        }
+        composable(SettingsDestination.Theme) {
+            helium314.keyboard.settings.screens.ThemeScreen(onClickBack = ::goBack,
+                onClickCustom = { navController.navigate(SettingsDestination.Appearance) })
         }
         composable(SettingsDestination.Appearance) {
             AppearanceScreen(onClickBack = ::goBack)
@@ -156,6 +161,7 @@ object SettingsDestination {
     const val Advanced = "advanced"
     const val Debug = "debug"
     const val Appearance = "appearance"
+    const val Theme = "theme"
     const val Colors = "colors/"
     const val ColorsNight = "colors_night/"
     const val PersonalDictionaries = "personal_dictionaries"

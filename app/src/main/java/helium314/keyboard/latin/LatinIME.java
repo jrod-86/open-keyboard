@@ -716,6 +716,7 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onFinishInputView(final boolean finishingInput) {
         mVoiceInput.cancel();
+        KeyboardMenu.INSTANCE.hide();
         StatsUtils.onFinishInputView();
         mHandler.onFinishInputView(finishingInput);
         mStatsUtilsManager.onFinishInputView();
@@ -1530,11 +1531,18 @@ public class LatinIME extends InputMethodService implements
     }
 
     public void launchSettings() {
+        launchSettings(null);
+    }
+
+    /** Opens the settings, optionally straight on one screen (a SettingsDestination). */
+    public void launchSettings(final String destination) {
+        KeyboardMenu.INSTANCE.hide();
         mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
         requestHideSelf(0);
         closeMainKeyboard();
         Intent intent = new Intent();
         intent.setClass(LatinIME.this, SettingsActivity2.class);
+        if (destination != null) intent.putExtra("open_screen", destination);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);
