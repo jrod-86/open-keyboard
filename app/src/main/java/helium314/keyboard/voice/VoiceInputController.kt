@@ -234,8 +234,9 @@ class VoiceInputController(
     }
 
     private fun resync() {
-        val extracted = ic()?.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0) ?: return
-        onFinished(extracted.startOffset + extracted.selectionStart, extracted.startOffset + extracted.selectionEnd)
+        val extracted = ic()?.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+        if (extracted == null || extracted.selectionStart < 0) onFinished(-1, -1)
+        else onFinished(extracted.startOffset + extracted.selectionStart, extracted.startOffset + extracted.selectionEnd)
     }
 
     private fun lead() = if (needsLeadingSpace) " " else ""

@@ -122,6 +122,8 @@ public class LatinIME extends InputMethodService implements
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private SuggestionStripView mSuggestionStripView;
     private VoiceInputController mVoiceInput;
+    private int mVoiceLastSelStart = -1;
+    private int mVoiceLastSelEnd = -1;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -493,7 +495,12 @@ public class LatinIME extends InputMethodService implements
     public void onCreate() {
         mVoiceInput = new VoiceInputController(this, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; },
                 listening -> { if (mSuggestionStripView != null) mSuggestionStripView.setVoiceActive(listening); return kotlin.Unit.INSTANCE; },
-                (selStart, selEnd) -> { mInputLogic.resyncAfterVoiceInput(selStart, selEnd); return kotlin.Unit.INSTANCE; });
+                (selStart, selEnd) -> {
+                    // fall back to the last cursor position the app reported, if it can't tell us now
+                    if (selStart < 0) { selStart = mVoiceLastSelStart; selEnd = mVoiceLastSelEnd; }
+                    if (selStart >= 0) mInputLogic.resyncAfterVoiceInput(selStart, selEnd);
+                    return kotlin.Unit.INSTANCE;
+                });
         mSettings.startListener();
         KeyboardIconsSet.Companion.getInstance().loadIcons(this);
         mRichImm = RichInputMethodManager.getInstance();
@@ -987,6 +994,8 @@ public class LatinIME extends InputMethodService implements
         // view is not displayed we have no means of showing suggestions anyway, and if it is then
         // we want to show suggestions anyway.
         // voice typing manages its own composing text; don't let the typing logic reset it
+        mVoiceLastSelStart = newSelStart;
+        mVoiceLastSelEnd = newSelEnd;
         if (mVoiceInput != null && mVoiceInput.isActive()) {
             // Open Keyboard: the app emptied the field (e.g. its send button) while voice text was
             // still being finished. Drop the rest instead of writing it into the empty box.

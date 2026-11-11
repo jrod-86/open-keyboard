@@ -49,7 +49,7 @@ class VoiceChimes {
             }
         }
         val peak = samples.maxOf { kotlin.math.abs(it) }.coerceAtLeast(1e-6f)
-        val pcm = ShortArray(length) { (samples[it] / peak * 0.9f * Short.MAX_VALUE).toInt().toShort() }
+        val pcm = ShortArray(length) { (samples[it] / peak * 0.45f * Short.MAX_VALUE).toInt().toShort() }
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
