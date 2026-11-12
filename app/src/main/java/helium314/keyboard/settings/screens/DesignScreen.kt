@@ -2,6 +2,16 @@
 package helium314.keyboard.settings.screens
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,7 +61,8 @@ import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.settings.SearchSettingsScreen
 
 /** A keyboard look: colours for the background, letter keys, special keys, the Enter key and the letters. */
-data class Design(val name: String, val bg: Long, val key: Long, val special: Long, val accent: Long, val text: Long)
+data class Design(val name: String, val bg: Long, val key: Long, val special: Long, val accent: Long, val text: Long,
+    val picture: Boolean = false, val dim: Float = 0.25f, val seeThrough: Boolean = true)
 
 private val presets = listOf(
     Design("Midnight", 0xFF121212, 0xFF2A2A2A, 0xFF1C1C1C, 0xFF8AB4F8, 0xFFFFFFFF),
@@ -95,10 +106,28 @@ private fun col(v: Long) = Color(v.toInt())
 private const val THEME_NAME = "Open design"
 private const val PREF_DRAFT = "open_keyboard_design"
 
-private fun Design.encode() = listOf(name, bg, key, special, accent, text).joinToString(";")
+private fun Design.encode() = listOf(name, bg, key, special, accent, text, picture, dim, seeThrough).joinToString(";")
 private fun decode(s: String?): Design? = runCatching {
-    val p = s!!.split(";"); Design(p[0], p[1].toLong(), p[2].toLong(), p[3].toLong(), p[4].toLong(), p[5].toLong())
+    val p = s!!.split(";"); Design(p[0], p[1].toLong(), p[2].toLong(), p[3].toLong(), p[4].toLong(), p[5].toLong(),
+        p.getOrNull(6)?.toBoolean() ?: false, p.getOrNull(7)?.toFloat() ?: 0.25f, p.getOrNull(8)?.toBoolean() ?: true)
 }.getOrNull()
+
+/** The picture chosen in the designer, cropped to the keyboard's shape. */
+private fun pictureFile(ctx: Context) = File(ctx.filesDir, "design_background.png")
+
+private fun loadPicture(ctx: Context): Bitmap? = pictureFile(ctx).takeIf { it.isFile }?.let { BitmapFactory.decodeFile(it.absolutePath) }
+
+/** Crops the middle of the picture to the keyboard's shape and keeps it. */
+private fun savePicture(ctx: Context, uri: android.net.Uri): Boolean = runCatching {
+    val src = ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it) }!!
+    val targetW = 1080; val targetH = 820
+    val scale = maxOf(targetW.toFloat() / src.width, targetH.toFloat() / src.height)
+    val w = (targetW / scale).toInt().coerceAtMost(src.width); val h = (targetH / scale).toInt().coerceAtMost(src.height)
+    val cropped = Bitmap.createBitmap(src, (src.width - w) / 2, (src.height - h) / 2, w, h)
+    val out = Bitmap.createScaledBitmap(cropped, targetW, targetH, true)
+    pictureFile(ctx).outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    true
+}.getOrDefault(false)
 
 /** Samsung-style keyboard designer: pick a ready-made design or your own colours, and a key sound. */
 @Composable
@@ -111,10 +140,18 @@ fun DesignScreen(onClickBack: () -> Unit) {
     var saved by remember { mutableStateOf(false) }
     var sound by remember { mutableStateOf(if (ctx.prefs().getBoolean(Settings.PREF_SOUND_ON, false)) KeySounds.pack(ctx) else "off") }
     fun change(d: Design) { if (d != draft) { undo.add(draft); redo.clear(); draft = d; saved = false } }
+    var picture by remember { mutableStateOf(loadPicture(ctx)) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && savePicture(ctx, uri)) {
+            picture = loadPicture(ctx)
+            change(draft.copy(picture = true))
+            tab = 1
+        }
+    }
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Design", settings = emptyList()) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-            KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true)
+            KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null)
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = undo.isNotEmpty(), onClick = { redo.add(draft); draft = undo.removeAt(undo.lastIndex); saved = false }) { Text("↶") }
@@ -139,7 +176,21 @@ fun DesignScreen(onClickBack: () -> Unit) {
                     }
                 }
                 1 -> {
-                    ColourRow("Background", draft.bg) { change(draft.copy(name = "My design", bg = it)) }
+                    Text("Background picture", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { pick.launch("image/*") }) { Text(if (draft.picture) "Change picture" else "Choose a picture") }
+                        if (draft.picture) OutlinedButton(onClick = { change(draft.copy(picture = false)) }) { Text("Remove") }
+                    }
+                    if (draft.picture) {
+                        Text("Darken the picture", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+                        Slider(value = draft.dim, valueRange = 0f..0.7f, onValueChange = { draft = draft.copy(dim = it); saved = false },
+                            onValueChangeFinished = { undo.add(draft) })
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("See-through keys", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Switch(checked = draft.seeThrough, onCheckedChange = { change(draft.copy(seeThrough = it)) })
+                        }
+                    }
+                    ColourRow(if (draft.picture) "Background (behind the picture's edges)" else "Background", draft.bg) { change(draft.copy(name = "My design", bg = it)) }
                     ColourRow("Letter keys", draft.key) { change(draft.copy(name = "My design", key = it)) }
                     ColourRow("Special keys (shift, delete, ?123)", draft.special) { change(draft.copy(name = "My design", special = it)) }
                     ColourRow("Enter key and highlights", draft.accent) { change(draft.copy(name = "My design", accent = it)) }
@@ -193,7 +244,16 @@ private fun ColourRow(label: String, current: Long, onPick: (Long) -> Unit) {
 
 /** A small drawing of the keyboard in the given colours. */
 @Composable
-fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selected: Boolean = false) {
+fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selected: Boolean = false, picture: Bitmap? = null) {
+    if (picture != null) {
+        val shape = RoundedCornerShape(if (big) 18.dp else 12.dp)
+        Box(modifier.clip(shape)) {
+            Image(picture.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = d.dim)))
+            KeyboardPreview(d.copy(bg = 0x00000000, key = keyColor(d.key, d), special = keyColor(d.special, d)), Modifier.fillMaxWidth(), big, selected)
+        }
+        return
+    }
     val gap: Dp = if (big) 4.dp else 2.dp
     val keyH: Dp = if (big) 38.dp else 18.dp
     val font = if (big) 15.sp else 8.sp
@@ -233,6 +293,8 @@ fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selecte
     }
 }
 
+private fun keyColor(c: Long, d: Design): Long = if (d.picture && d.seeThrough) (0xA0L shl 24) or (c and 0xFFFFFF) else c
+
 private fun readableOn(c: Long): Long {
     val v = c.toInt()
     val lum = (0.299 * ((v shr 16) and 255) + 0.587 * ((v shr 8) and 255) + 0.114 * (v and 255)) / 255
@@ -246,9 +308,9 @@ fun applyDesign(ctx: Context, d: Design) {
     val prefs = ctx.prefs()
     val colors = listOf(
         ColorSetting(KeyboardTheme.COLOR_BACKGROUND, false, d.bg.toInt()),
-        ColorSetting(KeyboardTheme.COLOR_KEYS, false, d.key.toInt()),
-        ColorSetting(KeyboardTheme.COLOR_FUNCTIONAL_KEYS, false, d.special.toInt()),
-        ColorSetting(KeyboardTheme.COLOR_SPACEBAR, false, d.key.toInt()),
+        ColorSetting(KeyboardTheme.COLOR_KEYS, false, keyColor(d.key, d).toInt()),
+        ColorSetting(KeyboardTheme.COLOR_FUNCTIONAL_KEYS, false, keyColor(d.special, d).toInt()),
+        ColorSetting(KeyboardTheme.COLOR_SPACEBAR, false, keyColor(d.key, d).toInt()),
         ColorSetting(KeyboardTheme.COLOR_ACCENT, false, d.accent.toInt()),
         ColorSetting(KeyboardTheme.COLOR_GESTURE, false, d.accent.toInt()),
         ColorSetting(KeyboardTheme.COLOR_TEXT, false, d.text.toInt()),
@@ -259,6 +321,13 @@ fun applyDesign(ctx: Context, d: Design) {
     KeyboardTheme.writeUserColors(prefs, THEME_NAME, colors)
     KeyboardTheme.writeUserMoreColors(prefs, THEME_NAME, 0)
     for (n in listOf(false, true)) for (l in listOf(false, true)) Settings.getCustomBackgroundFile(ctx, n, l).delete()
+    val pic = if (d.picture) loadPicture(ctx) else null
+    if (pic != null) {
+        val out = pic.copy(Bitmap.Config.ARGB_8888, true)
+        android.graphics.Canvas(out).drawColor(android.graphics.Color.argb((d.dim * 255).toInt(), 0, 0, 0))
+        for (night in listOf(false, true))
+            Settings.getCustomBackgroundFile(ctx, night, false).outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
     prefs.edit {
         putString(PREF_DRAFT, d.encode())
         putString(Settings.PREF_THEME_COLORS, THEME_NAME)
