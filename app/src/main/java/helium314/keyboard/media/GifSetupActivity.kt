@@ -17,6 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import helium314.keyboard.latin.utils.Theme
 
-/** Turn GIF search on and enter the free KLIPY key. Stickers need no setup. */
+/** Turn KLIPY stickers and GIFs on, and manage the user's own sticker packs. */
 class GifSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +60,40 @@ private fun GifSetupScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     var enabled by remember { mutableStateOf(MediaPrefs.gifsEnabled(ctx)) }
     var key by remember { mutableStateOf(MediaPrefs.klipyKey(ctx)) }
+    var packs by remember { mutableStateOf(StickerPacks.packs(ctx)) }
+    var packName by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun finish(added: Int) {
+        busy = false
+        packs = StickerPacks.packs(ctx)
+        status = if (added > 0) "Added a pack with $added stickers. Find it in the sticker panel." else "No pictures could be added."
+        packName = ""
+    }
+    val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        busy = true; status = "Adding…"
+        val name = packName.ifBlank { "My pack" }
+        scope.launch {
+            val added = withContext(Dispatchers.IO) { runCatching { StickerPacks.createFromImages(ctx, name, uris) }.getOrDefault(0) }
+            finish(added)
+        }
+    }
+    val pickZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = true; status = "Importing…"
+        val fileName = runCatching {
+            ctx.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                c.moveToFirst(); c.getString(c.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME))
+            }
+        }.getOrNull()?.substringBeforeLast('.')
+        val name = packName.ifBlank { fileName ?: "Imported pack" }
+        scope.launch {
+            val added = withContext(Dispatchers.IO) { runCatching { StickerPacks.importZip(ctx, name, uri) }.getOrDefault(0) }
+            finish(added)
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -91,6 +133,34 @@ private fun GifSetupScreen(onBack: () -> Unit) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("My sticker packs", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Make a pack of your favourite character from pictures on your phone, or import a pack " +
+                                "someone shared as a .zip of pictures. Packs stay on your phone and work offline.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = packName,
+                        onValueChange = { packName = it },
+                        label = { Text("Pack name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(enabled = !busy, onClick = { pickImages.launch("image/*") }) { Text("From photos") }
+                        OutlinedButton(enabled = !busy, onClick = { pickZip.launch(arrayOf("application/zip", "application/x-zip-compressed")) }) { Text("Import .zip") }
+                    }
+                    if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodySmall)
+                    packs.forEach { pack ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${pack.name} (${StickerPacks.stickers(pack).size})", Modifier.weight(1f))
+                            TextButton(onClick = { StickerPacks.delete(pack); packs = StickerPacks.packs(ctx) }) { Text("Delete") }
+                        }
+                    }
                 }
             }
             OutlinedButton(onClick = onBack) { Text("Done") }

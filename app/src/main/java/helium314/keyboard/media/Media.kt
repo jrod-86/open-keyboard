@@ -117,6 +117,12 @@ object MediaSender {
         }
     }
 
+    /** Sends a sticker from one of the user's own packs. */
+    fun sendPackSticker(ime: InputMethodService, file: File) {
+        val mime = StickerPacks.mimeOf(file)
+        commit(ime, file, mime, "Sticker", null)
+    }
+
     private fun mediaDir(ctx: Context) = File(ctx.cacheDir, "media").apply {
         mkdirs()
         // keep the cache small
@@ -141,4 +147,90 @@ object MediaSender {
     }
 
     private fun toast(ctx: Context, text: String) = Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * The user's own sticker packs (for example a favourite character), kept on the phone in
+ * files/sticker-packs/<pack name>/. A pack is made from photos in the gallery or imported from a .zip.
+ */
+object StickerPacks {
+    private const val MAX_SIZE = 512
+
+    fun root(ctx: Context) = File(ctx.filesDir, "sticker-packs").apply { mkdirs() }
+
+    fun packs(ctx: Context): List<File> =
+        root(ctx).listFiles()?.filter { it.isDirectory && stickers(it).isNotEmpty() }?.sortedBy { it.name.lowercase() } ?: emptyList()
+
+    fun stickers(pack: File): List<File> =
+        pack.listFiles()?.filter { it.isFile && it.extension.lowercase() in listOf("png", "webp", "gif", "jpg", "jpeg") }
+            ?.sortedBy { it.name } ?: emptyList()
+
+    fun mimeOf(file: File) = when (file.extension.lowercase()) {
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "jpg", "jpeg" -> "image/jpeg"
+        else -> "image/png"
+    }
+
+    fun delete(pack: File) = pack.deleteRecursively()
+
+    private fun safeName(name: String) = name.replace(Regex("[^A-Za-z0-9 _-]"), "").trim().take(40).ifEmpty { "My pack" }
+
+    private fun newPackDir(ctx: Context, name: String): File {
+        val base = safeName(name)
+        var dir = File(root(ctx), base)
+        var i = 2
+        while (dir.exists()) dir = File(root(ctx), "$base $i").also { i++ }
+        return dir.apply { mkdirs() }
+    }
+
+    /** Makes a pack from pictures the user picked. Returns how many stickers were added. */
+    fun createFromImages(ctx: Context, name: String, uris: List<Uri>): Int {
+        val dir = newPackDir(ctx, name)
+        var count = 0
+        uris.forEachIndexed { i, uri ->
+            runCatching {
+                val mime = ctx.contentResolver.getType(uri) ?: ""
+                val bytes = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                saveSticker(dir, "%03d".format(i), bytes, mime)
+                count++
+            }.onFailure { Log.e("StickerPacks", "could not add picture", it) }
+        }
+        if (count == 0) dir.deleteRecursively()
+        return count
+    }
+
+    /** Imports a pack someone shared or downloaded as a .zip of pictures. Returns how many stickers were added. */
+    fun importZip(ctx: Context, name: String, uri: Uri): Int {
+        val dir = newPackDir(ctx, name)
+        var count = 0
+        ctx.contentResolver.openInputStream(uri)!!.use { input ->
+            val zip = java.util.zip.ZipInputStream(input)
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val ext = entry.name.substringAfterLast('.', "").lowercase()
+                if (entry.isDirectory || entry.name.contains("__MACOSX") || ext !in listOf("png", "webp", "gif", "jpg", "jpeg")) continue
+                if (count >= 200) break
+                runCatching {
+                    saveSticker(dir, "%03d".format(count), zip.readBytes(), if (ext == "gif") "image/gif" else if (ext == "webp") "image/webp" else "image/$ext")
+                    count++
+                }
+            }
+        }
+        if (count == 0) dir.deleteRecursively()
+        return count
+    }
+
+    /** Animated pictures are kept as they are; still pictures are shrunk to sticker size and saved as PNG. */
+    private fun saveSticker(dir: File, baseName: String, bytes: ByteArray, mime: String) {
+        if (mime == "image/gif" || mime == "image/webp") {
+            File(dir, "$baseName.${mime.substringAfter('/')}").writeBytes(bytes)
+            return
+        }
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("not a picture")
+        val scale = minOf(1f, MAX_SIZE.toFloat() / maxOf(bmp.width, bmp.height))
+        val out = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt().coerceAtLeast(1),
+            (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
+        File(dir, "$baseName.png").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
 }

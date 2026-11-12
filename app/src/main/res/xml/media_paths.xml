@@ -2,4 +2,5 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 <paths>
     <cache-path name="media" path="media/" />
+    <files-path name="packs" path="sticker-packs/" />
 </paths>

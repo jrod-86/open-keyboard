@@ -42,6 +42,8 @@ object MediaPanel {
     private var showingGifs = false
     private var generation = 0
     private var lastQuery: String? = null
+    /** Sticker source: null for KLIPY, otherwise the name of one of the user's packs. */
+    private var packSource: String? = null
 
     private val categories = listOf(
         "Trending" to null, "Haha" to "haha", "Love" to "love", "Yes" to "yes", "No" to "no", "Thanks" to "thank you",
@@ -121,7 +123,52 @@ object MediaPanel {
         }
         val scroll = ScrollView(context).apply { addView(grid) }
 
-        if (!MediaPrefs.gifsReady(context)) {
+        // sticker tab: choose between KLIPY stickers and the user's own packs
+        val packs = if (gifs) emptyList() else StickerPacks.packs(context)
+        var pack: java.io.File? = null
+        if (!gifs) {
+            if (packSource != null) pack = packs.firstOrNull { it.name == packSource }
+            if (pack == null && (packSource != null || !MediaPrefs.gifsReady(context))) pack = packs.firstOrNull()
+            val packRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(context, 4f), 0, dp(context, 4f), 0) }
+            packRow.addView(pill("KLIPY", pack == null) { packSource = null; show(context, false) })
+            packs.forEach { p -> packRow.addView(pill(p.name, p == pack) { packSource = p.name; show(context, false) }) }
+            packRow.addView(pill("+ My packs", false) {
+                KeyboardMenu.hide()
+                context.startActivity(Intent(context, GifSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            })
+            column.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(packRow) })
+        }
+
+        if (pack != null) {
+            val ime = ime(context)
+            StickerPacks.stickers(pack).forEach { file ->
+                val view = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    val p = dp(context, 4f); setPadding(p, p, p, p)
+                    setOnClickListener {
+                        if (ime != null) MediaSender.sendPackSticker(ime, file)
+                        KeyboardMenu.hide()
+                    }
+                }
+                val m = dp(context, 3f)
+                grid.addView(view, GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f))
+                    .apply { width = 0; height = dp(context, 96f); setMargins(m, m, m, m) })
+                loader.execute {
+                    val d = runCatching {
+                        ImageDecoder.decodeDrawable(ImageDecoder.createSource(file)) { decoder, info, _ ->
+                            val size = maxOf(info.size.width, info.size.height)
+                            if (size > 256) decoder.setTargetSampleSize(size / 256)
+                        }
+                    }.getOrNull()
+                    main.post {
+                        if (gen != generation || d == null) return@post
+                        view.setImageDrawable(d)
+                        (d as? AnimatedImageDrawable)?.start()
+                    }
+                }
+            }
+            column.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        } else if (!MediaPrefs.gifsReady(context)) {
             val box = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
