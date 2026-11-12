@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -154,19 +156,24 @@ fun DesignScreen(onClickBack: () -> Unit) {
     }
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Design", settings = emptyList()) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        // the preview, buttons and tabs stay put at the top; only the choices below scroll
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
             KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null)
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = undo.isNotEmpty(), onClick = { redo.add(draft); draft = undo.removeAt(undo.lastIndex); saved = false }) { Text("↶") }
-                OutlinedButton(enabled = redo.isNotEmpty(), onClick = { undo.add(draft); draft = redo.removeAt(redo.lastIndex); saved = false }) { Text("↷") }
+                OutlinedButton(enabled = undo.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp),
+                    onClick = { redo.add(draft); draft = undo.removeAt(undo.lastIndex); saved = false }) { Text("↶", fontSize = 20.sp) }
+                OutlinedButton(enabled = redo.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp),
+                    onClick = { undo.add(draft); draft = redo.removeAt(redo.lastIndex); saved = false }) { Text("↷", fontSize = 20.sp) }
                 OutlinedButton(onClick = { change(presets[0]) }) { Text("Reset") }
                 Spacer(Modifier.weight(1f))
                 Button(onClick = { applyDesign(ctx, draft); saved = true }) { Text(if (saved) "Saved ✓" else "Save") }
             }
-            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Designs", "Colours", "Effects", "Sound").forEachIndexed { i, t -> Pill(t, tab == i) { tab = i } }
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Designs", "Colours", "Effects", "Sound").forEachIndexed { i, t -> Pill(t, tab == i, Modifier.weight(1f)) { tab = i } }
             }
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(4.dp))
             when (tab) {
                 0 -> presets.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 16.dp)) {
@@ -245,16 +252,18 @@ fun DesignScreen(onClickBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(50))
+private fun Pill(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier.clip(RoundedCornerShape(50))
         .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-        .clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 8.dp)) {
-        Text(text, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+        .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+        Text(text, maxLines = 1, softWrap = false, fontSize = 14.sp,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
