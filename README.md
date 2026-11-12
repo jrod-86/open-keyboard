@@ -26,5 +26,8 @@ Queer Foxcats by rawrafox (https://github.com/rawrafox/foxcats). CC0. Based on G
 ## PiterJS Heroes
 By the PiterJS community (https://github.com/piterjs/stickers). MIT licence; the notice is inside the zip.
 
-## Butter Faces
-24 face stickers made by jrod for Open Keyboard. CC0 (public domain).
+## Yellow Emoji Story
+96 face stickers (24 faces, 72 story moments) made by jrod for Open Keyboard. CC0 (public domain).
+
+## Tuxedo Cat
+96 tuxedo cat stickers made by jrod for Open Keyboard. CC0 (public domain).

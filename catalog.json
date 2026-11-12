@@ -2,17 +2,30 @@
  "version": 1,
  "packs": [
   {
-   "id": "butter-faces-v2",
-   "name": "Butter Faces",
+   "id": "yellow-emoji-story",
+   "name": "Yellow Emoji Story",
    "author": "jrod",
    "license": "CC0",
    "source": "https://github.com/jrod-86/open-keyboard",
    "credit": "",
-   "count": 24,
+   "count": 96,
    "featured": true,
-   "icon": "butter-faces-v2-icon.png",
-   "zip": "butter-faces-v2.zip",
-   "size": 2372691
+   "icon": "yellow-emoji-story-icon.png",
+   "zip": "yellow-emoji-story.zip",
+   "size": 3106585
+  },
+  {
+   "id": "tuxedo-cat",
+   "name": "Tuxedo Cat",
+   "author": "jrod",
+   "license": "CC0",
+   "source": "https://github.com/jrod-86/open-keyboard",
+   "credit": "",
+   "count": 96,
+   "featured": true,
+   "icon": "tuxedo-cat-icon.png",
+   "zip": "tuxedo-cat.zip",
+   "size": 4472681
   },
   {
    "id": "mochi",
