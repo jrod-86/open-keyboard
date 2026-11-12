@@ -45,6 +45,8 @@ class VoiceInputController(
     private val pending = ArrayDeque<String>()
     private var current = ""
     private var needsLeadingSpace = false
+    /** Whether this session has put text in the box, so an empty box means the app cleared it (e.g. sent it). */
+    private var wrote = false
     private var sessionId = 0
     private var region = EnglishRegion.US
 
@@ -76,6 +78,7 @@ class VoiceInputController(
         region = VoicePrefs.region(ime)
         val before = ic()?.getTextBeforeCursor(1, 0)
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
+        wrote = false
         running = true
         val session = ++sessionId
         click(true)
@@ -211,19 +214,43 @@ class VoiceInputController(
 
     /** Shows the waiting sentences and the live sentence as underlined (composing) text. */
     private fun render() {
+        if (appClearedBox()) return
         val text = (pending + current).filter { it.isNotEmpty() }.joinToString(" ")
         ic()?.setComposingText(if (text.isEmpty()) "" else lead() + text, 1)
+        if (text.isNotEmpty()) wrote = true
     }
 
     private fun commitOldest(finalText: String) {
         if (pending.isEmpty()) return
+        if (appClearedBox()) return
         pending.removeFirst()
         val ic = ic() ?: return
         ic.beginBatchEdit()
         ic.commitText(lead() + finalText, 1)
         needsLeadingSpace = true
+        wrote = true
         render()
         ic.endBatchEdit()
+    }
+
+    /**
+     * If we already wrote text and the box is now empty, the app took the message (its send button).
+     * Stop and drop the rest, so nothing is written back into the empty box.
+     */
+    private fun appClearedBox(): Boolean {
+        if (!wrote) return false
+        val ic = ic() ?: return false
+        val before = ic.getTextBeforeCursor(1, 0) ?: return false
+        val after = ic.getTextAfterCursor(1, 0) ?: return false
+        if (before.isNotEmpty() || after.isNotEmpty()) return false
+        val wasRunning = running
+        running = false
+        sessionId++
+        pending.clear(); current = ""; wrote = false; needsLeadingSpace = false
+        if (wasRunning) { click(false); onListeningChanged(false) }
+        ic.finishComposingText()
+        resync()
+        return true
     }
 
     private fun finishIfIdle() {
