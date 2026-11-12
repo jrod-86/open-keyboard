@@ -56,6 +56,8 @@ import helium314.keyboard.keyboard.ColorSetting
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.keyboard.KeyboardTheme
 import helium314.keyboard.latin.KeySounds
+import helium314.keyboard.keyboard.internal.TypingEffectsPreview
+import androidx.compose.material3.OutlinedTextField
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.settings.SearchSettingsScreen
@@ -138,6 +140,8 @@ fun DesignScreen(onClickBack: () -> Unit) {
     val redo = remember { mutableStateListOf<Design>() }
     var tab by remember { mutableStateOf(0) }
     var saved by remember { mutableStateOf(false) }
+    var effect by remember { mutableStateOf(ctx.prefs().getString(TypingEffectsPreview.PREF, "none") ?: "none") }
+    var tryText by remember { mutableStateOf("") }
     var sound by remember { mutableStateOf(if (ctx.prefs().getBoolean(Settings.PREF_SOUND_ON, false)) KeySounds.pack(ctx) else "off") }
     fun change(d: Design) { if (d != draft) { undo.add(draft); redo.clear(); draft = d; saved = false } }
     var picture by remember { mutableStateOf(loadPicture(ctx)) }
@@ -161,7 +165,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
                 Button(onClick = { applyDesign(ctx, draft); saved = true }) { Text(if (saved) "Saved ✓" else "Save") }
             }
             Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Designs", "Colours", "Sound").forEachIndexed { i, t -> Pill(t, tab == i) { tab = i } }
+                listOf("Designs", "Colours", "Effects", "Sound").forEachIndexed { i, t -> Pill(t, tab == i) { tab = i } }
             }
             when (tab) {
                 0 -> presets.chunked(2).forEach { row ->
@@ -195,6 +199,30 @@ fun DesignScreen(onClickBack: () -> Unit) {
                     ColourRow("Special keys (shift, delete, ?123)", draft.special) { change(draft.copy(name = "My design", special = it)) }
                     ColourRow("Enter key and highlights", draft.accent) { change(draft.copy(name = "My design", accent = it)) }
                     ColourRow("Letters", draft.text) { change(draft.copy(name = "My design", text = it)) }
+                }
+                2 -> {
+                    Text("Typing effect", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
+                    Text("Something fun pops out of each key you press. Pick one, then type in the box below to try it.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                    OutlinedTextField(value = tryText, onValueChange = { tryText = it }, label = { Text("Try it here") },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
+                    TypingEffectsPreview.effects.chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { (id, info) ->
+                                val (label, symbols) = info
+                                val icon = symbols.firstOrNull() ?: when (id) { "bubbles" -> "◯"; "confetti" -> "🎉"; "ripple" -> "◎"; else -> "🚫" }
+                                Row(Modifier.weight(1f).padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+                                    .background(if (effect == id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { effect = id; ctx.prefs().edit { putString(TypingEffectsPreview.PREF, id) } }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(icon, fontSize = 22.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
                 }
                 else -> {
                     Text("Key sound", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))

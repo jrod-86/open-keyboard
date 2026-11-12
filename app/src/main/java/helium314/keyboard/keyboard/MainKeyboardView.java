@@ -99,6 +99,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     private final int[] mOriginCoords = CoordinateUtils.newInstance();
     private final GestureFloatingTextDrawingPreview mGestureFloatingTextDrawingPreview;
     private final GestureTrailsDrawingPreview mGestureTrailsDrawingPreview;
+    private final helium314.keyboard.keyboard.internal.TypingEffectsPreview mTypingEffects;
     private final SlidingKeyInputDrawingPreview mSlidingKeyInputDrawingPreview;
 
     // Key preview
@@ -201,6 +202,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
 
         mGestureTrailsDrawingPreview = new GestureTrailsDrawingPreview(mainKeyboardViewAttr);
         mGestureTrailsDrawingPreview.setDrawingView(drawingPreviewPlacerView);
+        mTypingEffects = new helium314.keyboard.keyboard.internal.TypingEffectsPreview(context);
+        mTypingEffects.setDrawingView(drawingPreviewPlacerView);
+        mTypingEffects.setPreviewEnabled(true);
 
         mSlidingKeyInputDrawingPreview = new SlidingKeyInputDrawingPreview(mainKeyboardViewAttr);
         mSlidingKeyInputDrawingPreview.setDrawingView(drawingPreviewPlacerView);
@@ -361,6 +365,10 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     public void onKeyPressed(@NonNull final Key key, final boolean withPreview) {
         key.onPressed();
         invalidateKey(key);
+        // Open Keyboard: typing effect chosen in the Design studio
+        mTypingEffects.setAccentColor(Settings.getValues().mColors.get(helium314.keyboard.latin.common.ColorType.GESTURE_TRAIL));
+        if (!"none".equals(mTypingEffects.effect())) locatePreviewPlacerView();
+        mTypingEffects.spawn(key.getX() + key.getWidth() / 2f, key.getY() + key.getHeight() / 2f);
 
         final Keyboard keyboard = getKeyboard();
         if (keyboard == null) {
