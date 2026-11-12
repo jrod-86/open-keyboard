@@ -1,0 +1,57 @@
+{
+ "version": 1,
+ "packs": [
+  {
+   "id": "gopher-gang",
+   "name": "Gopher Gang",
+   "author": "Maria Letta",
+   "license": "CC0-1.0",
+   "source": "https://github.com/MariaLetta/free-gophers-pack",
+   "credit": "Go gopher design by Renee French (CC BY 4.0).",
+   "count": 78,
+   "featured": true,
+   "icon": "gopher-gang-icon.png",
+   "zip": "gopher-gang.zip",
+   "size": 4556857
+  },
+  {
+   "id": "goroutines",
+   "name": "Goroutines",
+   "author": "Maria Letta",
+   "license": "CC0-1.0",
+   "source": "https://github.com/MariaLetta/free-gophers-pack",
+   "credit": "Go gopher design by Renee French (CC BY 4.0).",
+   "count": 17,
+   "featured": true,
+   "icon": "goroutines-icon.png",
+   "zip": "goroutines.zip",
+   "size": 1165833
+  },
+  {
+   "id": "gopher-adventures",
+   "name": "Gopher Adventures",
+   "author": "Egon Elbre",
+   "license": "CC0-1.0",
+   "source": "https://github.com/egonelbre/gophers",
+   "credit": "Go gopher design by Renee French (CC BY 4.0).",
+   "count": 45,
+   "featured": true,
+   "icon": "gopher-adventures-icon.png",
+   "zip": "gopher-adventures.zip",
+   "size": 6773584
+  },
+  {
+   "id": "ferris",
+   "name": "Ferris the Crab",
+   "author": "Karen Rustad Tölva",
+   "license": "CC0-1.0",
+   "source": "https://rustacean.net/",
+   "credit": "",
+   "count": 5,
+   "featured": true,
+   "icon": "ferris-icon.png",
+   "zip": "ferris.zip",
+   "size": 192248
+  }
+ ]
+}
