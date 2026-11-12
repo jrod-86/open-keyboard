@@ -95,6 +95,7 @@ fun getCodeForToolbarKey(key: ToolbarKey) = Settings.getInstance().getCustomTool
     SPLIT -> KeyCode.SPLIT_LAYOUT
     FLOATING -> KeyCode.TOGGLE_FLOATING_WINDOW
     BACKGROUND_GATHERING -> KeyCode.BACKGROUND_GATHERING
+    STICKER, GIF -> KeyCode.UNSPECIFIED // handled by the suggestion strip
 }
 
 fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getCustomToolbarLongpressCode(key) ?: when (key) {
@@ -121,7 +122,8 @@ fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getC
 enum class ToolbarKey {
     VOICE, CLIPBOARD, NUMPAD, DPAD, UNDO, REDO, SETTINGS, SELECT_ALL, SELECT_WORD, COPY, CUT, PASTE, ONE_HANDED, FLOATING, SPLIT,
     INCOGNITO, AUTOCORRECT, CLEAR_CLIPBOARD, CLOSE_HISTORY, EMOJI, LEFT, RIGHT, UP, DOWN, WORD_LEFT, WORD_RIGHT,
-    PAGE_UP, PAGE_DOWN, FULL_LEFT, FULL_RIGHT, PAGE_START, PAGE_END, BACKGROUND_GATHERING
+    PAGE_UP, PAGE_DOWN, FULL_LEFT, FULL_RIGHT, PAGE_START, PAGE_END, BACKGROUND_GATHERING,
+    STICKER, GIF, // Open Keyboard: open the sticker / GIF panel
 }
 
 enum class ToolbarMode {
@@ -131,7 +133,7 @@ enum class ToolbarMode {
 val toolbarKeyStrings = entries.associateWithTo(EnumMap(ToolbarKey::class.java)) { it.toString().lowercase(Locale.US) }
 
 val defaultToolbarPref by lazy {
-    val default = listOf(CLIPBOARD, SETTINGS)
+    val default = listOf(STICKER, GIF, CLIPBOARD, SETTINGS)
     val others = entries.filterNot { it in default || it == CLOSE_HISTORY }
     default.joinToString(Separators.ENTRY) { it.name + Separators.KV + true } + Separators.ENTRY +
             others.joinToString(Separators.ENTRY) { it.name + Separators.KV + false }
@@ -162,8 +164,13 @@ private fun upgradeToolbarPref(prefs: SharedPreferences, pref: String, default: 
     val splitDefault = defaultToolbarPref.split(Separators.ENTRY)
     splitDefault.forEach { entry ->
         val keyWithSeparator = entry.substringBefore(Separators.KV) + Separators.KV
-        if (list.none { it.startsWith(keyWithSeparator) })
-            list.add("${keyWithSeparator}false")
+        if (list.none { it.startsWith(keyWithSeparator) }) {
+            // Open Keyboard: new sticker and GIF buttons show up at the front of the toolbar, like Gboard
+            val key = entry.substringBefore(Separators.KV)
+            if (pref == Settings.PREF_TOOLBAR_KEYS && (key == STICKER.name || key == GIF.name))
+                list.add(if (key == STICKER.name) 0 else 1, "${keyWithSeparator}true")
+            else list.add("${keyWithSeparator}false")
+        }
     }
     // likely not needed, but better prepare for possibility of key removal
     list.removeAll {

@@ -114,6 +114,12 @@ fun MainSettingsScreen(
                         icon = R.drawable.sym_keyboard_voice_rounded
                     ) { NextScreenIcon() }
                     GroupItem(
+                        name = "Stickers and GIFs",
+                        description = "Built-in stickers, and GIF search you can switch on",
+                        onClick = { ctx.startActivity(android.content.Intent(ctx, helium314.keyboard.media.GifSetupActivity::class.java)) },
+                        icon = R.drawable.ic_sticker
+                    ) { NextScreenIcon() }
+                    GroupItem(
                         name = stringResource(R.string.settings_screen_toolbar),
                         description = "Emoji, clipboard and other buttons above the keys",
                         onClick = onClickToolbar,

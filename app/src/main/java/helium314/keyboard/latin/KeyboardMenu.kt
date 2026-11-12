@@ -59,6 +59,17 @@ object KeyboardMenu {
         resizeView = null
     }
 
+    /** Shows another full-keyboard panel (stickers, GIFs) in the menu's place. */
+    fun showOverlay(view: View) {
+        val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
+        hide()
+        view.tag = OVERLAY_TAG
+        wrapper.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        menuView = view
+    }
+
+    val currentOverlay: View? get() = menuView?.takeIf { it.parent != null }
+
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
     private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val action: () -> Unit)

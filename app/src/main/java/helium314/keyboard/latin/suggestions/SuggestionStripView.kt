@@ -329,6 +329,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     override fun onClick(view: View) {
         val tag = view.tag
+        if (tag == ToolbarKey.STICKER || tag == ToolbarKey.GIF) {
+            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(KeyCode.NOT_SPECIFIED, this, HapticEvent.KEY_PRESS)
+            helium314.keyboard.media.MediaPanel.toggle(context, tag == ToolbarKey.GIF)
+            return
+        }
         if (tag is ToolbarKey) {
             onClickToolbarKey(view) { listener.onCodeInput(it, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false) }
             return

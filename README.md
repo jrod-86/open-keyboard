@@ -18,6 +18,12 @@ Gboard-style voice typing built in, powered by [sherpa-onnx](https://github.com/
 - Speech recognition runs fully on the phone. The internet permission is only used to
   download the speech models once.
 
+## Stickers and GIFs
+
+Tap the sticker button above the keys for the built-in stickers (offline). GIFs come from
+[KLIPY](https://klipy.com), an online GIF service, and are off until you switch them on and add a
+free KLIPY API key under Settings → Stickers and GIFs.
+
 ## Setting up voice typing
 
 1. Install the APK and enable **Open Keyboard** in Android's keyboard settings.
@@ -48,6 +54,7 @@ It includes code under other compatible licences, kept with their notices:
 | HeliBoard icon artwork | CC-BY-SA-4.0 (`LICENSE-CC-BY-SA-4.0`) | https://github.com/HeliBorg/HeliBoard |
 | sherpa-onnx (speech engine) | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | ONNX Runtime (inside sherpa-onnx) | MIT | https://github.com/microsoft/onnxruntime |
+| Sticker artwork: Microsoft Fluent Emoji 3D (`assets/stickers`) | MIT (`LICENSE-MIT-FLUENT-EMOJI`) | https://github.com/microsoft/fluentui-emoji |
 | GTCRN noise remover (`assets/gtcrn_simple.onnx`) | MIT (`LICENSE-MIT-GTCRN`) | https://github.com/Xiaobin-Rong/gtcrn |
 
 Speech models are not bundled; the app downloads them when you ask it to:
