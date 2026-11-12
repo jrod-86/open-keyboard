@@ -369,6 +369,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         mTypingEffects.setAccentColor(Settings.getValues().mColors.get(helium314.keyboard.latin.common.ColorType.GESTURE_TRAIL));
         if (!"none".equals(mTypingEffects.effect())) locatePreviewPlacerView();
         mTypingEffects.spawn(key.getX() + key.getWidth() / 2f, key.getY() + key.getHeight() / 2f);
+        startKeyEffects(key);
 
         final Keyboard keyboard = getKeyboard();
         if (keyboard == null) {

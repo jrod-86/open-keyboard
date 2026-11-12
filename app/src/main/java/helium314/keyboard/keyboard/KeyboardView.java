@@ -239,8 +239,10 @@ public class KeyboardView extends View {
         super.onDraw(canvas);
         if (canvas.isHardwareAccelerated()) {
             onDrawKeyboard(canvas);
+            scheduleKeyEffects();
             return;
         }
+        scheduleKeyEffects();
 
         final boolean bufferNeedsUpdates = mInvalidateAllKeys || !mInvalidatedKeys.isEmpty();
         if (bufferNeedsUpdates || mOffscreenBuffer == null) {
@@ -299,6 +301,8 @@ public class KeyboardView extends View {
                 canvas.drawColor(Color.BLACK, PorterDuff.Mode.CLEAR);
                 background.draw(canvas);
             }
+            // Open Keyboard: colour around pressed keys goes behind all keys
+            if (mFxRunning) drawKeyEffectsBehind(canvas, keyboard);
             // Draw all keys.
             for (final Key key : keyboard.getSortedKeys()) {
                 onDrawKey(key, canvas, paint);
@@ -338,14 +342,64 @@ public class KeyboardView extends View {
         final KeyDrawParams params = mKeyDrawParams.mayCloneAndUpdateParams((int) (key.getHeight() * mKeyScaleForText), attr);
         params.mAnimAlpha = Constants.Color.ALPHA_OPAQUE;
 
+        final helium314.keyboard.keyboard.internal.KeyEffects.Anim fx = mFxRunning
+                ? helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE.find(key) : null;
+        if (fx != null) {
+            canvas.save();
+            mFxRect.set(0, 0, key.getDrawWidth(), key.getHeight());
+            helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE.applyMotion(canvas, fx.getMotion(), mFxRect,
+                    android.os.SystemClock.uptimeMillis() - fx.getStart());
+        }
         if (!key.isSpacer()) {
             final Drawable background = key.selectBackgroundDrawable(
                     mKeyBackground, mFunctionalKeyBackground, mSpacebarBackground, mActionKeyBackground);
             onDrawKeyBackground(key, canvas, background);
         }
+        if (fx != null) {
+            final helium314.keyboard.keyboard.internal.KeyEffects e = helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE;
+            e.drawInside(canvas, fx.getColor(), mFxRect, e.progress(fx, android.os.SystemClock.uptimeMillis()), fx.getSeed(),
+                    getResources().getDisplayMetrics().density, mFxRect.centerX(), mFxRect.centerY());
+        }
         onDrawKeyTopVisuals(key, canvas, paint, params);
+        if (fx != null) canvas.restore();
 
         canvas.translate(-keyDrawX, -keyDrawY);
+    }
+
+    // Open Keyboard: Design studio key effects
+    private boolean mFxRunning;
+    private final android.graphics.RectF mFxRect = new android.graphics.RectF();
+    private final Runnable mFxFrame = this::invalidateAllKeys;
+
+    /** Call when a key is pressed, to start the chosen key effects on it. */
+    public void startKeyEffects(@NonNull final Key key) {
+        helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE.start(getContext(), key);
+        if (helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE.find(key) != null) {
+            mFxRunning = true;
+            invalidateAllKeys();
+        }
+    }
+
+    private void scheduleKeyEffects() {
+        final boolean was = mFxRunning;
+        mFxRunning = helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE.active(android.os.SystemClock.uptimeMillis());
+        if (mFxRunning || was) { // one more frame after the last one, to clear it
+            removeCallbacks(mFxFrame);
+            postOnAnimation(mFxFrame);
+        }
+    }
+
+    private void drawKeyEffectsBehind(@NonNull final Canvas canvas, @NonNull final Keyboard keyboard) {
+        final helium314.keyboard.keyboard.internal.KeyEffects e = helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE;
+        final long now = android.os.SystemClock.uptimeMillis();
+        final float density = getResources().getDisplayMetrics().density;
+        for (final helium314.keyboard.keyboard.internal.KeyEffects.Anim a : e.all()) {
+            if (!(a.getKey() instanceof Key) || !keyboard.hasKey((Key) a.getKey())) continue;
+            final Key k = (Key) a.getKey();
+            final float x = k.getDrawX() + getPaddingLeft(), y = k.getY() + getPaddingTop();
+            mFxRect.set(x, y, x + k.getDrawWidth(), y + k.getHeight());
+            e.drawAround(canvas, a.getAround(), mFxRect, e.progress(a, now), a.getSeed(), density);
+        }
     }
 
     // Draw key background.

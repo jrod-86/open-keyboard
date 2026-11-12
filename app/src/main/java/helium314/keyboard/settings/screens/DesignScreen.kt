@@ -69,6 +69,8 @@ import helium314.keyboard.latin.common.ColorType
 import java.util.EnumMap
 import helium314.keyboard.latin.KeySounds
 import helium314.keyboard.keyboard.internal.TypingEffectsPreview
+import helium314.keyboard.keyboard.internal.KeyEffects
+import helium314.keyboard.keyboard.internal.KeyEffectDemoView
 import androidx.compose.material3.OutlinedTextField
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.utils.prefs
@@ -215,6 +217,11 @@ fun DesignScreen(onClickBack: () -> Unit) {
     var tryText by remember { mutableStateOf("") }
     var sound by remember { mutableStateOf(if (ctx.prefs().getBoolean(Settings.PREF_SOUND_ON, false)) KeySounds.pack(ctx) else "off") }
     var part by remember { mutableStateOf("keys") }
+    var fxGroup by remember { mutableStateOf(0) }
+    var fxChoice by remember { mutableStateOf(mapOf(
+        "around" to (ctx.prefs().getString(KeyEffects.PREF_AROUND, "none") ?: "none"),
+        "color" to (ctx.prefs().getString(KeyEffects.PREF_COLOR, "none") ?: "none"),
+        "motion" to (ctx.prefs().getString(KeyEffects.PREF_MOTION, "none") ?: "none"))) }
     var myDesigns by remember { mutableStateOf(loadMyDesigns(ctx)) }
     var naming by remember { mutableStateOf(false) }
     fun change(d: Design) { if (d != draft) { undo.add(draft); redo.clear(); draft = d; saved = false } }
@@ -352,8 +359,46 @@ fun DesignScreen(onClickBack: () -> Unit) {
                     }
                 }
                 2 -> {
-                    Text("Typing effect", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
-                    Text("Something fun pops out of each key you press. Pick one, then type in the box above to try it.",
+                    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Around", "Key colour", "Key motion", "Pop-outs").forEachIndexed { i, t ->
+                            Pill(t, fxGroup == i, Modifier.weight(1f)) { fxGroup = i }
+                        }
+                    }
+                    if (fxGroup < 3) {
+                        val (kind, pref, list) = when (fxGroup) {
+                            0 -> Triple("around", KeyEffects.PREF_AROUND, KeyEffects.around)
+                            1 -> Triple("color", KeyEffects.PREF_COLOR, KeyEffects.colors)
+                            else -> Triple("motion", KeyEffects.PREF_MOTION, KeyEffects.motions)
+                        }
+                        Text(when (fxGroup) {
+                            0 -> "Colour spills out around each key you press."
+                            1 -> "The key you press lights up with colour."
+                            else -> "The key you press moves."
+                        } + " You can mix one of each. Type in the box above to try them.",
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                        val chosen = fxChoice[kind] ?: "none"
+                        list.chunked(3).forEach { row ->
+                            Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                row.forEach { (id, label) ->
+                                    Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
+                                        .background(if (chosen == id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                                        .border(if (chosen == id) 2.dp else 0.dp, if (chosen == id) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(16.dp))
+                                        .clickable { fxChoice = fxChoice + (kind to id); ctx.prefs().edit { putString(pref, id) } }
+                                        .padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        androidx.compose.ui.viewinterop.AndroidView(factory = { KeyEffectDemoView(it) },
+                                            modifier = Modifier.fillMaxWidth().height(84.dp), update = { v ->
+                                                v.kind = kind; v.effectId = id
+                                                v.keyColor = (if ((draft.key and 0xFFFFFF) == (draft.bg and 0xFFFFFF)) draft.special else draft.key).toInt()
+                                                v.textColor = draft.text.toInt(); v.invalidate()
+                                            })
+                                        Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                    }
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    } else {
+                    Text("Something fun pops out of each key you press.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
                     TypingEffectsPreview.effects.chunked(2).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -371,6 +416,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
                             }
                             if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
+                    }
                     }
                 }
                 else -> {
