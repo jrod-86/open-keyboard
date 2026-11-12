@@ -59,7 +59,7 @@ object CommandPlugins {
                 }
             providers = found
             main.post {
-                SlashCommands.setExternal(found.filter { Plugins.isOn(app, "app_commands") && Plugins.isOn(app, it.id) }
+                SlashCommands.setExternal("apps", found.filter { Plugins.isOn(app, "app_commands") && Plugins.isOn(app, it.id) }
                     .flatMap { prov -> prov.names.mapIndexedNotNull { i, name ->
                         if (name.isEmpty()) null
                         else SlashCommands.Command(name, prov.usages.getOrNull(i) ?: "/$name", remote = prov.authority) { null }

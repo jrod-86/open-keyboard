@@ -30,11 +30,15 @@ object SlashCommands {
     const val WAITING = "\u2026"
 
     private val builtIn = mutableListOf<Command>()
-    @Volatile private var external: List<Command> = emptyList()
-    private val commands get() = builtIn + external.filter { e -> builtIn.none { it.name == e.name } }
+    private val external = java.util.concurrent.ConcurrentHashMap<String, List<Command>>()
+    private val commands: List<Command> get() {
+        val out = builtIn.toMutableList()
+        external.values.flatten().forEach { e -> if (out.none { it.name == e.name }) out += e }
+        return out
+    }
 
-    /** Commands from plugin apps, see [CommandPlugins]. */
-    fun setExternal(list: List<Command>) { external = list }
+    /** Commands from plugin apps ([CommandPlugins]) or MCP servers ([McpServers]), by source. */
+    fun setExternal(source: String, list: List<Command>) { external[source] = list }
 
     /** Lets other parts of the app (and later plugins) add a command. */
     fun register(command: Command) { builtIn.removeAll { it.name == command.name }; builtIn.add(command) }
@@ -57,7 +61,7 @@ object SlashCommands {
     }
 
     /** What is being typed: the text to replace, what the chip shows, and what tapping inserts (null = hint only). */
-    class Match(val replaceLength: Int, val shown: String, val insert: String?)
+    class Match(val replaceLength: Int, val shown: String, val insert: String?, val ask: (() -> kotlin.Unit)? = null)
 
     private val slash = Regex("(?:^|\\s)(/([a-z]*)(?:\\s+(.*))?)$")
     private val equals = Regex("(?:^|\\s)(=\\s*([0-9.,+\\-*/x×÷^%() ]*[0-9)]))$")
@@ -83,6 +87,15 @@ object SlashCommands {
         val args = m.groupValues[3]
         val exact = commands.firstOrNull { it.name == name }
         if (exact != null && (args.isNotBlank() || exact.usage == "/${exact.name}" || exact.usage.contains("("))) {
+            if (exact.remote == "mcp") {
+                val typed = args.trim()
+                val out = McpServers.cached(name, typed)
+                if (out == WAITING) return Match(0, WAITING, null)
+                if (out != null) return Match(m.groupValues[1].length, out, out)
+                if (typed.isEmpty() && exact.usage.trim().contains(' ')) return Match(0, exact.usage, null)
+                return Match(0, "Ask: /$name $typed".trim(), null,
+                    ask = ime?.let { i -> { McpServers.ask(name, typed) { i.setNeutralSuggestionStrip() }; i.setNeutralSuggestionStrip(); kotlin.Unit } })
+            }
             val out = if (exact.remote != null) {
                 if (ime == null || args.isBlank() && exact.usage.contains(' ')) return Match(0, exact.usage, null)
                 CommandPlugins.answer(ime, exact.remote, exact.name, args.trim()) { ime.setNeutralSuggestionStrip() }
@@ -111,6 +124,7 @@ object SlashCommands {
         colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
         binding.clipboardSuggestionClose.visibility = View.GONE
         if (match.insert != null) textView.setOnClickListener { apply(ime, match) }
+        else match.ask?.let { ask -> textView.text = "↗  ${match.shown}"; textView.setOnClickListener { ask() } }
         return binding.root
     }
 

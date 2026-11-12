@@ -67,3 +67,12 @@ Rules:
 
 A command plugin only ever receives what is typed after its own command. It never sees anything else
 typed in the keyboard. A text action only receives text when the person taps it in the menu.
+
+## 3. MCP servers
+
+Under **Settings → Plugins → MCP servers**, people can add any MCP server that uses the Streamable
+HTTP transport. They enter its `https://` address, plus a key if it needs one, which is sent as a
+`Bearer` token. Each tool on the server becomes a "/" command named after the tool. What is typed
+after the command goes to the tool's first text argument, or to named arguments written as
+`/tool city=Sydney days=3`. Nothing is sent until the person taps **Ask**, and the text answer
+replaces the command when tapped.

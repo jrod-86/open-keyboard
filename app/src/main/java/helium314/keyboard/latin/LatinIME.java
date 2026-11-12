@@ -943,6 +943,7 @@ public class LatinIME extends InputMethodService implements
                 currentSettingsValues.mGestureFloatingPreviewTextEnabled);
 
         CommandPlugins.INSTANCE.refresh(this, false, null);
+        McpServers.INSTANCE.refresh(this, false, null);
         // Open Keyboard: an app plugin's answer is typed over the text it was given
         final InputConnection pluginIc = getCurrentInputConnection();
         if (Plugins.INSTANCE.deliverPending(pluginIc)) {

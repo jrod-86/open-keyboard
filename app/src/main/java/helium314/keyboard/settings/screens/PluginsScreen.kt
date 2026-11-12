@@ -38,6 +38,11 @@ fun PluginsScreen(onClickBack: () -> Unit) {
         helium314.keyboard.latin.CommandPlugins.refresh(ctx, true) { commandApps = helium314.keyboard.latin.CommandPlugins.providers }
     }
 
+    var mcpServers by remember { mutableStateOf(helium314.keyboard.latin.McpServers.load(ctx)) }
+    var adding by remember { mutableStateOf(false) }
+    fun reloadMcp() { helium314.keyboard.latin.McpServers.refresh(ctx, true) { version++ } }
+    androidx.compose.runtime.LaunchedEffect(Unit) { reloadMcp() }
+
     @Composable
     fun row(id: String, name: String, description: String?, icon: android.graphics.drawable.Drawable? = null, enabled: Boolean = true) {
         val on = remember(version) { Plugins.isOn(ctx, id) }
@@ -54,6 +59,7 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             Switch(checked = on, enabled = enabled, onCheckedChange = {
                 Plugins.set(ctx, id, it); version++
                 helium314.keyboard.latin.CommandPlugins.refresh(ctx, true)
+                if (id.startsWith("mcp")) reloadMcp()
             })
         }
     }
@@ -64,6 +70,27 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
             Plugins.builtIn.forEach { row(it.id, it.name, it.description) }
+            Spacer(Modifier.height(16.dp))
+            Text("MCP servers", style = MaterialTheme.typography.titleMedium)
+            Text("Add an MCP server and its tools become / commands. Nothing is sent to it until you " +
+                    "tap Ask on a command, and then only what you typed after the command.",
+                style = MaterialTheme.typography.bodySmall)
+            val mcpOn = remember(version) { Plugins.isOn(ctx, "mcp") }
+            mcpServers.forEach { s ->
+                val problem = helium314.keyboard.latin.McpServers.problems[s.url]
+                val toolNames = helium314.keyboard.latin.McpServers.tools.filter { it.server.url == s.url }
+                    .joinToString("  ") { "/" + helium314.keyboard.latin.McpServers.commandName(it.name) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        row(s.id, s.name, problem?.let { "Couldn't connect: $it" } ?: toolNames.ifEmpty { s.url }, enabled = mcpOn)
+                    }
+                    androidx.compose.material3.TextButton(onClick = {
+                        helium314.keyboard.latin.McpServers.save(ctx, mcpServers - s)
+                        mcpServers = helium314.keyboard.latin.McpServers.load(ctx); reloadMcp()
+                    }) { Text("✕") }
+                }
+            }
+            androidx.compose.material3.Button(onClick = { adding = true }, enabled = mcpOn) { Text("Add an MCP server") }
             if (commandApps.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
                 Text("Commands from your apps", style = MaterialTheme.typography.titleMedium)
@@ -83,5 +110,34 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             if (apps.isEmpty()) Text("None of your apps offer text actions yet.", style = MaterialTheme.typography.bodyMedium)
             apps.forEach { row(it.id, it.label, null, it.icon, enabled = appsOn) }
         }
+    }
+
+    if (adding) {
+        var name by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("https://") }
+        var token by remember { mutableStateOf("") }
+        val valid = name.isNotBlank() && url.trim().startsWith("https://") && url.trim().length > 10
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { adding = false },
+            title = { Text("Add an MCP server") },
+            text = {
+                Column {
+                    androidx.compose.material3.OutlinedTextField(value = name, onValueChange = { name = it },
+                        label = { Text("Name, e.g. Weather") }, singleLine = true)
+                    androidx.compose.material3.OutlinedTextField(value = url, onValueChange = { url = it.trim() },
+                        label = { Text("Address (https://…/mcp)") }, singleLine = true)
+                    androidx.compose.material3.OutlinedTextField(value = token, onValueChange = { token = it.trim() },
+                        label = { Text("Key, if it needs one") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(enabled = valid, onClick = {
+                    val list = mcpServers.filter { it.url != url.trim() } + helium314.keyboard.latin.McpServers.Server(name.trim(), url.trim(), token)
+                    helium314.keyboard.latin.McpServers.save(ctx, list)
+                    mcpServers = list; adding = false; reloadMcp()
+                }) { Text("Add") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { adding = false }) { Text("Cancel") } },
+        )
     }
 }
