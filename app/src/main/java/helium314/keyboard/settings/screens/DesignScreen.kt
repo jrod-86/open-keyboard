@@ -23,6 +23,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -134,6 +141,7 @@ private fun savePicture(ctx: Context, uri: android.net.Uri): Boolean = runCatchi
 }.getOrDefault(false)
 
 /** Samsung-style keyboard designer: pick a ready-made design or your own colours, and a key sound. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DesignScreen(onClickBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -157,9 +165,12 @@ fun DesignScreen(onClickBack: () -> Unit) {
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Design", settings = emptyList()) {
         // the preview, buttons and tabs stay put at the top; only the choices below scroll
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null)
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+        // while the keyboard is open (trying an effect), make room: drop the preview and buttons and sit above the keyboard
+        val imeOpen = WindowInsets.isImeVisible
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.systemBars))
+            .padding(horizontal = 16.dp, vertical = 8.dp)) {
+            if (!imeOpen) KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null)
+            if (!imeOpen) Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = undo.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp),
                     onClick = { redo.add(draft); draft = undo.removeAt(undo.lastIndex); saved = false }) { Text("↶", fontSize = 20.sp) }
@@ -172,6 +183,8 @@ fun DesignScreen(onClickBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Designs", "Colours", "Effects", "Sound").forEachIndexed { i, t -> Pill(t, tab == i, Modifier.weight(1f)) { tab = i } }
             }
+            if (tab == 2) OutlinedTextField(value = tryText, onValueChange = { tryText = it }, label = { Text("Try it here") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(4.dp))
             when (tab) {
@@ -209,10 +222,8 @@ fun DesignScreen(onClickBack: () -> Unit) {
                 }
                 2 -> {
                     Text("Typing effect", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
-                    Text("Something fun pops out of each key you press. Pick one, then type in the box below to try it.",
+                    Text("Something fun pops out of each key you press. Pick one, then type in the box above to try it.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
-                    OutlinedTextField(value = tryText, onValueChange = { tryText = it }, label = { Text("Try it here") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
                     TypingEffectsPreview.effects.chunked(2).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { (id, info) ->
