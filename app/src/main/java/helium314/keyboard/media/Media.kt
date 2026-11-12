@@ -234,7 +234,9 @@ object StickerPacks {
 
     /** Animated pictures are kept as they are; still pictures are shrunk to sticker size and saved as PNG. */
     private fun saveSticker(dir: File, baseName: String, bytes: ByteArray, mime: String) {
-        if (mime == "image/gif" || mime == "image/webp") {
+        // keep animations as they are; a still WebP becomes PNG, which more apps take as a sticker
+        val animatedWebp = mime == "image/webp" && bytes.size > 40 && String(bytes, 12, 4, Charsets.ISO_8859_1) == "VP8X" && (bytes[20].toInt() and 0x02) != 0
+        if (mime == "image/gif" || animatedWebp) {
             File(dir, "$baseName.${mime.substringAfter('/')}").writeBytes(bytes)
             return
         }
