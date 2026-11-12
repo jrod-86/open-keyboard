@@ -304,8 +304,17 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     override fun onVisibilityChanged(view: View, visibility: Int) {
         super.onVisibilityChanged(view, visibility)
         // workaround for a bug with inline suggestions views that just keep showing up otherwise, https://github.com/HeliBorg/HeliBoard/pull/386
-        if (view === this)
-            suggestionsStrip.visibility = visibility
+        if (view === this) {
+            // Open Keyboard: when the bar comes back (for example after the sticker or GIF panel), restore a
+            // consistent state instead of showing an empty word strip over the buttons.
+            if (visibility != VISIBLE || runCatching { setToolbarVisibility(toolbarContainer.isVisible) }.isFailure)
+                suggestionsStrip.visibility = visibility
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        helium314.keyboard.latin.KeyboardMenu.onHidden = { setToolbarVisibility(toolbarContainer.isVisible) }
     }
 
     override fun onDetachedFromWindow() {

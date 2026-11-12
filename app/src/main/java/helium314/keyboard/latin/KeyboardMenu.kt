@@ -57,7 +57,11 @@ object KeyboardMenu {
         listOf(menuView, resizeView).forEach { v -> (v?.parent as? ViewGroup)?.removeView(v) }
         menuView = null
         resizeView = null
+        onHidden?.invoke()
     }
+
+    /** Lets the top bar tidy itself when a panel closes, so it is never left empty. */
+    var onHidden: (() -> Unit)? = null
 
     /** Shows another full-keyboard panel (stickers, GIFs) in the menu's place. */
     fun showOverlay(view: View) {
