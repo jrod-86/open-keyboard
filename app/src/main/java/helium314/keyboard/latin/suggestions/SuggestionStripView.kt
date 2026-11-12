@@ -314,7 +314,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        helium314.keyboard.latin.KeyboardMenu.onHidden = { setToolbarVisibility(toolbarContainer.isVisible) }
+        // coming back from the menu or the sticker/GIF panel: show the buttons, like Gboard, until the next letter is typed
+        helium314.keyboard.latin.KeyboardMenu.onHidden = { setToolbarVisibility(true) }
     }
 
     override fun onDetachedFromWindow() {

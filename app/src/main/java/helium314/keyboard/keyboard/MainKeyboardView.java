@@ -370,6 +370,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         if (!"none".equals(mTypingEffects.effect())) locatePreviewPlacerView();
         mTypingEffects.spawn(key.getX() + key.getWidth() / 2f, key.getY() + key.getHeight() / 2f);
         startKeyEffects(key);
+        helium314.keyboard.latin.KeyboardMenu.INSTANCE.setKeepToolbar(false);
 
         final Keyboard keyboard = getKeyboard();
         if (keyboard == null) {

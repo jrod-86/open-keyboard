@@ -57,8 +57,12 @@ object KeyboardMenu {
         listOf(menuView, resizeView).forEach { v -> (v?.parent as? ViewGroup)?.removeView(v) }
         menuView = null
         resizeView = null
+        keepToolbar = true
         onHidden?.invoke()
     }
+
+    /** True after a panel closes until the next key press, so late word predictions don't replace the buttons. */
+    var keepToolbar = false
 
     /** Lets the top bar tidy itself when a panel closes, so it is never left empty. */
     var onHidden: (() -> Unit)? = null

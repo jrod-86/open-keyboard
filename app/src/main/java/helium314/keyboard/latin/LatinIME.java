@@ -790,6 +790,7 @@ public class LatinIME extends InputMethodService implements
     }
 
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
+        KeyboardMenu.INSTANCE.setKeepToolbar(false);
         super.onStartInputView(editorInfo, restarting);
 
         setGestureDataGatheringMode(editorInfo, restarting);
@@ -1268,6 +1269,7 @@ public class LatinIME extends InputMethodService implements
     // Implementation of {@link SuggestionStripView.Listener}.
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y, final boolean isKeyRepeat) {
+        KeyboardMenu.INSTANCE.setKeepToolbar(false); // typing again: word suggestions may take the bar back
         mKeyboardActionListener.onCodeInput(codePoint, x, y, isKeyRepeat);
     }
 
@@ -1368,7 +1370,7 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(false);
             }
             // Open Keyboard: like Gboard, an empty text box shows the buttons, not guesses for the first word
-            if (isTextFieldEmpty()) mSuggestionStripView.setToolbarVisibility(true);
+            if (isTextFieldEmpty() || KeyboardMenu.INSTANCE.getKeepToolbar()) mSuggestionStripView.setToolbarVisibility(true);
         }
     }
 
