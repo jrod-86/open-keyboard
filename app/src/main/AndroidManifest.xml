@@ -175,6 +175,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <queries>
         <!-- Open Keyboard: apps that work on text become plugins -->
         <intent>
+            <action android:name="io.github.jrod86.openkeyboard.COMMANDS" />
+        </intent>
+        <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>

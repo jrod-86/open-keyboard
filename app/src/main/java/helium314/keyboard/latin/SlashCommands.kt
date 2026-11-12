@@ -24,12 +24,20 @@ import kotlin.random.Random
  * Built as a small registry so plugins can add commands later.
  */
 object SlashCommands {
-    class Command(val name: String, val usage: String, val run: (args: String) -> String?)
+    class Command(val name: String, val usage: String, val remote: String? = null, val run: (args: String) -> String?)
 
-    private val commands = mutableListOf<Command>()
+    /** Shown while a plugin app works on an answer. */
+    const val WAITING = "\u2026"
+
+    private val builtIn = mutableListOf<Command>()
+    @Volatile private var external: List<Command> = emptyList()
+    private val commands get() = builtIn + external.filter { e -> builtIn.none { it.name == e.name } }
+
+    /** Commands from plugin apps, see [CommandPlugins]. */
+    fun setExternal(list: List<Command>) { external = list }
 
     /** Lets other parts of the app (and later plugins) add a command. */
-    fun register(command: Command) { commands.removeAll { it.name == command.name }; commands.add(command) }
+    fun register(command: Command) { builtIn.removeAll { it.name == command.name }; builtIn.add(command) }
 
     init {
         register(Command("calc", "/calc 12*7") { a -> calc(a)?.let { format(it) } })
@@ -63,7 +71,7 @@ object SlashCommands {
         return commands.any { it.name.startsWith(name) }
     }
 
-    fun match(textBeforeCursor: CharSequence?): Match? {
+    fun match(textBeforeCursor: CharSequence?, ime: LatinIME? = null): Match? {
         val line = textBeforeCursor?.toString()?.substringAfterLast('\n') ?: return null
         equals.find(line)?.takeIf { m -> m.groupValues[2].trim().drop(1).any { it in "+-*/x×÷^%" } }?.let { m ->
             val result = calc(m.groupValues[2]) ?: return null
@@ -75,7 +83,12 @@ object SlashCommands {
         val args = m.groupValues[3]
         val exact = commands.firstOrNull { it.name == name }
         if (exact != null && (args.isNotBlank() || exact.usage == "/${exact.name}" || exact.usage.contains("("))) {
-            val out = runCatching { exact.run(args.trim()) }.getOrNull() ?: return Match(0, exact.usage, null)
+            val out = if (exact.remote != null) {
+                if (ime == null || args.isBlank() && exact.usage.contains(' ')) return Match(0, exact.usage, null)
+                CommandPlugins.answer(ime, exact.remote, exact.name, args.trim()) { ime.setNeutralSuggestionStrip() }
+            } else runCatching { exact.run(args.trim()) }.getOrNull()
+            if (out == WAITING) return Match(0, WAITING, null)
+            if (out == null) return Match(0, exact.usage, null)
             return Match(m.groupValues[1].length, out, out)
         }
         val options = commands.filter { it.name.startsWith(name) }
@@ -89,7 +102,7 @@ object SlashCommands {
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         if (!Plugins.isOn(ime, "slash")) return null
         val ic = ime.currentInputConnection ?: return null
-        val match = match(ic.getTextBeforeCursor(200, 0)) ?: return null
+        val match = match(ic.getTextBeforeCursor(200, 0), ime) ?: return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
         textView.text = if (match.insert != null) "↵  ${match.shown}" else match.shown

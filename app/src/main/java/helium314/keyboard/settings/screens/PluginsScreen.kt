@@ -33,6 +33,10 @@ fun PluginsScreen(onClickBack: () -> Unit) {
     val ctx = LocalContext.current
     val apps = remember { Plugins.appActions(ctx) }
     var version by remember { mutableStateOf(0) }
+    var commandApps by remember { mutableStateOf(helium314.keyboard.latin.CommandPlugins.providers) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        helium314.keyboard.latin.CommandPlugins.refresh(ctx, true) { commandApps = helium314.keyboard.latin.CommandPlugins.providers }
+    }
 
     @Composable
     fun row(id: String, name: String, description: String?, icon: android.graphics.drawable.Drawable? = null, enabled: Boolean = true) {
@@ -47,7 +51,10 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                 Text(name, fontWeight = FontWeight.Bold)
                 if (description != null) Text(description, style = MaterialTheme.typography.bodySmall)
             }
-            Switch(checked = on, enabled = enabled, onCheckedChange = { Plugins.set(ctx, id, it); version++ })
+            Switch(checked = on, enabled = enabled, onCheckedChange = {
+                Plugins.set(ctx, id, it); version++
+                helium314.keyboard.latin.CommandPlugins.refresh(ctx, true)
+            })
         }
     }
 
@@ -57,6 +64,15 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
             Plugins.builtIn.forEach { row(it.id, it.name, it.description) }
+            if (commandApps.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text("Commands from your apps", style = MaterialTheme.typography.titleMedium)
+                val cmdOn = remember(version) { Plugins.isOn(ctx, "app_commands") }
+                commandApps.forEach { p ->
+                    val icon = remember(p.packageName) { runCatching { ctx.packageManager.getApplicationIcon(p.packageName) }.getOrNull() }
+                    row(p.id, p.label, p.names.joinToString("  ") { "/$it" }, icon, enabled = cmdOn)
+                }
+            }
             Spacer(Modifier.height(16.dp))
             Text("From your apps", style = MaterialTheme.typography.titleMedium)
             Text("These apps can work on your text. Each one shows up in the keyboard menu: tap it to " +

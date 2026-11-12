@@ -29,6 +29,7 @@ object Plugins {
         Plugin("translate", "Translate", "Translate what you type, all on the phone"),
         Plugin("writing", "Writing help", "Fix, shorten or change the tone of your text with on-phone AI"),
         Plugin("scan", "Scan text", "Take a photo of text and type it in"),
+        Plugin("app_commands", "Commands from your apps", "Apps made for Open Keyboard can add their own / commands"),
         Plugin("app_actions", "Actions from your apps", "Apps on your phone that work on text appear in the keyboard menu"),
     )
 
