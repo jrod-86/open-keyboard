@@ -224,6 +224,8 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
                     throw Exception("nothing to restore in the given file")
 
                 Database.copyFromDb(restoredDb, ctx)
+                // Open Keyboard: keep downloaded voice models, they are too big for a backup
+                File(filesDir2, "voice-models").takeIf { it.isDirectory }?.renameTo(File(filesDir, "voice-models"))
                 filesDir2.deleteRecursively()
                 deviceProtectedFilesDir2.deleteRecursively()
                 if (Looper.myLooper() == null)
@@ -348,4 +350,7 @@ private val backupFilePatterns by lazy { listOf(
     "custom_font".toRegex(),
     "custom_emoji_font".toRegex(),
     "clipboard/.*".toRegex(),
+    // Open Keyboard: design picture and installed sticker packs
+    "design_background\\.png".toRegex(),
+    "sticker-packs${File.separator}.*".toRegex(),
 ) }

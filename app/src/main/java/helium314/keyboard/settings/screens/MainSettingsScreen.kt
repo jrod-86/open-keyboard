@@ -114,6 +114,12 @@ fun MainSettingsScreen(
                         icon = R.drawable.sym_keyboard_voice_rounded
                     ) { NextScreenIcon() }
                     GroupItem(
+                        name = "Backup and restore",
+                        description = "Save your designs, words, shortcuts and stickers to a file",
+                        onClick = onClickAdvanced,
+                        icon = R.drawable.ic_settings_advanced
+                    ) { NextScreenIcon() }
+                    GroupItem(
                         name = "Fill in SMS codes",
                         description = if (helium314.keyboard.latin.SmsCodes.isAllowed(ctx)) "On: login codes from messages appear in the suggestion bar"
                             else "Off: tap to allow, so login codes appear with one tap",
