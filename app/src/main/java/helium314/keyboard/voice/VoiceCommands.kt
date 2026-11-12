@@ -22,7 +22,9 @@ object VoiceCommands {
 
     // longest phrases first so "exclamation mark" wins over a shorter match
     private val marks = listOf(
-        "new paragraph" to "\n\n", "next paragraph" to "\n\n", "new line" to "\n", "next line" to "\n",
+        "new paragraph" to "\n\n", "next paragraph" to "\n\n", "new lines" to "\n", "new line" to "\n", "next line" to "\n",
+        // what the speech models sometimes hear instead of "new line"
+        "near line" to "\n", "knew line" to "\n", "newline" to "\n",
         "exclamation mark" to "!", "exclamation point" to "!", "question mark" to "?",
         "full stop" to ".", "comma" to ",", "semicolon" to ";", "semi colon" to ";",
         "colon" to ":", "ellipsis" to "…", "dot dot dot" to "…",
