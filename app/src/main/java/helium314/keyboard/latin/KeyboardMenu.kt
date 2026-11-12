@@ -135,7 +135,8 @@ object KeyboardMenu {
 
         val scroll = FitScrollView(context).apply {
             addView(grid, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            colors.setBackground(this, ColorType.MAIN_BACKGROUND)
+            // a plain colour: themes with a photo/gradient background can't be drawn on a view that has no size yet
+            setBackgroundColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
             isClickable = true // don't let touches reach the keys underneath
         }
         scroll.tag = OVERLAY_TAG
