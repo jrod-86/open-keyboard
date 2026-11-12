@@ -9,3 +9,9 @@
   Contains Mozilla Bergamot translator (MPL-2.0; source in the same repository, engine/), Marian (MIT),
   SentencePiece and ruy (Apache-2.0) and others; full notices are inside the AAR under
   io/github/yinvoker/foxlet/licenses/. Translation models are downloaded on the phone from Mozilla (MPL-2.0).
+
+- `app/libs/llama-android.aar`: llama.cpp (MIT) `examples/llama.android` library, built from source at
+  https://github.com/ggml-org/llama.cpp commit 8ca5a8008b57aa39f2601546c0d07912045080a5 with
+  `third_party/llama-android-open-keyboard.patch` applied (fresh chat per request, minSdk 28, arm64 only),
+  using `./gradlew :lib:assembleRelease`. The writing model (Qwen2.5-1.5B-Instruct GGUF, Apache-2.0)
+  is downloaded on the phone from Hugging Face and checked against its SHA-256.

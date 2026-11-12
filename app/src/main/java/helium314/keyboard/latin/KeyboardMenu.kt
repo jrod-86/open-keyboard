@@ -306,6 +306,7 @@ object KeyboardMenu {
             keyItem("GIFs", ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
             keyItem("Voice typing", ToolbarKey.VOICE),
             Item("Translate", ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
+            Item("Writing help", ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             keyItem("One-handed", ToolbarKey.ONE_HANDED),
             keyItem("Floating", ToolbarKey.FLOATING),
             keyItem("Text editing", ToolbarKey.DPAD),

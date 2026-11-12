@@ -122,6 +122,9 @@ dependencies {
     // offline translation: Foxlet (MIT) running Mozilla's Bergamot engine (MPL-2.0), built from source, see third_party/README.md
     implementation(files("libs/foxlet-0.5.0.aar"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // offline writing help: llama.cpp (MIT) Android library, built from source with third_party/llama-android-open-keyboard.patch
+    implementation(files("libs/llama-android.aar"))
+    implementation("androidx.datastore:datastore-preferences:1.2.0")
 
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
