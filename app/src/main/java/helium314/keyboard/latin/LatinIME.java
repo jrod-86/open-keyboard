@@ -1379,6 +1379,13 @@ public class LatinIME extends InputMethodService implements
         if (!onEvaluateInputViewShown()) {
             return;
         }
+        // Open Keyboard: "/" commands and "= sum" show their answer as a chip
+        final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
+        if (slash != null) {
+            mSuggestionStripView.setExternalSuggestionView(slash, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
 
         boolean noSuggestionsFromDictionaries = suggestedWords.isEmpty()
                 || suggestedWords instanceof PunctuationSuggestions
@@ -1460,6 +1467,14 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void setNeutralSuggestionStrip() {
         final SettingsValues currentSettings = mSettings.getCurrent();
+        if (hasSuggestionStripView() && onEvaluateInputViewShown()) {
+            final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
+            if (slash != null) {
+                mSuggestionStripView.setExternalSuggestionView(slash, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
+        }
         if (tryShowClipboardSuggestion()) {
             // clipboard suggestion has been set
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)

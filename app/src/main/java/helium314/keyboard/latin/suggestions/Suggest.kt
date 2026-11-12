@@ -69,7 +69,8 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
                 inputStyle, isCorrectionEnabled, sequenceNumber)
         } else {
             getSuggestedWordsForNonBatchInput(wordComposer, textAtCursor, ngramContext, keyboard, settingsValuesForSuggestion,
-                inputStyle, isCorrectionEnabled, sequenceNumber)
+                inputStyle, isCorrectionEnabled && !helium314.keyboard.latin.SlashCommands.inCommand(
+                    textAtCursor?.let { it.text.subSequence(0, it.cursorPosition.coerceIn(0, it.text.length)) }), sequenceNumber)
         }
 
     // Retrieves suggestions for non-batch input (typing, recorrection, predictions...)
