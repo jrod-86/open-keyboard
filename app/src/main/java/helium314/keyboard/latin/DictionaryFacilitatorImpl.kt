@@ -503,6 +503,15 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         composedData: ComposedData, ngramContext: NgramContext, keyboard: Keyboard,
         settingsValuesForSuggestion: SettingsValuesForSuggestion, sessionId: Int, inputStyle: InputStyle
     ): SuggestionResults {
+        // Open Keyboard: our own open source swipe decoder (no closed gesture library needed)
+        val glideDict = dictionaryGroups[0].mainDictionary()
+        if (composedData.mIsBatchMode && !helium314.keyboard.latin.utils.JniUtils.sHaveGestureLib && glideDict != null) {
+            val glideResults = SuggestionResults(SuggestedWords.MAX_SUGGESTIONS, ngramContext, false)
+            helium314.keyboard.latin.glide.GlideTyping.decode(composedData.mInputPointers, keyboard, glideDict)
+                .forEach { if (!isBlacklisted(it.word)) glideResults.add(it) }
+            return glideResults
+        }
+        helium314.keyboard.latin.glide.GlideTyping.prepare(glideDict)
         val proximityInfoHandle = keyboard.proximityInfo.nativeProximityInfo
         val weightOfLangModelVsSpatialModel = floatArrayOf(Dictionary.NOT_A_WEIGHT_OF_LANG_MODEL_VS_SPATIAL_MODEL)
 
@@ -708,6 +717,7 @@ private class DictionaryGroup(
     context: Context? = null
 ) {
     private val subDicts: ConcurrentHashMap<String, ExpandableBinaryDictionary> = ConcurrentHashMap(subDicts)
+    fun mainDictionary(): Dictionary? = mainDict
 
     /** Removes a word from all dictionaries in this group. If the word is in a read-only dictionary, it is blacklisted. */
     fun removeWord(word: String) {

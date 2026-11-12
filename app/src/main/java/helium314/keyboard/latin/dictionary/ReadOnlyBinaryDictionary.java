@@ -39,6 +39,26 @@ public final class ReadOnlyBinaryDictionary extends Dictionary {
                 locale, dictType, false /* isUpdatable */);
     }
 
+    /** Open Keyboard swipe typing: walk every word (word, probability, possiblyOffensive). */
+    public void forEachWord(final WordVisitor visitor) {
+        mLock.readLock().lock();
+        try {
+            int token = 0;
+            do {
+                final com.android.inputmethod.latin.BinaryDictionary.GetNextWordPropertyResult r =
+                        mBinaryDictionary.getNextWordProperty(token);
+                final helium314.keyboard.latin.makedict.WordProperty wp = r.mWordProperty;
+                if (wp == null) break;
+                if (!wp.mIsNotAWord) visitor.visit(wp.mWord, wp.getProbability(), wp.mIsPossiblyOffensive);
+                token = r.mNextToken;
+            } while (token != 0);
+        } finally {
+            mLock.readLock().unlock();
+        }
+    }
+
+    public interface WordVisitor { void visit(String word, int probability, boolean possiblyOffensive); }
+
     public boolean isValidDictionary() {
         return !mBinaryDictionary.isCorrupted();
     }

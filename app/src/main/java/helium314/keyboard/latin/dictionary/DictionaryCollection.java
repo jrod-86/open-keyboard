@@ -63,6 +63,8 @@ public final class DictionaryCollection extends Dictionary {
         return suggestions;
     }
 
+    public java.util.List<Dictionary> getDictionaries() { return mDictionaries; }
+
     @Override
     public boolean isInDictionary(final String word) {
         for (int i = mDictionaries.size() - 1; i >= 0; --i)

@@ -94,8 +94,7 @@ fun MainSettingsScreen(
                         onClick = onClickTextCorrection,
                         icon = R.drawable.ic_settings_correction
                     ) { NextScreenIcon() }
-                    if (JniUtils.sHaveGestureLib)
-                        GroupItem(
+                    GroupItem(
                             name = stringResource(R.string.settings_screen_gesture),
                             onClick = onClickGestureTyping,
                             icon = R.drawable.ic_settings_gesture

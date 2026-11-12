@@ -89,7 +89,7 @@ fun AdvancedSettingsScreen(
         Settings.PREF_EMOJI_MAX_SDK,
         Settings.PREF_URL_DETECTION,
         Settings.PREF_ENABLE_HARDWARE_KEYBOARD,
-        if (BuildConfig.BUILD_TYPE != "nouserlib") SettingsWithoutKey.LOAD_GESTURE_LIB else null
+        null // Open Keyboard has its own open source swipe typing; closed library loading hidden
     )
     SearchSettingsScreen(
         onClickBack = onClickBack,
