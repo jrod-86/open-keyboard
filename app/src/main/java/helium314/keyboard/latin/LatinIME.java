@@ -1367,7 +1367,16 @@ public class LatinIME extends InputMethodService implements
             if (currentSettingsValues.mAutoHideToolbar && !noSuggestionsFromDictionaries) {
                 mSuggestionStripView.setToolbarVisibility(false);
             }
+            // Open Keyboard: like Gboard, an empty text box shows the buttons, not guesses for the first word
+            if (isTextFieldEmpty()) mSuggestionStripView.setToolbarVisibility(true);
         }
+    }
+
+    private boolean isTextFieldEmpty() {
+        final RichInputConnection connection = mInputLogic.mConnection;
+        if (connection.hasSelection()) return false;
+        final CharSequence before = connection.getTextBeforeCursor(1, 0);
+        return before != null && before.length() == 0;
     }
 
     @Override
