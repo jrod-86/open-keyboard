@@ -80,6 +80,7 @@ fun SettingsNavHost(
                 onClickDictionaries = { navController.navigate(SettingsDestination.Dictionaries) },
                 onClickTheme = { navController.navigate(SettingsDestination.Theme) },
                 onClickShortcuts = { navController.navigate(SettingsDestination.TextShortcuts) },
+                onClickPlugins = { navController.navigate(SettingsDestination.Plugins) },
                 onClickBack = ::goBack,
             )
         }
@@ -114,6 +115,9 @@ fun SettingsNavHost(
             helium314.keyboard.settings.screens.ThemeScreen(onClickBack = ::goBack,
                 onClickCustom = { navController.navigate(SettingsDestination.Appearance) },
                 onClickDesign = { navController.navigate(SettingsDestination.Design) })
+        }
+        composable(SettingsDestination.Plugins) {
+            helium314.keyboard.settings.screens.PluginsScreen(onClickBack = ::goBack)
         }
         composable(SettingsDestination.TextShortcuts) {
             helium314.keyboard.settings.screens.TextShortcutsScreen(onClickBack = ::goBack)
@@ -172,6 +176,7 @@ object SettingsDestination {
     const val Theme = "theme"
     const val Design = "design"
     const val TextShortcuts = "text_shortcuts"
+    const val Plugins = "plugins"
     const val Colors = "colors/"
     const val ColorsNight = "colors_night/"
     const val PersonalDictionaries = "personal_dictionaries"

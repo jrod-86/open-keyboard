@@ -80,7 +80,7 @@ object KeyboardMenu {
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
-    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val action: () -> Unit)
+    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val action: () -> Unit)
 
     // ---- moving buttons between the menu and the top bar ----
 
@@ -298,16 +298,16 @@ object KeyboardMenu {
         fun ownIcon(res: Int) = { ContextCompat.getDrawable(context, res)?.mutate() }
 
         fun keyItem(label: String, key: ToolbarKey, action: (() -> Unit)? = null) =
-            Item(label, toolbarIcon(key), key, action ?: { onCode(helium314.keyboard.latin.utils.getCodeForToolbarKey(key)) })
+            Item(label, toolbarIcon(key), key, action = action ?: { onCode(helium314.keyboard.latin.utils.getCodeForToolbarKey(key)) })
         val allItems = listOf(
             Item("Theme", ownIcon(R.drawable.ic_menu_theme)) { openSettings(context, SettingsDestination.Theme) },
             Item("Resize", ownIcon(R.drawable.ic_menu_resize)) { showResize(context) },
             keyItem("Stickers", ToolbarKey.STICKER) { helium314.keyboard.media.MediaPanel.toggle(context, false) },
             keyItem("GIFs", ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
             keyItem("Voice typing", ToolbarKey.VOICE),
-            Item("Translate", ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
-            Item("Writing help", ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
-            Item("Scan text", ownIcon(R.drawable.ic_menu_scan)) {
+            Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
+            Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
+            Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
                 context.startActivity(android.content.Intent(context, ScanTextActivity::class.java)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -326,7 +326,15 @@ object KeyboardMenu {
             Item("Switch keyboard", ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
             },
-        )
+        ).filter { it.plugin == null || Plugins.isOn(context, it.plugin) } +
+            Plugins.enabledAppActions(context).map { app ->
+                Item(app.label, { app.icon?.mutate() }) {
+                    hide()
+                    var c: Context = context
+                    while (c is ContextWrapper && c !is LatinIME) c = c.baseContext
+                    Plugins.runAppAction(context, (c as? LatinIME)?.currentInputConnection, app)
+                }
+            }
         // buttons already on the top bar aren't repeated here
         val onBar = helium314.keyboard.latin.utils.getBarKeys(context.prefs())
         allItems.forEach { if (it.key != null) menuLabels[it.key] = it.label }

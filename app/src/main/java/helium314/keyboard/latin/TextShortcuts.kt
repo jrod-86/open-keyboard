@@ -52,6 +52,7 @@ object TextShortcuts {
     fun expandOnSpace(ctx: Context, ic: InputConnection?, finishComposing: () -> Unit, resync: (Int, Int) -> Unit): Boolean {
         last = null
         ic ?: return false
+        if (!Plugins.isOn(ctx, "shortcuts")) return false
         val shortcuts = load(ctx)
         if (shortcuts.isEmpty()) return false
         val before = ic.getTextBeforeCursor(64, 0)?.toString() ?: return false

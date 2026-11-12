@@ -15,6 +15,7 @@ object VoiceCommands {
 
     /** If the whole sentence is a command, returns it. */
     fun action(sentence: String): Action? {
+        if (!helium314.keyboard.latin.Plugins.isOn("voice_commands")) return null
         val plain = sentence.lowercase().replace(Regex("[^a-z ]"), " ").trim().replace(Regex("\\s+"), " ")
         return actions[plain]
     }

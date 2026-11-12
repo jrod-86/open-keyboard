@@ -50,6 +50,7 @@ fun MainSettingsScreen(
     onClickBack: () -> Unit,
     onClickTheme: () -> Unit = {},
     onClickShortcuts: () -> Unit = {},
+    onClickPlugins: () -> Unit = {},
 ) {
     SearchSettingsScreen(
         onClickBack = onClickBack,
@@ -133,6 +134,12 @@ fun MainSettingsScreen(
                                 .onFailure { ctx.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }
                         },
                         icon = R.drawable.ic_settings_correction
+                    ) { NextScreenIcon() }
+                    GroupItem(
+                        name = "Plugins",
+                        description = "Switch features on or off, and use your other apps from the keyboard",
+                        onClick = onClickPlugins,
+                        icon = R.drawable.ic_settings_advanced
                     ) { NextScreenIcon() }
                     GroupItem(
                         name = "Text shortcuts",

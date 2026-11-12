@@ -22,6 +22,8 @@ import android.view.View;
 import android.view.Window;
 import android.text.TextUtils;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InlineSuggestion;
@@ -493,6 +495,7 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onCreate() {
+        Plugins.INSTANCE.init(this);
         mVoiceInput = new VoiceInputController(this, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; },
                 listening -> { if (mSuggestionStripView != null) mSuggestionStripView.setVoiceActive(listening); return kotlin.Unit.INSTANCE; },
                 (selStart, selEnd) -> {
@@ -938,6 +941,14 @@ public class LatinIME extends InputMethodService implements
                 currentSettingsValues.mGestureInputEnabled,
                 currentSettingsValues.mGestureTrailEnabled,
                 currentSettingsValues.mGestureFloatingPreviewTextEnabled);
+
+        // Open Keyboard: an app plugin's answer is typed over the text it was given
+        final InputConnection pluginIc = getCurrentInputConnection();
+        if (Plugins.INSTANCE.deliverPending(pluginIc)) {
+            final ExtractedText ex = pluginIc.getExtractedText(new ExtractedTextRequest(), 0);
+            if (ex != null && ex.selectionStart >= 0)
+                mInputLogic.resyncAfterVoiceInput(ex.startOffset + ex.selectionStart, ex.startOffset + ex.selectionEnd);
+        }
 
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");
     }

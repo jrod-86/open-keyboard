@@ -56,6 +56,7 @@ object SlashCommands {
 
     /** Whether the cursor is inside a command, so autocorrect leaves it alone. */
     fun inCommand(textBeforeCursor: CharSequence?): Boolean {
+        if (!Plugins.isOn("slash")) return false
         val line = textBeforeCursor?.toString()?.substringAfterLast('\n') ?: return false
         val m = slash.find(line) ?: return equals.containsMatchIn(line) && match(line) != null
         val name = m.groupValues[2]
@@ -86,6 +87,7 @@ object SlashCommands {
 
     /** The chip for the suggestion bar, or null if no command is being typed. */
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
+        if (!Plugins.isOn(ime, "slash")) return null
         val ic = ime.currentInputConnection ?: return null
         val match = match(ic.getTextBeforeCursor(200, 0)) ?: return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)

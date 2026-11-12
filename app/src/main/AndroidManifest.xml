@@ -85,6 +85,12 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:theme="@style/platformActivityTheme"
             android:exported="false" />
 
+        <activity android:name=".latin.PluginActionActivity"
+            android:theme="@style/TransparentActivityTheme"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:exported="false" />
+
         <activity android:name=".latin.ScanTextActivity"
             android:label="Scan text"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
@@ -167,6 +173,11 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     </application>
 
     <queries>
+        <!-- Open Keyboard: apps that work on text become plugins -->
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
         <!-- To detect other IMEs -->
         <intent>
             <!-- changed to * as it's supposed to help with finding other keyboard apps, see https://github.com/HeliBorg/HeliBoard/issues/1340 -->
