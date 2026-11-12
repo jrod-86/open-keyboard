@@ -107,14 +107,44 @@ object MediaPanel {
                 .apply { setMargins(dp(context, 4f), dp(context, 6f), dp(context, 4f), dp(context, 6f)) }
         }
 
+        /** Round button with a symbol: a drawable from the app, or a picture of the pack's first sticker. */
+        fun iconPill(res: Int?, packDir: java.io.File?, selected: Boolean, desc: String, onClick: () -> Unit) = FrameLayout(context).apply {
+            contentDescription = desc
+            val iv = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                if (res != null) { setImageResource(res); setColorFilter(text) }
+            }
+            val size = dp(context, if (packDir != null) 32f else 24f)
+            addView(iv, FrameLayout.LayoutParams(size, size, Gravity.CENTER))
+            if (packDir != null) {
+                val first = StickerPacks.stickers(packDir).firstOrNull()
+                if (first != null) loader.execute {
+                    val d = runCatching {
+                        ImageDecoder.decodeDrawable(ImageDecoder.createSource(first)) { decoder, info, _ ->
+                            val s = maxOf(info.size.width, info.size.height)
+                            if (s > 128) decoder.setTargetSampleSize(s / 128)
+                        }
+                    }.getOrNull()
+                    main.post { if (gen == generation && d != null) iv.setImageDrawable(d) }
+                }
+            }
+            background = GradientDrawable().apply {
+                cornerRadius = dp(context, 20f).toFloat()
+                setColor(if (selected) ColorUtils.setAlphaComponent(accent, 110) else tile)
+            }
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(dp(context, 56f), dp(context, 40f))
+                .apply { setMargins(dp(context, 4f), dp(context, 6f), dp(context, 4f), dp(context, 6f)) }
+        }
+
         // top row: tabs on the left, ABC on the right
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(context, 6f), 0, dp(context, 6f), 0)
-            addView(pill("🕘 Recent", recent) { show(context, gifs, recent = true) })
-            addView(pill("Stickers", !gifs && !recent) { show(context, false) })
-            addView(pill("GIFs", gifs && !recent) { show(context, true) })
+            addView(iconPill(helium314.keyboard.latin.R.drawable.ic_emoji_recents_rounded, null, recent, "Recent") { show(context, gifs, recent = true) })
+            addView(iconPill(helium314.keyboard.latin.R.drawable.ic_sticker, null, !gifs && !recent, "Stickers") { show(context, false) })
+            addView(iconPill(helium314.keyboard.latin.R.drawable.ic_gif, null, gifs && !recent, "GIFs") { show(context, true) })
             addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
             addView(pill("ABC", false) { KeyboardMenu.hide() })
         }
@@ -139,12 +169,12 @@ object MediaPanel {
             if (packSource != null) pack = packs.firstOrNull { it.name == packSource }
             if (pack == null && (packSource != null || !MediaPrefs.gifsReady(context))) pack = packs.firstOrNull()
             val packRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(context, 4f), 0, dp(context, 4f), 0) }
-            packRow.addView(pill("🛍 Store", false) {
+            packRow.addView(iconPill(helium314.keyboard.latin.R.drawable.ic_store, null, false, "Sticker store") {
                 KeyboardMenu.hide()
                 context.startActivity(Intent(context, StickerStoreActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             })
-            packRow.addView(pill("KLIPY", pack == null) { packSource = null; show(context, false) })
-            packs.forEach { p -> packRow.addView(pill(p.name, p == pack) { packSource = p.name; show(context, false) }) }
+            packRow.addView(iconPill(helium314.keyboard.latin.R.drawable.sym_keyboard_search_rounded, null, pack == null, "Online stickers (KLIPY)") { packSource = null; show(context, false) })
+            packs.forEach { p -> packRow.addView(iconPill(null, p, p == pack, p.name) { packSource = p.name; show(context, false) }) }
             column.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(packRow) })
         }
 
