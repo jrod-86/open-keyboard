@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -64,6 +65,8 @@ import androidx.core.content.edit
 import helium314.keyboard.keyboard.ColorSetting
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.keyboard.KeyboardTheme
+import helium314.keyboard.latin.common.ColorType
+import java.util.EnumMap
 import helium314.keyboard.latin.KeySounds
 import helium314.keyboard.keyboard.internal.TypingEffectsPreview
 import androidx.compose.material3.OutlinedTextField
@@ -73,7 +76,53 @@ import helium314.keyboard.settings.SearchSettingsScreen
 
 /** A keyboard look: colours for the background, letter keys, special keys, the Enter key and the letters. */
 data class Design(val name: String, val bg: Long, val key: Long, val special: Long, val accent: Long, val text: Long,
-    val picture: Boolean = false, val dim: Float = 0.25f, val seeThrough: Boolean = true)
+    val picture: Boolean = false, val dim: Float = 0.25f, val seeThrough: Boolean = true,
+    /** colours for single parts of the keyboard (part id to colour), on top of the five main colours */
+    val parts: Map<String, Long> = emptyMap())
+
+/** A part of the keyboard that can get its own colour. The first five are the design's main colours. */
+private class Part(val id: String, val label: String, val types: List<ColorType>)
+
+private val partList = listOf(
+    Part("bg", "Background", emptyList()),
+    Part("keys", "Letter keys", emptyList()),
+    Part("special", "Special keys", emptyList()),
+    Part("letters", "Letters", emptyList()),
+    Part("accent", "Highlights", emptyList()),
+    Part("space", "Space bar", listOf(ColorType.SPACE_BAR_BACKGROUND)),
+    Part("spaceText", "Space bar text", listOf(ColorType.SPACE_BAR_TEXT)),
+    Part("enter", "Enter key", listOf(ColorType.ACTION_KEY_BACKGROUND, ColorType.ACTION_KEY_POPUP_KEYS_BACKGROUND)),
+    Part("enterIcon", "Enter arrow", listOf(ColorType.ACTION_KEY_ICON)),
+    Part("specialText", "Special key symbols", listOf(ColorType.FUNCTIONAL_KEY_TEXT, ColorType.KEY_ICON, ColorType.SHIFT_KEY_ICON)),
+    Part("hints", "Small numbers and symbols", listOf(ColorType.KEY_HINT_TEXT)),
+    Part("toolbar", "Top bar", listOf(ColorType.STRIP_BACKGROUND)),
+    Part("toolbarIcons", "Top bar icons", listOf(ColorType.TOOL_BAR_KEY, ColorType.TOOL_BAR_EXPAND_KEY)),
+    Part("suggestions", "Word suggestions", listOf(ColorType.SUGGESTED_WORD, ColorType.SUGGESTION_TYPED_WORD,
+        ColorType.SUGGESTION_VALID_WORD, ColorType.SUGGESTION_AUTO_CORRECT)),
+    Part("popup", "Key pop-up", listOf(ColorType.KEY_PREVIEW_BACKGROUND)),
+    Part("popupText", "Key pop-up letter", listOf(ColorType.KEY_PREVIEW_TEXT)),
+    Part("longpress", "Long-press menu", listOf(ColorType.POPUP_KEYS_BACKGROUND)),
+    Part("trail", "Swipe trail", listOf(ColorType.GESTURE_TRAIL)),
+)
+
+/** The colour a part shows in the editor: its own if set, otherwise what it gets from the main colours. */
+private fun Design.partColor(id: String): Long = when (id) {
+    "bg" -> bg; "keys" -> key; "special" -> special; "letters" -> text; "accent" -> accent
+    else -> parts[id] ?: when (id) {
+        "space" -> key; "spaceText", "suggestions", "specialText", "toolbarIcons", "popupText" -> text
+        "hints" -> withAlpha(text, 0x88).toLong() and 0xFFFFFFFFL
+        "enter", "trail" -> accent; "enterIcon" -> readableOn(accent)
+        "toolbar" -> bg; "popup", "longpress" -> key
+        else -> text
+    }
+}
+
+private fun Design.withPart(id: String, c: Long?): Design = when (id) {
+    "bg" -> copy(name = "My design", bg = c ?: bg); "keys" -> copy(name = "My design", key = c ?: key)
+    "special" -> copy(name = "My design", special = c ?: special); "letters" -> copy(name = "My design", text = c ?: text)
+    "accent" -> copy(name = "My design", accent = c ?: accent)
+    else -> copy(name = "My design", parts = if (c == null) parts - id else parts + (id to c))
+}
 
 private val presets = listOf(
     Design("Midnight", 0xFF121212, 0xFF2A2A2A, 0xFF1C1C1C, 0xFF8AB4F8, 0xFFFFFFFF),
@@ -117,11 +166,23 @@ private fun col(v: Long) = Color(v.toInt())
 private const val THEME_NAME = "Open design"
 private const val PREF_DRAFT = "open_keyboard_design"
 
-private fun Design.encode() = listOf(name, bg, key, special, accent, text, picture, dim, seeThrough).joinToString(";")
+private fun Design.encode() = listOf(name, bg, key, special, accent, text, picture, dim, seeThrough,
+    parts.entries.joinToString(",") { "${it.key}=${it.value}" }).joinToString(";")
 private fun decode(s: String?): Design? = runCatching {
     val p = s!!.split(";"); Design(p[0], p[1].toLong(), p[2].toLong(), p[3].toLong(), p[4].toLong(), p[5].toLong(),
-        p.getOrNull(6)?.toBoolean() ?: false, p.getOrNull(7)?.toFloat() ?: 0.25f, p.getOrNull(8)?.toBoolean() ?: true)
+        p.getOrNull(6)?.toBoolean() ?: false, p.getOrNull(7)?.toFloat() ?: 0.25f, p.getOrNull(8)?.toBoolean() ?: true,
+        p.getOrNull(9).orEmpty().split(",").mapNotNull { e -> e.split("=").takeIf { it.size == 2 }?.let { (k, v) -> v.toLongOrNull()?.let { k to it } } }.toMap())
 }.getOrNull()
+
+private const val PREF_MY_DESIGNS = "open_keyboard_my_designs"
+
+private fun loadMyDesigns(ctx: Context): List<Design> =
+    ctx.prefs().getString(PREF_MY_DESIGNS, "").orEmpty().split("\n").mapNotNull { decode(it) }
+
+private fun storeMyDesigns(ctx: Context, list: List<Design>) =
+    ctx.prefs().edit { putString(PREF_MY_DESIGNS, list.joinToString("\n") { it.encode() }) }
+
+private fun cleanName(n: String) = n.replace(Regex("[;,=\\n]"), " ").trim().take(30).ifEmpty { "My design" }
 
 /** The picture chosen in the designer, cropped to the keyboard's shape. */
 private fun pictureFile(ctx: Context) = File(ctx.filesDir, "design_background.png")
@@ -153,6 +214,9 @@ fun DesignScreen(onClickBack: () -> Unit) {
     var effect by remember { mutableStateOf(ctx.prefs().getString(TypingEffectsPreview.PREF, "none") ?: "none") }
     var tryText by remember { mutableStateOf("") }
     var sound by remember { mutableStateOf(if (ctx.prefs().getBoolean(Settings.PREF_SOUND_ON, false)) KeySounds.pack(ctx) else "off") }
+    var part by remember { mutableStateOf("keys") }
+    var myDesigns by remember { mutableStateOf(loadMyDesigns(ctx)) }
+    var naming by remember { mutableStateOf(false) }
     fun change(d: Design) { if (d != draft) { undo.add(draft); redo.clear(); draft = d; saved = false } }
     var picture by remember { mutableStateOf(loadPicture(ctx)) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -163,13 +227,32 @@ fun DesignScreen(onClickBack: () -> Unit) {
         }
     }
 
+    if (naming) {
+        var name by remember { mutableStateOf(if (draft.name in presets.map { it.name }) "My design" else draft.name) }
+        AlertDialog(onDismissRequest = { naming = false },
+            title = { Text("Save your design") },
+            text = { Column {
+                Text("It goes into My designs on the Designs tab and becomes your keyboard's look.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+            } },
+            confirmButton = { Button(onClick = {
+                val d = draft.copy(name = cleanName(name))
+                myDesigns = myDesigns.filter { it.name != d.name } + d
+                storeMyDesigns(ctx, myDesigns)
+                draft = d; applyDesign(ctx, d); saved = true; naming = false
+            }) { Text("Save") } },
+            dismissButton = { OutlinedButton(onClick = { applyDesign(ctx, draft); saved = true; naming = false }) { Text("Just use it") } })
+    }
+
     SearchSettingsScreen(onClickBack = onClickBack, title = "Design", settings = emptyList()) {
         // the preview, buttons and tabs stay put at the top; only the choices below scroll
         // while the keyboard is open (trying an effect), make room: drop the preview and buttons and sit above the keyboard
         val imeOpen = WindowInsets.isImeVisible
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.systemBars))
             .padding(horizontal = 16.dp, vertical = 8.dp)) {
-            if (!imeOpen) KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null)
+            if (!imeOpen) KeyboardPreview(draft, Modifier.fillMaxWidth(), big = true, picture = if (draft.picture) picture else null,
+                selectedPart = if (tab == 1) part else null, onPart = { part = it; tab = 1 })
             if (!imeOpen) Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = undo.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp),
@@ -178,7 +261,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
                     onClick = { undo.add(draft); draft = redo.removeAt(redo.lastIndex); saved = false }) { Text("↷", fontSize = 20.sp) }
                 OutlinedButton(onClick = { change(presets[0]) }) { Text("Reset") }
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { applyDesign(ctx, draft); saved = true }) { Text(if (saved) "Saved ✓" else "Save") }
+                Button(onClick = { naming = true }) { Text(if (saved) "Saved ✓" else "Save") }
             }
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Designs", "Colours", "Effects", "Sound").forEachIndexed { i, t -> Pill(t, tab == i, Modifier.weight(1f)) { tab = i } }
@@ -188,7 +271,29 @@ fun DesignScreen(onClickBack: () -> Unit) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(4.dp))
             when (tab) {
-                0 -> presets.chunked(2).forEach { row ->
+                0 -> {
+                if (myDesigns.isNotEmpty()) {
+                    Text("My designs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+                    myDesigns.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+                            row.forEach { d ->
+                                Column(Modifier.weight(1f).clickable { change(d) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                                    KeyboardPreview(d, Modifier.fillMaxWidth(), selected = d == draft,
+                                        picture = if (d.picture && d == draft) picture else null)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(d.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp).weight(1f, fill = false))
+                                        Text("  ✕", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp).clickable {
+                                            myDesigns = myDesigns - d; storeMyDesigns(ctx, myDesigns)
+                                        })
+                                    }
+                                }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    Text("Ready-made", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+                }
+                presets.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 16.dp)) {
                         row.forEach { d ->
                             Column(Modifier.weight(1f).clickable { change(d) }, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -198,6 +303,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
                         }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
+                }
                 }
                 1 -> {
                     Text("Background picture", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
@@ -214,11 +320,36 @@ fun DesignScreen(onClickBack: () -> Unit) {
                             Switch(checked = draft.seeThrough, onCheckedChange = { change(draft.copy(seeThrough = it)) })
                         }
                     }
-                    ColourRow(if (draft.picture) "Background (behind the picture's edges)" else "Background", draft.bg) { change(draft.copy(name = "My design", bg = it)) }
-                    ColourRow("Letter keys", draft.key) { change(draft.copy(name = "My design", key = it)) }
-                    ColourRow("Special keys (shift, delete, ?123)", draft.special) { change(draft.copy(name = "My design", special = it)) }
-                    ColourRow("Enter key and highlights", draft.accent) { change(draft.copy(name = "My design", accent = it)) }
-                    ColourRow("Letters", draft.text) { change(draft.copy(name = "My design", text = it)) }
+                    Text("Colour any part", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+                    Text("Tap a part of the keyboard above, or pick one here, then choose its colour.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        partList.forEach { pt ->
+                            val custom = pt.id in draft.parts
+                            Text((if (custom) "● " else "") + pt.label, fontSize = 14.sp, maxLines = 1,
+                                color = if (part == pt.id) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clip(RoundedCornerShape(50))
+                                    .background(if (part == pt.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { part = pt.id }.padding(horizontal = 14.dp, vertical = 8.dp))
+                        }
+                    }
+                    val current = draft.partColor(part)
+                    Row(Modifier.padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(col(current)).border(1.dp, Color.Gray, CircleShape))
+                        Text(partList.first { it.id == part }.label, style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(start = 10.dp).weight(1f))
+                        if (part in draft.parts) OutlinedButton(onClick = { change(draft.withPart(part, null)) }) { Text("Match the theme") }
+                    }
+                    swatches.chunked(8).forEach { row ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { c ->
+                                Box(Modifier.weight(1f).height(36.dp).clip(CircleShape).background(col(c))
+                                    .border(if (c == current) 3.dp else 1.dp, if (c == current) MaterialTheme.colorScheme.primary else Color.Gray, CircleShape)
+                                    .clickable { change(draft.withPart(part, c)) })
+                            }
+                            repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
                 2 -> {
                     Text("Typing effect", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
@@ -290,15 +421,19 @@ private fun ColourRow(label: String, current: Long, onPick: (Long) -> Unit) {
     }
 }
 
-/** A small drawing of the keyboard in the given colours. */
+/** A small drawing of the keyboard in the given colours. With [onPart], tapping a part picks it for colouring. */
 @Composable
-fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selected: Boolean = false, picture: Bitmap? = null) {
+fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selected: Boolean = false, picture: Bitmap? = null,
+                    selectedPart: String? = null, onPart: ((String) -> Unit)? = null) {
     if (picture != null) {
         val shape = RoundedCornerShape(if (big) 18.dp else 12.dp)
         Box(modifier.clip(shape)) {
             Image(picture.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
             Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = d.dim)))
-            KeyboardPreview(d.copy(bg = 0x00000000, key = keyColor(d.key, d), special = keyColor(d.special, d)), Modifier.fillMaxWidth(), big, selected)
+            KeyboardPreview(d.copy(bg = 0x00000000, key = keyColor(d.key, d), special = keyColor(d.special, d),
+                parts = d.parts.mapValues { (k, v) -> if (k == "space" || k == "toolbar") keyColor(v, d) else v } +
+                    (if ("toolbar" !in d.parts) mapOf("toolbar" to 0L) else emptyMap())),
+                Modifier.fillMaxWidth(), big, selected, null, selectedPart, onPart)
         }
         return
     }
@@ -306,37 +441,56 @@ fun KeyboardPreview(d: Design, modifier: Modifier, big: Boolean = false, selecte
     val keyH: Dp = if (big) 38.dp else 18.dp
     val font = if (big) 15.sp else 8.sp
     val shape = RoundedCornerShape(if (big) 18.dp else 12.dp)
+    val hl = MaterialTheme.colorScheme.primary
+    fun Modifier.pick(id: String, keyShape: androidx.compose.ui.graphics.Shape): Modifier =
+        (if (selectedPart == id) border(2.dp, hl, keyShape) else this).let { m -> if (onPart != null) m.clickable { onPart(id) } else m }
     Column(modifier.clip(shape).background(col(d.bg))
         .border(if (selected) 3.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
+        .let { if (selectedPart == "bg") it.border(2.dp, hl, shape) else it }
+        .let { if (onPart != null) it.clickable { onPart("bg") } else it }
         .padding(if (big) 10.dp else 6.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
+        val keyShape = RoundedCornerShape(if (big) 8.dp else 4.dp)
         @Composable
-        fun key(label: String, weight: Float, color: Long, textColor: Long = d.text) {
-            Box(Modifier.height(keyH).clip(RoundedCornerShape(if (big) 8.dp else 4.dp)).background(col(color))
-                .then(Modifier.fillMaxWidth(weight)), contentAlignment = Alignment.Center) {
-                Text(label, color = col(textColor), fontSize = font, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1)
+        fun key(label: String, color: Long, textColor: Long, keyPart: String, textPart: String) {
+            Box(Modifier.fillMaxWidth().height(keyH).clip(keyShape).background(col(color)).pick(keyPart, keyShape),
+                contentAlignment = Alignment.Center) {
+                if (label.isNotEmpty()) Text(label, color = col(textColor), fontSize = font, fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center, maxLines = 1,
+                    modifier = if (onPart != null) Modifier.clickable { onPart(textPart) } else Modifier)
             }
         }
         @Composable
         fun row(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) =
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap), content = content)
-        row { "qwertyuiop".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), 1f, d.key) } } }
+        if (big) {
+            val tb = d.partColor("toolbar")
+            Row(Modifier.fillMaxWidth().height(30.dp).clip(keyShape).background(col(tb)).pick("toolbar", keyShape),
+                horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                listOf("▦", "☻", "GIF", "▤", "⚙", "🎙").forEach {
+                    Text(it, color = col(d.partColor("toolbarIcons")), fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = if (onPart != null) Modifier.clickable { onPart("toolbarIcons") }.padding(horizontal = 6.dp) else Modifier)
+                }
+            }
+        }
+        val letter = d.text; val sym = d.partColor("specialText")
+        row { "qwertyuiop".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), d.key, letter, "keys", "letters") } } }
         row {
             Spacer(Modifier.weight(0.5f))
-            "asdfghjkl".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), 1f, d.key) } }
+            "asdfghjkl".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), d.key, letter, "keys", "letters") } }
             Spacer(Modifier.weight(0.5f))
         }
         row {
-            Box(Modifier.weight(1.5f)) { key("⇧", 1f, d.special) }
-            "zxcvbnm".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), 1f, d.key) } }
-            Box(Modifier.weight(1.5f)) { key("⌫", 1f, d.special) }
+            Box(Modifier.weight(1.5f)) { key("⇧", d.special, sym, "special", "specialText") }
+            "zxcvbnm".forEach { c -> Box(Modifier.weight(1f)) { key(c.toString(), d.key, letter, "keys", "letters") } }
+            Box(Modifier.weight(1.5f)) { key("⌫", d.special, sym, "special", "specialText") }
         }
         row {
-            Box(Modifier.weight(1.5f)) { key("?123", 1f, d.special) }
-            Box(Modifier.weight(1f)) { key("☺", 1f, d.special) }
-            Box(Modifier.weight(1f)) { key(",", 1f, d.key) }
-            Box(Modifier.weight(4f)) { key("", 1f, d.key) }
-            Box(Modifier.weight(1f)) { key(".", 1f, d.key) }
-            Box(Modifier.weight(1.5f)) { key("↵", 1f, d.accent, readableOn(d.accent)) }
+            Box(Modifier.weight(1.5f)) { key("?123", d.special, sym, "special", "specialText") }
+            Box(Modifier.weight(1f)) { key("☺", d.special, sym, "special", "specialText") }
+            Box(Modifier.weight(1f)) { key(",", d.key, letter, "keys", "letters") }
+            Box(Modifier.weight(4f)) { key(if (big) "English" else "", keyColor(d.partColor("space"), d), d.partColor("spaceText"), "space", "spaceText") }
+            Box(Modifier.weight(1f)) { key(".", d.key, letter, "keys", "letters") }
+            Box(Modifier.weight(1.5f)) { key("↵", d.partColor("enter"), d.partColor("enterIcon"), "enter", "enterIcon") }
         }
     }
 }
@@ -367,7 +521,21 @@ fun applyDesign(ctx: Context, d: Design) {
         ColorSetting(KeyboardTheme.COLOR_HINT_TEXT, false, withAlpha(d.text, 0x88)),
     )
     KeyboardTheme.writeUserColors(prefs, THEME_NAME, colors)
-    KeyboardTheme.writeUserMoreColors(prefs, THEME_NAME, 0)
+    val custom = d.parts.filterKeys { id -> partList.any { it.id == id && it.types.isNotEmpty() } }
+    if (custom.isEmpty()) KeyboardTheme.writeUserMoreColors(prefs, THEME_NAME, 0)
+    else {
+        // start from what the main colours give every part, then lay the chosen part colours on top
+        val style = prefs.getString(Settings.PREF_THEME_STYLE, helium314.keyboard.latin.settings.Defaults.PREF_THEME_STYLE)!!
+        val base = KeyboardTheme.readUserColorTheme(style, true, colors, ctx, false, null)
+        val map = EnumMap<ColorType, Int>(ColorType::class.java)
+        ColorType.entries.forEach { map[it] = base.get(it) }
+        custom.forEach { (id, c) ->
+            val v = (if (id == "space") keyColor(c, d) else c).toInt()
+            partList.first { it.id == id }.types.forEach { map[it] = v }
+        }
+        KeyboardTheme.writeUserAllColors(prefs, THEME_NAME, map)
+        KeyboardTheme.writeUserMoreColors(prefs, THEME_NAME, 2)
+    }
     for (n in listOf(false, true)) for (l in listOf(false, true)) Settings.getCustomBackgroundFile(ctx, n, l).delete()
     val pic = if (d.picture) loadPicture(ctx) else null
     if (pic != null) {
