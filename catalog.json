@@ -2,6 +2,19 @@
  "version": 1,
  "packs": [
   {
+   "id": "butter-faces",
+   "name": "Butter Faces",
+   "author": "Jarrod",
+   "license": "CC0",
+   "source": "https://github.com/jrod-86/open-keyboard",
+   "credit": "",
+   "count": 24,
+   "featured": true,
+   "icon": "butter-faces-icon.png",
+   "zip": "butter-faces.zip",
+   "size": 2281577
+  },
+  {
    "id": "mochi",
    "name": "Mochi",
    "author": "Open Keyboard",
