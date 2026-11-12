@@ -126,31 +126,50 @@ private fun Design.withPart(id: String, c: Long?): Design = when (id) {
     else -> copy(name = "My design", parts = if (c == null) parts - id else parts + (id to c))
 }
 
+/** Used for Reset and when nothing has been designed yet. */
+private val defaultDesign = Design("Classic dark", 0xFF121212, 0xFF2A2A2A, 0xFF1C1C1C, 0xFF8AB4F8, 0xFFFFFFFF)
+
 private val presets = listOf(
-    Design("Midnight", 0xFF121212, 0xFF2A2A2A, 0xFF1C1C1C, 0xFF8AB4F8, 0xFFFFFFFF),
-    Design("Snow", 0xFFF2F4F7, 0xFFFFFFFF, 0xFFDDE1E7, 0xFF1A73E8, 0xFF202124),
     Design("Bubblegum", 0xFFFCE4EC, 0xFFFFFFFF, 0xFFF8BBD0, 0xFFEC407A, 0xFF5D2A3A),
     Design("Arcade", 0xFF3355DD, 0xFFE8B98A, 0xFF6CBF6C, 0xFF6CBF6C, 0xFF2B1D0E),
     Design("Gold and black", 0xFF101010, 0xFFF3E6C8, 0xFF2A2418, 0xFFD4AF37, 0xFF1A1408),
-    Design("Puppy", 0xFFE6F1F8, 0xFFFFFFFF, 0xFFFFE4E1, 0xFFFFC0CB, 0xFF2E3A44),
     Design("Lavender", 0xFFEDE7F6, 0xFFFAF7FF, 0xFFD9CCF0, 0xFF9575CD, 0xFF3A2F55),
     Design("Sky", 0xFFE3F2FD, 0xFFF7FBFF, 0xFFCFE3F7, 0xFF64B5F6, 0xFF203040),
     Design("Honey", 0xFFFFF5D6, 0xFFFFD54F, 0xFFE57373, 0xFFE53935, 0xFF3E2C00),
-    Design("Cocoa", 0xFF2E211C, 0xFF5D473F, 0xFFC9A227, 0xFFC9A227, 0xFFF5E9DC),
     Design("Peach", 0xFFFFF0E6, 0xFFFFFFFF, 0xFFFFCCA8, 0xFFFF9E5E, 0xFF5A3A26),
     Design("Neon cat", 0xFF141414, 0xFF3A2F2F, 0xFF4A3B3B, 0xFFFF6FD8, 0xFFFF9BE6),
     Design("Lemon", 0xFFFFF35C, 0xFFFFFFA8, 0xFFE6DB3C, 0xFF2E7D32, 0xFF2B2B00),
-    Design("Coffee cream", 0xFFF6F0E6, 0xFFFFFFFF, 0xFF3B2A20, 0xFF3B2A20, 0xFF2B1D14),
-    Design("Starry night", 0xFF0B0B10, 0xFF1A1A22, 0xFF26262F, 0xFFFFE066, 0xFFFFFFFF),
-    Design("Lucky red", 0xFFC62828, 0xFFD84343, 0xFFB71C1C, 0xFFFFD54F, 0xFFFFF3E0),
     Design("Matcha", 0xFF8DBF9F, 0xFFE9F3EC, 0xFFCDE5D4, 0xFF2E7D4F, 0xFF1E3326),
-    Design("Graphite", 0xFF6B6E73, 0xFFA3A7AD, 0xFF8A8E94, 0xFFFFF59D, 0xFFFFFFFF),
     Design("Ember", 0xFF0F0F0F, 0xFF8E1F1F, 0xFF5A1414, 0xFFE53935, 0xFFFFE0E0),
     Design("Tennis", 0xFFD7B49E, 0xFFB5D96A, 0xFF8DBF5A, 0xFF8DBF5A, 0xFF2E3B10),
-    Design("Spider", 0xFFB71C1C, 0xFFC62828, 0xFF1A2A5A, 0xFF1A2A5A, 0xFFFFFFFF),
-    Design("Badminton", 0xFF1E5E2A, 0xFF2E7D32, 0xFF256D2A, 0xFFC5E1A5, 0xFFE8F5E9),
-    Design("Ghost", 0xFF000000, 0xFF000000, 0xFF161616, 0xFFBDBDBD, 0xFFE0E0E0),
-    Design("Ocean", 0xFF0D3B66, 0xFF1C5D99, 0xFF124A7D, 0xFF4FC3F7, 0xFFFFFFFF),
+    Design("Mint choc chip", 0xFFBDEFD8, 0xFFFFFFFF, 0xFF6B4A3A, 0xFF4E342E, 0xFF3B2A20, parts = mapOf("space" to 0xFFA8E6CF, "toolbar" to 0xFF98DDBF, "specialText" to 0xFFFFFFFF)),
+    Design("Sunset", 0xFFFF9A62, 0xFFFFE3C7, 0xFFFF6F61, 0xFF8E3B8E, 0xFF4A1E2E, parts = mapOf("space" to 0xFFFFC15E, "toolbar" to 0xFFFF7A59)),
+    Design("Cotton candy", 0xFFCDE7FF, 0xFFFFFFFF, 0xFFFFC6E5, 0xFFFF7EB9, 0xFF4A3A66, parts = mapOf("space" to 0xFFFFE3F1, "toolbar" to 0xFFFFD6EC)),
+    Design("Grape soda", 0xFF5B2A86, 0xFF7A43A8, 0xFF4A1F70, 0xFFFFC94D, 0xFFFFFFFF, parts = mapOf("space" to 0xFF9C6ADE, "toolbar" to 0xFF4A1F70)),
+    Design("Watermelon", 0xFF7BC67B, 0xFFFF8A8A, 0xFFFFFFFF, 0xFF2E7D32, 0xFF3A1A1A, parts = mapOf("space" to 0xFFFFFFFF, "toolbar" to 0xFF5DAE5D)),
+    Design("Lagoon", 0xFF2EC4B6, 0xFFE8FFFB, 0xFFA6F0E6, 0xFFFF9F1C, 0xFF0B4A45, parts = mapOf("space" to 0xFFFFD166, "toolbar" to 0xFF20A39E)),
+    Design("Sorbet", 0xFFFFD6E0, 0xFFFFF4E6, 0xFFFFB3C7, 0xFFFF8C42, 0xFF5A2A3A, parts = mapOf("space" to 0xFFC7F0D8, "toolbar" to 0xFFFFC2D4)),
+    Design("Blueberry", 0xFF2F3E9E, 0xFFE8EAFF, 0xFF8C9EFF, 0xFFFF6F91, 0xFF1A2160, parts = mapOf("space" to 0xFFB39DFF, "toolbar" to 0xFF26337F, "toolbarIcons" to 0xFFE8EAFF)),
+    Design("Banana split", 0xFFFFF3B0, 0xFFFFFFFF, 0xFFF6C1D1, 0xFF8B5A3C, 0xFF5A3A1A, parts = mapOf("space" to 0xFFFFE08A, "toolbar" to 0xFFF6C1D1)),
+    Design("Flamingo", 0xFFFF7EB3, 0xFFFFE3EE, 0xFFFFB3D1, 0xFF2EC4B6, 0xFF7A1E48, parts = mapOf("space" to 0xFFFFFFFF, "toolbar" to 0xFFFF5C9E)),
+    Design("Mango", 0xFFFFB347, 0xFFFFF1D6, 0xFFFFD27F, 0xFFE8590C, 0xFF5A2E00, parts = mapOf("space" to 0xFF8BD17C, "toolbar" to 0xFFFF9F1C)),
+    Design("Kiwi", 0xFF8BC34A, 0xFFF1F8E0, 0xFF6D4C41, 0xFF6D4C41, 0xFF2E3B10, parts = mapOf("space" to 0xFFDCE775, "toolbar" to 0xFF7CB342, "specialText" to 0xFFFFFFFF)),
+    Design("Cherry blossom", 0xFFFFE4EC, 0xFFFFFFFF, 0xFFF8C8D8, 0xFFD81B60, 0xFF6D2840, parts = mapOf("space" to 0xFFC8E6C9, "toolbar" to 0xFFF8BBD0)),
+    Design("Aurora", 0xFF0F2A3D, 0xFF1B4D5C, 0xFF2A3F7A, 0xFF6BFFB8, 0xFFE6FFF5, parts = mapOf("space" to 0xFF2E8A7A, "toolbar" to 0xFF3B2A6B)),
+    Design("Neon lime", 0xFF121212, 0xFF1E2A12, 0xFF2A3A18, 0xFFC6FF00, 0xFFC6FF00, parts = mapOf("space" to 0xFF00E5FF, "toolbar" to 0xFF1E2A12, "spaceText" to 0xFF121212)),
+    Design("Electric blue", 0xFF0A0F2C, 0xFF13205A, 0xFF1C2E7A, 0xFF00E5FF, 0xFF9CF6FF, parts = mapOf("space" to 0xFFFF4FD8, "toolbar" to 0xFF13205A, "spaceText" to 0xFFFFFFFF)),
+    Design("Candy cane", 0xFFFFEBEE, 0xFFFFFFFF, 0xFFE53935, 0xFF2E7D32, 0xFFB71C1C, parts = mapOf("space" to 0xFFC8E6C9, "toolbar" to 0xFFFFCDD2, "specialText" to 0xFFFFFFFF)),
+    Design("Rainbow sherbet", 0xFFFFF0F5, 0xFFFFFFFF, 0xFFB3E5FC, 0xFFFFB74D, 0xFF5E35B1, parts = mapOf("space" to 0xFFFFF59D, "toolbar" to 0xFFC8E6C9)),
+    Design("Pistachio", 0xFFDCEDC8, 0xFFF9FBE7, 0xFFAED581, 0xFF689F38, 0xFF33691E, parts = mapOf("space" to 0xFFF8BBD0, "toolbar" to 0xFFC5E1A5)),
+    Design("Coral reef", 0xFFFF7F50, 0xFFFFF0E8, 0xFF40C4C4, 0xFF00838F, 0xFF7A2E14, parts = mapOf("space" to 0xFFFFD166, "toolbar" to 0xFFFF6A3D)),
+    Design("Royal", 0xFF311B92, 0xFF4527A0, 0xFF1A0F5C, 0xFFFFD54F, 0xFFFFF8E1, parts = mapOf("space" to 0xFF7E57C2, "toolbar" to 0xFF1A0F5C)),
+    Design("Strawberry milk", 0xFFFFCDD2, 0xFFFFF5F7, 0xFFFF8A9A, 0xFFE91E63, 0xFF6A1B3A, parts = mapOf("space" to 0xFFFFFFFF, "toolbar" to 0xFFFFB3BF)),
+    Design("Blue raspberry", 0xFF1E88E5, 0xFFE3F2FD, 0xFF90CAF9, 0xFFFF4081, 0xFF0D47A1, parts = mapOf("space" to 0xFFFFF176, "toolbar" to 0xFF1976D2, "toolbarIcons" to 0xFFFFFFFF)),
+    Design("Seafoam", 0xFFB2DFDB, 0xFFF0FFFC, 0xFF80CBC4, 0xFF00897B, 0xFF004D40, parts = mapOf("space" to 0xFFFFCCBC, "toolbar" to 0xFFA0D6D0)),
+    Design("Sunflower", 0xFFFFC107, 0xFFFFF8E1, 0xFF6D4C41, 0xFF6D4C41, 0xFF3E2723, parts = mapOf("space" to 0xFFAED581, "toolbar" to 0xFFFFB300, "specialText" to 0xFFFFFFFF)),
+    Design("Hot pink", 0xFF1A1A1A, 0xFFFF2E93, 0xFFB0005E, 0xFFFFFFFF, 0xFFFFFFFF, parts = mapOf("space" to 0xFF7B2FF7, "toolbar" to 0xFF2A0A1C)),
+    Design("Pastel dream", 0xFFE1F5FE, 0xFFFFFFFF, 0xFFF3E5F5, 0xFFB39DDB, 0xFF5C6BC0, parts = mapOf("space" to 0xFFFFF9C4, "toolbar" to 0xFFFCE4EC)),
+    Design("Retro wave", 0xFF2B1055, 0xFF3D1A78, 0xFF7B2FF7, 0xFFFF6EC7, 0xFFFFE3F6, parts = mapOf("space" to 0xFF00D1FF, "toolbar" to 0xFF1E0B3F, "spaceText" to 0xFF2B1055)),
 )
 
 /** Colours to choose from in the editor. */
@@ -208,7 +227,7 @@ private fun savePicture(ctx: Context, uri: android.net.Uri): Boolean = runCatchi
 @Composable
 fun DesignScreen(onClickBack: () -> Unit) {
     val ctx = LocalContext.current
-    var draft by remember { mutableStateOf(decode(ctx.prefs().getString(PREF_DRAFT, null)) ?: presets[0]) }
+    var draft by remember { mutableStateOf(decode(ctx.prefs().getString(PREF_DRAFT, null)) ?: defaultDesign) }
     val undo = remember { mutableStateListOf<Design>() }
     val redo = remember { mutableStateListOf<Design>() }
     var tab by remember { mutableStateOf(0) }
@@ -235,7 +254,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
     }
 
     if (naming) {
-        var name by remember { mutableStateOf(if (draft.name in presets.map { it.name }) "My design" else draft.name) }
+        var name by remember { mutableStateOf(if (draft.name in presets.map { it.name } || draft.name == defaultDesign.name) "My design" else draft.name) }
         AlertDialog(onDismissRequest = { naming = false },
             title = { Text("Save your design") },
             text = { Column {
@@ -266,7 +285,7 @@ fun DesignScreen(onClickBack: () -> Unit) {
                     onClick = { redo.add(draft); draft = undo.removeAt(undo.lastIndex); saved = false }) { Text("↶", fontSize = 20.sp) }
                 OutlinedButton(enabled = redo.isNotEmpty(), contentPadding = PaddingValues(horizontal = 12.dp),
                     onClick = { undo.add(draft); draft = redo.removeAt(redo.lastIndex); saved = false }) { Text("↷", fontSize = 20.sp) }
-                OutlinedButton(onClick = { change(presets[0]) }) { Text("Reset") }
+                OutlinedButton(onClick = { change(defaultDesign) }) { Text("Reset") }
                 Spacer(Modifier.weight(1f))
                 Button(onClick = { naming = true }) { Text(if (saved) "Saved ✓" else "Save") }
             }
