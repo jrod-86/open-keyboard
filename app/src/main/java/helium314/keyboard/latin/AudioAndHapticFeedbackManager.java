@@ -30,6 +30,7 @@ public final class AudioAndHapticFeedbackManager {
     private SettingsValues mSettingsValues;
     private boolean mSoundOn;
     private boolean mDoNotDisturb;
+    private Context mContext;
 
     private static final AudioAndHapticFeedbackManager sInstance =
             new AudioAndHapticFeedbackManager();
@@ -47,6 +48,7 @@ public final class AudioAndHapticFeedbackManager {
     }
 
     private void initInternal(final Context context) {
+        mContext = context.getApplicationContext();
         mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         mVibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
     }
@@ -88,6 +90,16 @@ public final class AudioAndHapticFeedbackManager {
         }
         if (hapticEvent != HapticEvent.KEY_PRESS) {
             return;
+        }
+        // Open Keyboard: chosen key sound pack
+        if (mContext != null) {
+            final KeySounds.Kind kind = switch (code) {
+                case KeyCode.DELETE -> KeySounds.Kind.DELETE;
+                case Constants.CODE_ENTER -> KeySounds.Kind.ENTER;
+                case Constants.CODE_SPACE -> KeySounds.Kind.SPACE;
+                default -> KeySounds.Kind.STANDARD;
+            };
+            if (KeySounds.INSTANCE.play(mContext, kind, mSettingsValues.mKeypressSoundVolume, KeySounds.INSTANCE.pack(mContext))) return;
         }
         final int sound = switch (code) {
             case KeyCode.DELETE -> AudioManager.FX_KEYPRESS_DELETE;

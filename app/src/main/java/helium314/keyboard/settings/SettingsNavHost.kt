@@ -111,7 +111,11 @@ fun SettingsNavHost(
         }
         composable(SettingsDestination.Theme) {
             helium314.keyboard.settings.screens.ThemeScreen(onClickBack = ::goBack,
-                onClickCustom = { navController.navigate(SettingsDestination.Appearance) })
+                onClickCustom = { navController.navigate(SettingsDestination.Appearance) },
+                onClickDesign = { navController.navigate(SettingsDestination.Design) })
+        }
+        composable(SettingsDestination.Design) {
+            helium314.keyboard.settings.screens.DesignScreen(onClickBack = ::goBack)
         }
         composable(SettingsDestination.Appearance) {
             AppearanceScreen(onClickBack = ::goBack)
@@ -162,6 +166,7 @@ object SettingsDestination {
     const val Debug = "debug"
     const val Appearance = "appearance"
     const val Theme = "theme"
+    const val Design = "design"
     const val Colors = "colors/"
     const val ColorsNight = "colors_night/"
     const val PersonalDictionaries = "personal_dictionaries"

@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,7 +67,7 @@ private fun c(hex: String) = Color(android.graphics.Color.parseColor(hex))
 
 /** Gboard-style theme picker: tap a tile to use it. */
 @Composable
-fun ThemeScreen(onClickBack: () -> Unit, onClickCustom: () -> Unit) {
+fun ThemeScreen(onClickBack: () -> Unit, onClickCustom: () -> Unit, onClickDesign: () -> Unit = {}) {
     val ctx = LocalContext.current
     val prefs = ctx.prefs()
     var selected by remember { mutableStateOf(prefs.getString(PREF_SELECTED_TILE, "system_auto")) }
@@ -140,6 +141,9 @@ fun ThemeScreen(onClickBack: () -> Unit, onClickCustom: () -> Unit) {
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Theme", settings = emptyList()) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Button(onClick = onClickDesign, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                Text("🎨  Design studio: ready-made designs, your own colours, key sounds")
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AddTile("Custom colours", onClickCustom, Modifier.weight(1f))
                 AddTile("Your photo", {
