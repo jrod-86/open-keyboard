@@ -13,3 +13,6 @@ the catalog.
 The Go gopher was designed by Renee French and is licensed CC BY 4.0.
 
 To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in `catalog.json`.
+
+## Mochi
+20 stickers drawn for Open Keyboard. CC0 (public domain).
