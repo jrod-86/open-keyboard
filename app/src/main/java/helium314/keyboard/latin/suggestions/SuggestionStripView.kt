@@ -226,7 +226,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         suggestionsStrip.layoutDirection = newLayoutDirection
     }
 
-    fun setToolbarVisibility(toolbarVisible: Boolean) {
+    fun setToolbarVisibility(visible: Boolean) {
+        // Open Keyboard: never leave the bar empty. With no word suggestions, show the buttons like Gboard.
+        val toolbarVisible = visible || barWouldBeEmpty()
         pinnedKeys.isVisible = true // Open Keyboard: keep the mic at the right, like Gboard
         suggestionsStrip.isVisible = !toolbarVisible
         toolbarContainer.isVisible = toolbarVisible
@@ -249,7 +251,12 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         )
         isExternalSuggestionVisible = false
         updateKeys()
+        if (barWouldBeEmpty()) setToolbarVisibility(true)
     }
+
+    /** True when hiding the buttons would leave an empty bar (no words and no clipboard chip to show). */
+    private fun barWouldBeEmpty() = !isExternalSuggestionVisible && suggestedWords.isEmpty()
+        && Settings.getValues().mToolbarMode == ToolbarMode.EXPANDABLE
 
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {
         clear()
