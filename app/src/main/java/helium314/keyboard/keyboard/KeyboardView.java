@@ -307,6 +307,7 @@ public class KeyboardView extends View {
             for (final Key key : keyboard.getSortedKeys()) {
                 onDrawKey(key, canvas, paint);
             }
+            if (mFxRunning) drawKeyEffectsOver(canvas, keyboard);
         } else {
             for (final Key key : mInvalidatedKeys) {
                 if (!keyboard.hasKey(key)) {
@@ -399,6 +400,18 @@ public class KeyboardView extends View {
             final float x = k.getDrawX() + getPaddingLeft(), y = k.getY() + getPaddingTop();
             mFxRect.set(x, y, x + k.getDrawWidth(), y + k.getHeight());
             e.drawAround(canvas, a.getAround(), mFxRect, e.progress(a, now), a.getSeed(), density);
+        }
+    }
+
+    private void drawKeyEffectsOver(@NonNull final Canvas canvas, @NonNull final Keyboard keyboard) {
+        final helium314.keyboard.keyboard.internal.KeyEffects e = helium314.keyboard.keyboard.internal.KeyEffects.INSTANCE;
+        final long now = android.os.SystemClock.uptimeMillis();
+        for (final helium314.keyboard.keyboard.internal.KeyEffects.Anim a : e.all()) {
+            if (!e.isBigGlow(a.getAround()) || !(a.getKey() instanceof Key) || !keyboard.hasKey((Key) a.getKey())) continue;
+            final Key k = (Key) a.getKey();
+            final float x = k.getDrawX() + getPaddingLeft(), y = k.getY() + getPaddingTop();
+            mFxRect.set(x, y, x + k.getDrawWidth(), y + k.getHeight());
+            e.drawBigGlow(canvas, a.getAround(), mFxRect, e.progress(a, now), a.getSeed(), true);
         }
     }
 

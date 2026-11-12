@@ -32,7 +32,8 @@ object KeyEffects {
     const val PREF_COLOR = "open_keyboard_fx_color"
     const val PREF_MOTION = "open_keyboard_fx_motion"
 
-    val around = listOf("none" to "None", "glow" to "Glow", "splash" to "Splash", "corners" to "Corner bloom",
+    val around = listOf("none" to "None", "spotlight" to "Spotlight", "twotone" to "Two-tone glow", "pulse" to "Light pulse", "neon" to "Neon glow",
+        "rainbowglow" to "Rainbow glow", "sunburst" to "Sunburst", "rowlight" to "Row light", "fireflies" to "Fireflies", "glow" to "Glow", "splash" to "Splash", "corners" to "Corner bloom",
         "halo" to "Halo", "bubbles" to "Bubbles", "paws" to "Paw prints", "petals" to "Petals")
     val colors = listOf("none" to "None", "watercolour" to "Watercolour", "flash" to "Colour flash", "ring" to "Glow ring",
         "paw" to "Paw print", "gradient" to "Gradient", "rainbow" to "Rainbow", "drop" to "Ink drop", "heart" to "Heart")
@@ -94,6 +95,7 @@ object KeyEffects {
     /** Colour that spills out around the key [r]. Drawn behind the keys. */
     fun drawAround(c: Canvas, id: String, r: RectF, t: Float, seed: Int, density: Float) {
         if (id == "none" || t >= 1f) return
+        if (isBigGlow(id)) { drawBigGlow(c, id, r, t, seed, false); return }
         reset()
         val e = env(t); val g = ease(t)
         val radius = min(r.width(), r.height()) * 0.22f
@@ -160,6 +162,105 @@ object KeyEffects {
             }
         }
         paint.maskFilter = null
+    }
+
+    /** Effects that light up a big patch of the keyboard, keys included. */
+    fun isBigGlow(id: String) = id in bigGlows
+    private val bigGlows = setOf("spotlight", "twotone", "pulse", "neon", "rainbowglow", "sunburst", "rowlight", "fireflies")
+    private val neonColors = intArrayOf(0xFF00F0FF.toInt(), 0xFFFF2BD6.toInt(), 0xFF39FF14.toInt(), 0xFFFFE600.toInt(), 0xFFFF6A00.toInt(), 0xFF7A5CFF.toInt())
+
+    /** Big soft light from the key [r], spreading over neighbouring keys. [over] is the pass drawn on top of the keys. */
+    fun drawBigGlow(c: Canvas, id: String, r: RectF, t: Float, seed: Int, over: Boolean) {
+        if (!isBigGlow(id) || t >= 1f) return
+        reset()
+        val fade = if (t < 0.08f) t / 0.08f else ((1f - t) / 0.92f).coerceAtLeast(0f)
+        val base = maxOf(r.width(), r.height())
+        val strength = if (over) 0.45f else 0.95f
+        if (over) paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
+        val cx = r.centerX(); val cy = r.centerY()
+        when (id) {
+            "spotlight" -> {
+                val rad = base * (1.6f + 1.4f * ease(t))
+                val col = color(seed)
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(col, strength * fade), alpha(col, strength * fade * 0.55f), alpha(col, 0f)),
+                    floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, rad, paint)
+            }
+            "twotone" -> {
+                val rad = base * (1.5f + 1.3f * ease(t))
+                val off = base * 0.45f
+                for (i in 0 until 2) {
+                    val col = color(seed, i * 2)
+                    val x = cx + if (i == 0) -off else off
+                    paint.shader = RadialGradient(x, cy, rad, intArrayOf(alpha(col, strength * fade), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                    c.drawCircle(x, cy, rad, paint)
+                }
+            }
+            "pulse" -> {
+                val rad = base * (0.6f + 3.2f * ease(t))
+                val col = color(seed)
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(col, 0f), alpha(col, 0f), alpha(col, strength * fade), alpha(col, 0f)),
+                    floatArrayOf(0f, 0.55f, 0.8f, 1f), Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, rad, paint)
+                paint.shader = RadialGradient(cx, cy, base, intArrayOf(alpha(col, strength * fade), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, base, paint)
+            }
+            "neon" -> {
+                val rad = base * (1.4f + 1.2f * ease(t))
+                val col = neonColors[Math.floorMod(seed, neonColors.size)]
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(Color.WHITE, strength * fade * 0.9f), alpha(col, strength * fade), alpha(col, strength * fade * 0.35f), alpha(col, 0f)),
+                    floatArrayOf(0f, 0.18f, 0.55f, 1f), Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, rad, paint)
+            }
+            "rainbowglow" -> {
+                val rad = base * (1.6f + 1.4f * ease(t))
+                val cols = intArrayOf(0xFFFF5E5E.toInt(), 0xFFFFC94D.toInt(), 0xFF5EE07A.toInt(), 0xFF4DB8FF.toInt(), 0xFFB36BFF.toInt(), 0xFFFF5E5E.toInt())
+                paint.shader = SweepGradient(cx, cy, cols.map { alpha(it, strength * fade) }.toIntArray(), null)
+                c.save(); c.rotate(200 * t + (seed % 360), cx, cy)
+                // soften the edge with a second, see-through-at-the-rim pass
+                c.drawCircle(cx, cy, rad * 0.55f, paint)
+                c.restore()
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(color(seed), strength * fade * 0.6f), alpha(color(seed), 0f)), null, Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, rad, paint)
+            }
+            "sunburst" -> {
+                val rad = base * (1.2f + 2.2f * ease(t))
+                val col = color(seed)
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(col, strength * fade), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                c.save(); c.rotate(40 * t + (seed % 30), cx, cy)
+                for (i in 0 until 12) {
+                    c.rotate(30f, cx, cy)
+                    path.reset(); path.moveTo(cx, cy)
+                    path.lineTo(cx + rad, cy - rad * 0.12f); path.lineTo(cx + rad, cy + rad * 0.12f); path.close()
+                    c.drawPath(path, paint)
+                }
+                c.restore()
+                c.drawCircle(cx, cy, base * 0.8f, paint)
+            }
+            "rowlight" -> {
+                val col = color(seed)
+                val w = base * (1.5f + 6f * ease(t))
+                paint.shader = LinearGradient(cx - w, cy, cx + w, cy, intArrayOf(alpha(col, 0f), alpha(col, strength * fade), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                tmp.set(cx - w, r.top - r.height() * 0.2f, cx + w, r.bottom + r.height() * 0.2f)
+                c.drawRect(tmp, paint)
+            }
+            "fireflies" -> {
+                val rad = base * (1.3f + 0.8f * ease(t))
+                val col = 0xFFFFE27A.toInt()
+                paint.shader = RadialGradient(cx, cy, rad, intArrayOf(alpha(col, strength * fade * 0.6f), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                c.drawCircle(cx, cy, rad, paint)
+                paint.shader = null
+                for (i in 0 until 9) {
+                    val ang = rnd(seed, i) * 2 * PI
+                    val dist = base * (0.4f + 2.2f * rnd(seed, i + 30)) * (0.3f + 0.7f * ease(t))
+                    val x = cx + (cos(ang) * dist).toFloat(); val y = cy + (sin(ang) * dist * 0.7f).toFloat()
+                    val dot = base * 0.09f
+                    paint.shader = RadialGradient(x, y, dot * 2, intArrayOf(alpha(col, fade), alpha(col, 0f)), null, Shader.TileMode.CLAMP)
+                    c.drawCircle(x, y, dot * 2, paint)
+                }
+            }
+        }
+        paint.shader = null; paint.xfermode = null
     }
 
     /** a point on the key's outline; f goes once around */

@@ -44,6 +44,7 @@ class KeyEffectDemoView(context: Context) : View(context) {
         textPaint.textSize = size * 0.38f
         canvas.drawText("A", r.centerX(), r.centerY() - (textPaint.descent() + textPaint.ascent()) / 2, textPaint)
         canvas.restore()
+        if (kind == "around") e.drawBigGlow(canvas, effectId, r, t, seed, true)
         if (effectId != "none") postInvalidateOnAnimation()
     }
 }
