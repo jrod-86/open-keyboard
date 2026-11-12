@@ -1434,13 +1434,10 @@ public class LatinIME extends InputMethodService implements
                 ? currentSettings.mPunctuationSuggestions
                 : SuggestedWords.getEmptyInstance();
         setSuggestedWords(neutralSuggestions);
+        // Open Keyboard: like Gboard, show the buttons whenever there are no word suggestions,
+        // not only at the start of the text
         if (hasSuggestionStripView() && currentSettings.mAutoShowToolbar) {
-            final int codePointBeforeCursor = mInputLogic.mConnection.getCodePointBeforeCursor();
-            if (mInputLogic.mConnection.hasSelection()
-                    || codePointBeforeCursor == Constants.NOT_A_CODE
-                    || codePointBeforeCursor == Constants.CODE_ENTER) {
-                mSuggestionStripView.setToolbarVisibility(true);
-            }
+            mSuggestionStripView.setToolbarVisibility(true);
         }
     }
 

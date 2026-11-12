@@ -20,9 +20,8 @@ Gboard-style voice typing built in, powered by [sherpa-onnx](https://github.com/
 
 ## Stickers and GIFs
 
-Tap the sticker button above the keys for the built-in stickers (offline). GIFs come from
-[KLIPY](https://klipy.com), an online GIF service, and are off until you switch them on and add a
-free KLIPY API key under Settings → Stickers and GIFs.
+Stickers and GIFs come from [KLIPY](https://klipy.com), an online service. They are off until you
+switch them on and add a free KLIPY API key under Settings → Stickers and GIFs.
 
 ## Setting up voice typing
 
@@ -54,7 +53,6 @@ It includes code under other compatible licences, kept with their notices:
 | HeliBoard icon artwork | CC-BY-SA-4.0 (`LICENSE-CC-BY-SA-4.0`) | https://github.com/HeliBorg/HeliBoard |
 | sherpa-onnx (speech engine) | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | ONNX Runtime (inside sherpa-onnx) | MIT | https://github.com/microsoft/onnxruntime |
-| Sticker artwork: Microsoft Fluent Emoji 3D (`assets/stickers`) | MIT (`LICENSE-MIT-FLUENT-EMOJI`) | https://github.com/microsoft/fluentui-emoji |
 | GTCRN noise remover (`assets/gtcrn_simple.onnx`) | MIT (`LICENSE-MIT-GTCRN`) | https://github.com/Xiaobin-Rong/gtcrn |
 
 Speech models are not bundled; the app downloads them when you ask it to:

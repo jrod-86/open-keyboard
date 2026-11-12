@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
@@ -117,47 +116,22 @@ object MediaPanel {
         column.addView(header)
 
         val grid = GridLayout(context).apply {
-            columnCount = if (gifs) 3 else 5
+            columnCount = if (gifs) 3 else 4
             setPadding(dp(context, 4f), 0, dp(context, 4f), dp(context, 4f))
         }
         val scroll = ScrollView(context).apply { addView(grid) }
 
-        if (!gifs) {
-            val ime = ime(context)
-            Stickers.list(context).forEach { name ->
-                val view = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    val p = dp(context, 6f); setPadding(p, p, p, p)
-                    contentDescription = name.removeSuffix(".png").replace('_', ' ')
-                    setOnClickListener {
-                        if (ime != null) MediaSender.sendSticker(ime, name)
-                        KeyboardMenu.hide()
-                    }
-                }
-                grid.addView(view, GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f))
-                    .apply { width = 0; height = dp(context, 64f) })
-                loader.execute {
-                    val bmp = runCatching {
-                        context.assets.open("stickers/$name").use {
-                            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = 2 })
-                        }
-                    }.getOrNull()
-                    main.post { if (gen == generation) view.setImageBitmap(bmp) }
-                }
-            }
-            column.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            column.addView(footer(context, "Stickers: Microsoft Fluent Emoji (MIT licence)", text))
-        } else if (!MediaPrefs.gifsReady(context)) {
+        if (!MediaPrefs.gifsReady(context)) {
             val box = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(context, 24f), dp(context, 8f), dp(context, 24f), dp(context, 8f))
                 addView(TextView(context).apply {
-                    this.text = "GIF search is off. It uses the free KLIPY service online, so it only runs if you switch it on."
+                    this.text = "Stickers and GIFs come from the free KLIPY service online, so they only load if you switch them on."
                     setTextColor(text); gravity = Gravity.CENTER
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 })
-                addView(pill("Set up GIFs", true) {
+                addView(pill("Set up stickers and GIFs", true) {
                     KeyboardMenu.hide()
                     context.startActivity(Intent(context, GifSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 })
@@ -166,7 +140,7 @@ object MediaPanel {
         } else {
             val chipRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(context, 4f), 0, dp(context, 4f), 0) }
             categories.forEach { (label, query) ->
-                chipRow.addView(pill(label, query == lastQuery) { lastQuery = query; show(context, true) })
+                chipRow.addView(pill(label, query == lastQuery) { lastQuery = query; show(context, gifs) })
             }
             column.addView(HorizontalScrollView(context).apply {
                 isHorizontalScrollBarEnabled = false
@@ -182,24 +156,29 @@ object MediaPanel {
             val query = lastQuery
             val ime = ime(context)
             loader.execute {
-                val result = runCatching { Klipy.gifs(context, query) }
+                val result = runCatching { Klipy.gifs(context, query, stickers = !gifs) }
                 main.post {
                     if (gen != generation) return@post
                     val list = result.getOrNull()
                     if (list == null) {
                         Log.e("MediaPanel", "GIF loading failed", result.exceptionOrNull())
-                        status.text = "Couldn't load GIFs. Check your internet and your KLIPY key in settings."
+                        status.text = "Couldn't load ${if (gifs) "GIFs" else "stickers"}. Check your internet and your KLIPY key in settings."
                         return@post
                     }
-                    if (list.isEmpty()) { status.text = "No GIFs found"; return@post }
+                    if (list.isEmpty()) { status.text = "Nothing found"; return@post }
                     status.visibility = View.GONE
                     list.forEach { gif ->
                         val view = ImageView(context).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                            background = GradientDrawable().apply { cornerRadius = dp(context, 8f).toFloat(); setColor(tile) }
-                            clipToOutline = true
+                            if (gifs) {
+                                scaleType = ImageView.ScaleType.CENTER_CROP
+                                background = GradientDrawable().apply { cornerRadius = dp(context, 8f).toFloat(); setColor(tile) }
+                                clipToOutline = true
+                            } else {
+                                scaleType = ImageView.ScaleType.FIT_CENTER
+                                val p = dp(context, 4f); setPadding(p, p, p, p)
+                            }
                             setOnClickListener {
-                                if (ime != null) MediaSender.sendGif(ime, gif)
+                                if (ime != null) MediaSender.sendGif(ime, gif, sticker = !gifs)
                                 KeyboardMenu.hide()
                             }
                         }

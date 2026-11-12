@@ -61,17 +61,13 @@ private fun GifSetupScreen(onBack: () -> Unit) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                "Stickers are built into the keyboard and work offline. Tap the sticker button above the keys to use them.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("GIF search", style = MaterialTheme.typography.titleMedium)
+                            Text("Stickers and GIFs", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "GIFs come from KLIPY, a free online GIF service. When this is on, the GIF categories you tap " +
+                                "Stickers and GIFs come from KLIPY, a free online service. When this is on, the categories you tap " +
                                         "are sent to KLIPY with a random ID. Nothing else you type is sent.",
                                 style = MaterialTheme.typography.bodySmall,
                             )

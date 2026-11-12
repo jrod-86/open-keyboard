@@ -42,32 +42,20 @@ object MediaPrefs {
     }
 }
 
-/** Free-licence stickers shipped in the app (Microsoft Fluent Emoji 3D, MIT licence). */
-object Stickers {
-    fun list(ctx: Context): List<String> =
-        (ctx.assets.list("stickers") ?: emptyArray()).filter { it.endsWith(".png") }.sorted()
-            .sortedBy { order.indexOf(it.removeSuffix(".png")).let { i -> if (i < 0) 999 else i } }
-
-    private val order = listOf(
-        "face_with_tears_of_joy", "rolling_on_the_floor_laughing", "smiling_face_with_heart_eyes", "red_heart",
-        "thumbs_up", "fire", "party_popper", "pleading_face", "loudly_crying_face", "face_blowing_a_kiss",
-        "winking_face", "smiling_face_with_sunglasses", "thinking_face", "face_with_rolling_eyes", "clapping_hands",
-        "folded_hands", "hundred_points", "sparkles", "star_struck", "partying_face",
-    )
-}
-
-data class Gif(val id: String, val previewUrl: String, val sendUrl: String, val width: Int, val height: Int)
+data class Gif(val id: String, val previewUrl: String, val sendUrl: String, val pngUrl: String?, val width: Int, val height: Int)
 
 /** Talks to the KLIPY GIF API (https://docs.klipy.com). Only used when the user turns GIFs on. */
 object Klipy {
     private const val BASE = "https://api.klipy.com/api/v1/"
 
     /** Trending GIFs when [query] is null, otherwise a search. Runs on the calling (background) thread. */
-    fun gifs(ctx: Context, query: String?): List<Gif> {
+    fun gifs(ctx: Context, query: String?, stickers: Boolean = false): List<Gif> {
         val key = MediaPrefs.klipyKey(ctx)
-        val params = "per_page=30&customer_id=${MediaPrefs.customerId(ctx)}&content_filter=medium&format_filter=gif"
-        val url = if (query == null) "$BASE$key/gifs/trending?$params"
-            else "$BASE$key/gifs/search?q=${URLEncoder.encode(query, "UTF-8")}&$params"
+        val kind = if (stickers) "stickers" else "gifs"
+        val formats = if (stickers) "gif,png" else "gif"
+        val params = "per_page=30&customer_id=${MediaPrefs.customerId(ctx)}&content_filter=medium&format_filter=$formats"
+        val url = if (query == null) "$BASE$key/$kind/trending?$params"
+            else "$BASE$key/$kind/search?q=${URLEncoder.encode(query, "UTF-8")}&$params"
         val json = JSONObject(String(download(url)))
         val items = json.getJSONObject("data").getJSONArray("data")
         return (0 until items.length()).mapNotNull { i ->
@@ -76,7 +64,8 @@ object Klipy {
                 val file = item.getJSONObject("file")
                 val sm = file.getJSONObject("sm").getJSONObject("gif")
                 val md = file.optJSONObject("md")?.optJSONObject("gif") ?: sm
-                Gif(item.get("id").toString(), sm.getString("url"), md.getString("url"), sm.optInt("width"), sm.optInt("height"))
+                val png = file.optJSONObject("md")?.optJSONObject("png")?.optString("url")?.takeIf { it.isNotEmpty() }
+                Gif(item.get("id").toString(), sm.getString("url"), md.getString("url"), png, sm.optInt("width"), sm.optInt("height"))
             }.getOrNull()
         }
     }
@@ -107,27 +96,23 @@ object MediaSender {
     private val io = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
 
-    fun sendSticker(ime: InputMethodService, assetName: String) {
+    /** Sends a GIF, or a sticker (animated if the app takes GIFs, otherwise a still PNG with a clear background). */
+    fun sendGif(ime: InputMethodService, gif: Gif, sticker: Boolean = false) {
+        val accepted = ime.currentInputEditorInfo?.let { EditorInfoCompat.getContentMimeTypes(it) } ?: emptyArray()
+        val takesGif = accepted.any { ClipDescription.compareMimeTypes("image/gif", it) }
+        val usePng = sticker && gif.pngUrl != null && !takesGif
+        val url = if (usePng) gif.pngUrl!! else gif.sendUrl
+        val mime = if (usePng) "image/png" else "image/gif"
+        val label = if (sticker) "Sticker" else "GIF"
         io.execute {
             val file = runCatching {
-                val f = File(mediaDir(ime), "sticker_$assetName")
-                if (!f.isFile) ime.assets.open("stickers/$assetName").use { input -> f.outputStream().use { input.copyTo(it) } }
+                val f = File(mediaDir(ime), "${label.lowercase()}_${gif.id.filter { it.isLetterOrDigit() }}.${if (usePng) "png" else "gif"}")
+                if (!f.isFile) f.writeBytes(Klipy.download(url))
                 f
-            }.getOrNull()
-            main.post { if (file != null) commit(ime, file, "image/png", "Sticker", null) }
-        }
-    }
-
-    fun sendGif(ime: InputMethodService, gif: Gif) {
-        io.execute {
-            val file = runCatching {
-                val f = File(mediaDir(ime), "gif_${gif.id.filter { it.isLetterOrDigit() }}.gif")
-                if (!f.isFile) f.writeBytes(Klipy.download(gif.sendUrl))
-                f
-            }.onFailure { Log.e("MediaSender", "gif download failed", it) }.getOrNull()
+            }.onFailure { Log.e("MediaSender", "download failed", it) }.getOrNull()
             main.post {
-                if (file == null) toast(ime, "Couldn't download that GIF")
-                else commit(ime, file, "image/gif", "GIF", Uri.parse(gif.sendUrl))
+                if (file == null) toast(ime, "Couldn't download that ${label.lowercase()}")
+                else commit(ime, file, mime, label, Uri.parse(url))
             }
         }
     }
