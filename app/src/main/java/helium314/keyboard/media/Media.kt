@@ -201,10 +201,19 @@ object StickerPacks {
     }
 
     /** Imports a pack someone shared or downloaded as a .zip of pictures. Returns how many stickers were added. */
-    fun importZip(ctx: Context, name: String, uri: Uri): Int {
+    fun importZip(ctx: Context, name: String, uri: Uri): Int =
+        ctx.contentResolver.openInputStream(uri)!!.use { importZip(ctx, name, it, null) }
+
+    /** Store packs remember their id, so the store can show them as installed. */
+    fun storeId(pack: File) = File(pack, ".store_id").takeIf { it.isFile }?.readText()?.trim()
+
+    fun installedStoreIds(ctx: Context) = packs(ctx).mapNotNull { storeId(it) }.toSet()
+
+    fun importZip(ctx: Context, name: String, stream: java.io.InputStream, storeId: String?): Int {
         val dir = newPackDir(ctx, name)
+        if (storeId != null) File(dir, ".store_id").writeText(storeId)
         var count = 0
-        ctx.contentResolver.openInputStream(uri)!!.use { input ->
+        stream.let { input ->
             val zip = java.util.zip.ZipInputStream(input)
             while (true) {
                 val entry = zip.nextEntry ?: break

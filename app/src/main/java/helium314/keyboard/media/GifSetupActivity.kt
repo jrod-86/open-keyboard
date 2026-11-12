@@ -152,6 +152,7 @@ private fun GifSetupScreen(onBack: () -> Unit) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(enabled = !busy, onClick = { pickImages.launch("image/*") }) { Text("From photos") }
+                        OutlinedButton(onClick = { ctx.startActivity(Intent(ctx, StickerStoreActivity::class.java)) }) { Text("Store") }
                         OutlinedButton(enabled = !busy, onClick = { pickZip.launch(arrayOf("application/zip", "application/x-zip-compressed")) }) { Text("Import .zip") }
                     }
                     if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodySmall)

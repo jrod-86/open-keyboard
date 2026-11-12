@@ -130,12 +130,12 @@ object MediaPanel {
             if (packSource != null) pack = packs.firstOrNull { it.name == packSource }
             if (pack == null && (packSource != null || !MediaPrefs.gifsReady(context))) pack = packs.firstOrNull()
             val packRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(context, 4f), 0, dp(context, 4f), 0) }
+            packRow.addView(pill("🛍 Store", false) {
+                KeyboardMenu.hide()
+                context.startActivity(Intent(context, StickerStoreActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            })
             packRow.addView(pill("KLIPY", pack == null) { packSource = null; show(context, false) })
             packs.forEach { p -> packRow.addView(pill(p.name, p == pack) { packSource = p.name; show(context, false) }) }
-            packRow.addView(pill("+ My packs", false) {
-                KeyboardMenu.hide()
-                context.startActivity(Intent(context, GifSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            })
             column.addView(HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(packRow) })
         }
 
