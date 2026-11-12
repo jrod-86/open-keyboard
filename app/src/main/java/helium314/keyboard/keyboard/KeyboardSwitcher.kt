@@ -226,6 +226,17 @@ class KeyboardSwitcher private constructor() {
         val stripContainer = inputView.stripContainer
         val stripHeight = if (stripContainer.isShown) stripContainer.height else 0
         var visibleTopY = inputHeight - (if (visibleKeyboardView.isShown) visibleKeyboardView.height else 0) - stripHeight
+        // Open Keyboard: use where the top bar and keys actually are on screen, so every panel (emoji, clipboard)
+        // tells the app the right height and the app's text box is never left behind the keyboard
+        run {
+            val rootLoc = IntArray(2).also { inputView.root.getLocationInWindow(it) }
+            fun topOf(v: android.view.View) = IntArray(2).also { v.getLocationInWindow(it) }[1] - rootLoc[1]
+            val tops = listOfNotNull(
+                stripContainer.takeIf { it.isShown && it.height > 0 }?.let { topOf(it) },
+                visibleKeyboardView.takeIf { it.isShown && it.height > 0 }?.let { topOf(it) },
+            ).filter { it in 0 until inputHeight }
+            tops.minOrNull()?.let { visibleTopY = minOf(visibleTopY, it) }
+        }
         if (Settings.getValues().mIsFloatingKeyboard)
             visibleTopY = themeContext.resources.displayMetrics.heightPixels
 
