@@ -125,7 +125,8 @@ object TranslatePanel {
             setOnClickListener { onClick() }
         }
         fun row(): LinearLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        fun flow(items: List<TextView>) {
+        val mainColumn = column
+        fun flow(items: List<TextView>, column: LinearLayout = mainColumn) {
             // simple wrapping: rows of 3
             items.chunked(3).forEach { chunk ->
                 val r = row()
@@ -150,11 +151,37 @@ object TranslatePanel {
         column.addView(top)
 
         val recent = context.prefs().getString(PREF_RECENT, "")!!.split(",").filter { it.isNotBlank() }
-        fun ordered(list: List<String>) = recent.filter { it in list } + list.filter { it !in recent }
-        column.addView(label("From English into"))
-        flow(ordered(fromEnglish).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, "en", tag) } })
-        column.addView(label("Into English from"))
-        flow(ordered(intoEnglish).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, tag, "en") } })
+        fun ordered(list: List<String>) = recent.filter { it in list } + list.filter { it !in recent }.sortedBy { name(it) }
+
+        // A-Z strip to find a language quickly
+        val langs = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val letters = (fromEnglish + intoEnglish).map { name(it).first().uppercaseChar() }.toSortedSet()
+        val strip = row()
+        var chosen: Char? = null
+        val letterViews = mutableListOf<Pair<Char?, TextView>>()
+        fun render() {
+            langs.removeAllViews()
+            fun keep(tag: String) = chosen == null || name(tag).first().uppercaseChar() == chosen
+            langs.addView(label("From English into"))
+            flow(ordered(fromEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, "en", tag) } }, langs)
+            langs.addView(label("Into English from"))
+            flow(ordered(intoEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, tag, "en") } }, langs)
+            letterViews.forEach { (c, v) ->
+                (v.background as? GradientDrawable)?.setColor(if (c == chosen) ColorUtils.setAlphaComponent(accent, 110) else tile)
+            }
+        }
+        (listOf<Char?>(null) + letters).forEach { c ->
+            val v = pill(c?.toString() ?: "All") { chosen = c; render() }.apply {
+                setPadding(dp(context, 10f), dp(context, 6f), dp(context, 10f), dp(context, 6f))
+            }
+            letterViews += c to v
+            strip.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(context, 2f), dp(context, 4f), dp(context, 2f), dp(context, 4f))
+            })
+        }
+        column.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(strip) })
+        column.addView(langs)
+        render()
         column.addView(label("The first time you use a language it downloads once (about 20–50 MB). After that it works offline, and your text never leaves the phone."))
 
         KeyboardMenu.showOverlay(root)
