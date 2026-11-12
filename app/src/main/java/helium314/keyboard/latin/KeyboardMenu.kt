@@ -96,6 +96,9 @@ object KeyboardMenu {
             Item("Split", toolbarIcon(ToolbarKey.SPLIT)) { onCode(KeyCode.SPLIT_LAYOUT) },
             Item("Incognito", toolbarIcon(ToolbarKey.INCOGNITO)) { onCode(KeyCode.TOGGLE_INCOGNITO_MODE) },
             Item("Settings", toolbarIcon(ToolbarKey.SETTINGS)) { onCode(KeyCode.SETTINGS) },
+            Item("Switch keyboard", ownIcon(R.drawable.ic_ime_switcher)) {
+                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
+            },
         )
 
         val columns = 4
