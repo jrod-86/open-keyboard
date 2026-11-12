@@ -25,6 +25,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
+        appContext = applicationContext
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
 
@@ -62,6 +63,9 @@ class App : Application() {
     companion object {
         // used so JniUtils can access application once
         private var app: App? = null
+        // stays set, for code that can run before Settings.init finishes
+        @JvmStatic var appContext: Context? = null
+            private set
         fun getApp(): App? {
             val application = app
             app = null

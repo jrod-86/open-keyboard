@@ -6,6 +6,8 @@
 
 package helium314.keyboard.latin.settings;
 
+import helium314.keyboard.latin.App;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -537,7 +539,10 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     }
 
     public boolean isTablet() {
-        return mContext.getResources().getInteger(R.integer.config_screen_metrics) >= 3;
+        // Settings.init runs in parallel with SubtypeSettings.init at startup, so mContext can still be null here
+        final Context ctx = mContext != null ? mContext : App.getAppContext();
+        if (ctx == null) return false;
+        return ctx.getResources().getInteger(R.integer.config_screen_metrics) >= 3;
     }
 
     @SuppressLint("DiscouragedApi")
