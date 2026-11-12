@@ -101,29 +101,74 @@ object KeyboardMenu {
         return state.substringBefore(':') to key
     }
 
+    private const val PREF_MENU_ORDER = "open_keyboard_menu_order"
+    private var currentGrid: GridLayout? = null
+    private const val COLUMNS = 4
+    private const val ANIM_MS = 140L
+
+    private fun anim(v: View, tx: Float, ty: Float = 0f) {
+        v.animate().translationX(tx).translationY(ty).setDuration(ANIM_MS).start()
+    }
+
+    private fun resetAll(group: ViewGroup?) {
+        group ?: return
+        for (i in 0 until group.childCount) group.getChildAt(i).apply { animate().cancel(); translationX = 0f; translationY = 0f; alpha = 1f }
+    }
+
+    // ---- the top bar ----
+
+    /** Where along the bar a drop at [x] (in the strip) would go, among the bar buttons other than [key]. */
+    private fun barIndex(strip: View, toolbar: ViewGroup, x: Float, key: ToolbarKey): Int {
+        val loc = IntArray(2); strip.getLocationInWindow(loc)
+        val wx = x + loc[0]
+        var index = 0
+        for (i in 0 until toolbar.childCount) {
+            val c = toolbar.getChildAt(i)
+            if (c.tag == key) continue
+            val l = IntArray(2); c.getLocationInWindow(l)
+            if (wx > l[0] + c.width / 2) index++
+        }
+        return index
+    }
+
+    /** Slides the bar buttons apart to show where the dragged one would land. */
+    private fun previewBar(toolbar: ViewGroup, key: ToolbarKey, index: Int) {
+        val others = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.tag != key }
+        val n = others.size
+        val fromBar = (0 until toolbar.childCount).any { toolbar.getChildAt(it).tag == key }
+        val total = toolbar.width.toFloat().takeIf { it > 0 } ?: return
+        val oldSlots = toolbar.childCount
+        val newSlots = n + 1
+        others.forEachIndexed { j, v ->
+            val current = (0 until toolbar.childCount).indexOfFirst { toolbar.getChildAt(it) === v }
+            val slot = if (j < index) j else j + 1
+            val tx = (slot + 0.5f) * total / newSlots - (current + 0.5f) * total / oldSlots
+            anim(v, tx)
+        }
+        if (fromBar) (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0f
+    }
+
     /** Drops on the top bar: add a menu button to the bar, or move a bar button along it. */
     fun onBarDrag(strip: View, event: android.view.DragEvent, toolbar: ViewGroup): Boolean {
-        val (_, key) = dragged(event) ?: return false
+        val (from, key) = dragged(event) ?: return false
         when (event.action) {
-            android.view.DragEvent.ACTION_DRAG_ENTERED -> strip.alpha = 0.6f
-            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DRAG_ENDED -> strip.alpha = 1f
+            android.view.DragEvent.ACTION_DRAG_STARTED -> {
+                if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
+            }
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (key != ToolbarKey.VOICE) previewBar(toolbar, key, barIndex(strip, toolbar, event.x, key))
+            android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                resetAll(toolbar)
+                if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
+            }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> resetAll(toolbar)
             android.view.DragEvent.ACTION_DROP -> {
-                strip.alpha = 1f
+                val index = barIndex(strip, toolbar, event.x, key)
+                resetAll(toolbar)
                 val prefs = strip.context.prefs()
-                val bar = helium314.keyboard.latin.utils.getBarKeys(prefs).toMutableList()
+                val bar = helium314.keyboard.latin.utils.getBarKeys(prefs)
                 val hasMic = ToolbarKey.VOICE in bar || key == ToolbarKey.VOICE
                 val buttons = bar.filter { it != ToolbarKey.VOICE && it != key }.toMutableList()
                 if (key != ToolbarKey.VOICE) {
-                    // where along the bar it was dropped
-                    val loc = IntArray(2); strip.getLocationInWindow(loc)
-                    val x = event.x + loc[0]
-                    var index = 0
-                    for (i in 0 until toolbar.childCount) {
-                        val c = toolbar.getChildAt(i)
-                        if (c.tag == key) continue
-                        val l = IntArray(2); c.getLocationInWindow(l)
-                        if (x > l[0] + c.width / 2) index++
-                    }
                     buttons.add(index.coerceIn(0, buttons.size), key)
                     // a full bar pushes its last other button back into the menu
                     while (buttons.size > MAX_ON_BAR) buttons.removeAt(buttons.indexOfLast { it != key })
@@ -136,18 +181,69 @@ object KeyboardMenu {
         return true
     }
 
-    /** Drops on the menu: take a button off the bar. */
+    // ---- the menu grid ----
+
+    private fun cellSize(grid: GridLayout): Pair<Float, Float>? {
+        val first = grid.getChildAt(0) ?: return null
+        val lp = first.layoutParams as ViewGroup.MarginLayoutParams
+        val colW = (grid.width - grid.paddingLeft - grid.paddingRight).toFloat() / COLUMNS
+        val rowH = (first.height + lp.topMargin + lp.bottomMargin).toFloat()
+        return colW to rowH
+    }
+
+    private fun slotXY(slot: Int, size: Pair<Float, Float>) = (slot % COLUMNS) * size.first to (slot / COLUMNS) * size.second
+
+    /** Which grid spot a drop at [x], [y] (in the scroll view) would go to. */
+    private fun gridIndex(menu: View, grid: GridLayout, x: Float, y: Float, count: Int): Int {
+        val size = cellSize(grid) ?: return 0
+        val gy = y + menu.scrollY - grid.top - grid.paddingTop
+        val gx = x - grid.left - grid.paddingLeft
+        val row = (gy / size.second).toInt().coerceAtLeast(0)
+        val col = (gx / size.first).toInt().coerceIn(0, COLUMNS - 1)
+        return (row * COLUMNS + col).coerceIn(0, count)
+    }
+
+    /** Slides the menu buttons along to open a gap where the dragged one would land. */
+    private fun previewGrid(grid: GridLayout, label: String?, index: Int) {
+        val size = cellSize(grid) ?: return
+        val others = (0 until grid.childCount).map { grid.getChildAt(it) }.filter { it.tag != label }
+        others.forEachIndexed { j, v ->
+            val current = (0 until grid.childCount).indexOfFirst { grid.getChildAt(it) === v }
+            val slot = if (j < index) j else j + 1
+            val (cx, cy) = slotXY(current, size); val (nx, ny) = slotXY(slot, size)
+            anim(v, nx - cx, ny - cy)
+        }
+        (0 until grid.childCount).map { grid.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0f
+    }
+
+    private fun labelOf(key: ToolbarKey) = menuLabels[key]
+    private val menuLabels = mutableMapOf<ToolbarKey, String>()
+
+    /** Drops on the menu: take a button off the bar, or move a menu button to another spot. */
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
         val (from, key) = dragged(event) ?: return false
-        if (from != "bar") return event.action == android.view.DragEvent.ACTION_DRAG_STARTED
+        val grid = currentGrid ?: return false
+        val label = labelOf(key)
+        val othersCount = (0 until grid.childCount).count { grid.getChildAt(it).tag != label }
         when (event.action) {
-            android.view.DragEvent.ACTION_DRAG_ENTERED -> menu.alpha = 0.85f
-            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DRAG_ENDED -> menu.alpha = 1f
+            android.view.DragEvent.ACTION_DRAG_STARTED -> if (from == "menu") previewGrid(grid, label, (0 until grid.childCount).indexOfFirst { grid.getChildAt(it).tag == label })
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> previewGrid(grid, label, gridIndex(menu, grid, event.x, event.y, othersCount))
+            android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                resetAll(grid)
+                if (from == "menu") (0 until grid.childCount).map { grid.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0.25f
+            }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> resetAll(grid)
             android.view.DragEvent.ACTION_DROP -> {
-                menu.alpha = 1f
+                val index = gridIndex(menu, grid, event.x, event.y, othersCount)
+                val visible = (0 until grid.childCount).mapNotNull { grid.getChildAt(it).tag as? String }.filter { it != label }.toMutableList()
+                if (label != null) visible.add(index.coerceIn(0, visible.size), label)
                 val prefs = menu.context.prefs()
-                helium314.keyboard.latin.utils.setBarKeys(prefs, helium314.keyboard.latin.utils.getBarKeys(prefs) - key)
-                onBarChanged?.invoke()
+                val saved = prefs.getString(PREF_MENU_ORDER, "")!!.split(",").filter { it.isNotEmpty() && it !in visible }
+                prefs.edit { putString(PREF_MENU_ORDER, (visible + saved).joinToString(",")) }
+                if (from == "bar") {
+                    helium314.keyboard.latin.utils.setBarKeys(prefs, helium314.keyboard.latin.utils.getBarKeys(prefs) - key)
+                    onBarChanged?.invoke()
+                }
                 refreshMenu(menu.context)
             }
         }
@@ -196,7 +292,10 @@ object KeyboardMenu {
         )
         // buttons already on the top bar aren't repeated here
         val onBar = helium314.keyboard.latin.utils.getBarKeys(context.prefs())
+        allItems.forEach { if (it.key != null) menuLabels[it.key] = it.label }
+        val order = context.prefs().getString(PREF_MENU_ORDER, "")!!.split(",")
         val items = allItems.filter { it.key == null || it.key !in onBar }
+            .sortedBy { order.indexOf(it.label).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
 
         val columns = 4
         val grid = GridLayout(context).apply {
@@ -217,6 +316,7 @@ object KeyboardMenu {
                 isClickable = true
                 isFocusable = true
                 contentDescription = item.label
+                tag = item.label
                 setOnClickListener {
                     it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                     if (item.label != "Resize") hide()
@@ -245,8 +345,9 @@ object KeyboardMenu {
             ).apply { width = 0; setMargins(m, m, m, m) })
         }
 
+        currentGrid = grid
         val hint = TextView(context).apply {
-            text = "Hold a button and drag it up to the top bar. Drag one down from the bar to take it off."
+            text = "Hold a button to move it: up to the top bar, or to another spot here. Drag one down from the bar to take it off."
             setTextColor(ColorUtils.setAlphaComponent(textColor, 170))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
