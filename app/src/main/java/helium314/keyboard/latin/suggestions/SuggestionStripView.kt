@@ -154,6 +154,23 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         }
 
         // toolbar keys setup (no need to hide them any more when locked, because then suggestion strip is gone anyway
+        rebuildToolbarKeys()
+        // Open Keyboard: buttons can be dragged between the menu and the bar while the menu is open
+        setOnDragListener { _, event -> helium314.keyboard.latin.KeyboardMenu.onBarDrag(this, event, toolbar) }
+        toolbarContainer.doOnNextLayout {
+            // set min with of the toolbar so the weight of the toolbar keys actually does something
+            // todo: results in requestLayout() improperly called by android.widget.LinearLayout during layout: running second layout pass
+            toolbar.minimumWidth = toolbarContainer.width
+        }
+
+        updateKeys()
+    }
+
+    /** (Re)creates the bar's buttons from the settings. */
+    fun rebuildToolbarKeys() {
+        val colors = Settings.getValues().mColors
+        toolbar.removeAllViews()
+        pinnedKeys.removeAllViews()
         for (key in getEnabledToolbarKeys(context.prefs())) {
             val button = createToolbarKey(context, key)
             button.layoutParams = toolbarKeyLayoutParams
@@ -169,13 +186,6 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             if (pinnedKeyInToolbar != null && Settings.getValues().mQuickPinToolbarKeys)
                 pinnedKeyInToolbar.background = enabledToolKeyBackground
         }
-        toolbarContainer.doOnNextLayout {
-            // set min with of the toolbar so the weight of the toolbar keys actually does something
-            // todo: results in requestLayout() improperly called by android.widget.LinearLayout during layout: running second layout pass
-            toolbar.minimumWidth = toolbarContainer.width
-        }
-
-        updateKeys()
     }
 
     private lateinit var listener: Listener
@@ -316,6 +326,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         super.onAttachedToWindow()
         // coming back from the menu or the sticker/GIF panel: show the buttons, like Gboard, until the next letter is typed
         helium314.keyboard.latin.KeyboardMenu.onHidden = { setToolbarVisibility(true) }
+        helium314.keyboard.latin.KeyboardMenu.onBarChanged = { rebuildToolbarKeys(); setToolbarVisibility(true) }
     }
 
     override fun onDetachedFromWindow() {
@@ -401,6 +412,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     override fun onLongClick(view: View): Boolean {
+        // Open Keyboard: with the menu open, hold a bar button to drag it down into the menu or along the bar
+        if (helium314.keyboard.latin.KeyboardMenu.isShowing && view.tag is ToolbarKey && (view.parent === toolbar || view.parent === pinnedKeys)) {
+            helium314.keyboard.latin.KeyboardMenu.startDrag(view, "bar", view.tag as ToolbarKey)
+            return true
+        }
         if (view.tag is ToolbarKey) {
             onLongClickToolbarKey(view)
             return true

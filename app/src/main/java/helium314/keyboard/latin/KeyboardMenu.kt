@@ -80,10 +80,90 @@ object KeyboardMenu {
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
-    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val action: () -> Unit)
+    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val action: () -> Unit)
+
+    // ---- moving buttons between the menu and the top bar ----
+
+    /** Tells the top bar to rebuild its buttons after one was dragged. */
+    var onBarChanged: (() -> Unit)? = null
+    private var lastOnCode: ((Int) -> Unit)? = null
+    private const val MAX_ON_BAR = 5 // not counting the menu button and the mic
+
+    fun startDrag(view: View, from: String, key: ToolbarKey) {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val state = "$from:${key.name}"
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+    }
+
+    private fun dragged(event: android.view.DragEvent): Pair<String, ToolbarKey>? {
+        val state = event.localState as? String ?: return null
+        val key = runCatching { ToolbarKey.valueOf(state.substringAfter(':')) }.getOrNull() ?: return null
+        return state.substringBefore(':') to key
+    }
+
+    /** Drops on the top bar: add a menu button to the bar, or move a bar button along it. */
+    fun onBarDrag(strip: View, event: android.view.DragEvent, toolbar: ViewGroup): Boolean {
+        val (_, key) = dragged(event) ?: return false
+        when (event.action) {
+            android.view.DragEvent.ACTION_DRAG_ENTERED -> strip.alpha = 0.6f
+            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DRAG_ENDED -> strip.alpha = 1f
+            android.view.DragEvent.ACTION_DROP -> {
+                strip.alpha = 1f
+                val prefs = strip.context.prefs()
+                val bar = helium314.keyboard.latin.utils.getBarKeys(prefs).toMutableList()
+                val hasMic = ToolbarKey.VOICE in bar || key == ToolbarKey.VOICE
+                val buttons = bar.filter { it != ToolbarKey.VOICE && it != key }.toMutableList()
+                if (key != ToolbarKey.VOICE) {
+                    // where along the bar it was dropped
+                    val loc = IntArray(2); strip.getLocationInWindow(loc)
+                    val x = event.x + loc[0]
+                    var index = 0
+                    for (i in 0 until toolbar.childCount) {
+                        val c = toolbar.getChildAt(i)
+                        if (c.tag == key) continue
+                        val l = IntArray(2); c.getLocationInWindow(l)
+                        if (x > l[0] + c.width / 2) index++
+                    }
+                    buttons.add(index.coerceIn(0, buttons.size), key)
+                    // a full bar pushes its last other button back into the menu
+                    while (buttons.size > MAX_ON_BAR) buttons.removeAt(buttons.indexOfLast { it != key })
+                }
+                helium314.keyboard.latin.utils.setBarKeys(prefs, if (hasMic) buttons + ToolbarKey.VOICE else buttons)
+                onBarChanged?.invoke()
+                refreshMenu(strip.context)
+            }
+        }
+        return true
+    }
+
+    /** Drops on the menu: take a button off the bar. */
+    private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
+        val (from, key) = dragged(event) ?: return false
+        if (from != "bar") return event.action == android.view.DragEvent.ACTION_DRAG_STARTED
+        when (event.action) {
+            android.view.DragEvent.ACTION_DRAG_ENTERED -> menu.alpha = 0.85f
+            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DRAG_ENDED -> menu.alpha = 1f
+            android.view.DragEvent.ACTION_DROP -> {
+                menu.alpha = 1f
+                val prefs = menu.context.prefs()
+                helium314.keyboard.latin.utils.setBarKeys(prefs, helium314.keyboard.latin.utils.getBarKeys(prefs) - key)
+                onBarChanged?.invoke()
+                refreshMenu(menu.context)
+            }
+        }
+        return true
+    }
+
+    private fun refreshMenu(context: Context) {
+        val onCode = lastOnCode ?: return
+        if (menuView?.parent != null && menuView?.tag == OVERLAY_TAG && menuView is FitScrollView) {
+            menuView?.post { showMenu(context, onCode) }
+        }
+    }
 
     private fun showMenu(context: Context, onCode: (Int) -> Unit) {
         val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
+        lastOnCode = onCode
         hide()
         val colors = Settings.getValues().mColors
         val textColor = colors.get(ColorType.KEY_TEXT)
@@ -91,23 +171,32 @@ object KeyboardMenu {
         fun toolbarIcon(key: ToolbarKey) = { KeyboardIconsSet.instance.getNewDrawable(key.name, context) }
         fun ownIcon(res: Int) = { ContextCompat.getDrawable(context, res)?.mutate() }
 
-        val items = listOf(
+        fun keyItem(label: String, key: ToolbarKey, action: (() -> Unit)? = null) =
+            Item(label, toolbarIcon(key), key, action ?: { onCode(helium314.keyboard.latin.utils.getCodeForToolbarKey(key)) })
+        val allItems = listOf(
             Item("Theme", ownIcon(R.drawable.ic_menu_theme)) { openSettings(context, SettingsDestination.Theme) },
             Item("Resize", ownIcon(R.drawable.ic_menu_resize)) { showResize(context) },
-            Item("One-handed", toolbarIcon(ToolbarKey.ONE_HANDED)) { onCode(KeyCode.TOGGLE_ONE_HANDED_MODE) },
-            Item("Floating", toolbarIcon(ToolbarKey.FLOATING)) { onCode(KeyCode.TOGGLE_FLOATING_WINDOW) },
-            Item("Text editing", toolbarIcon(ToolbarKey.DPAD)) { onCode(KeyCode.DPAD) },
-            Item("Clipboard", toolbarIcon(ToolbarKey.CLIPBOARD)) { onCode(KeyCode.CLIPBOARD) },
-            Item("Emoji", toolbarIcon(ToolbarKey.EMOJI)) { onCode(KeyCode.EMOJI) },
-            Item("Undo", toolbarIcon(ToolbarKey.UNDO)) { onCode(KeyCode.UNDO) },
-            Item("Numbers", toolbarIcon(ToolbarKey.NUMPAD)) { onCode(KeyCode.NUMPAD) },
-            Item("Split", toolbarIcon(ToolbarKey.SPLIT)) { onCode(KeyCode.SPLIT_LAYOUT) },
-            Item("Incognito", toolbarIcon(ToolbarKey.INCOGNITO)) { onCode(KeyCode.TOGGLE_INCOGNITO_MODE) },
-            Item("Settings", toolbarIcon(ToolbarKey.SETTINGS)) { onCode(KeyCode.SETTINGS) },
+            keyItem("Stickers", ToolbarKey.STICKER) { helium314.keyboard.media.MediaPanel.toggle(context, false) },
+            keyItem("GIFs", ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
+            keyItem("Voice typing", ToolbarKey.VOICE),
+            keyItem("One-handed", ToolbarKey.ONE_HANDED),
+            keyItem("Floating", ToolbarKey.FLOATING),
+            keyItem("Text editing", ToolbarKey.DPAD),
+            keyItem("Clipboard", ToolbarKey.CLIPBOARD),
+            keyItem("Emoji", ToolbarKey.EMOJI),
+            keyItem("Undo", ToolbarKey.UNDO),
+            keyItem("Redo", ToolbarKey.REDO),
+            keyItem("Numbers", ToolbarKey.NUMPAD),
+            keyItem("Split", ToolbarKey.SPLIT),
+            keyItem("Incognito", ToolbarKey.INCOGNITO),
+            keyItem("Settings", ToolbarKey.SETTINGS),
             Item("Switch keyboard", ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
             },
         )
+        // buttons already on the top bar aren't repeated here
+        val onBar = helium314.keyboard.latin.utils.getBarKeys(context.prefs())
+        val items = allItems.filter { it.key == null || it.key !in onBar }
 
         val columns = 4
         val grid = GridLayout(context).apply {
@@ -133,6 +222,7 @@ object KeyboardMenu {
                     if (item.label != "Resize") hide()
                     item.action()
                 }
+                if (item.key != null) setOnLongClickListener { startDrag(it, "menu", item.key); true }
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
@@ -155,8 +245,21 @@ object KeyboardMenu {
             ).apply { width = 0; setMargins(m, m, m, m) })
         }
 
+        val hint = TextView(context).apply {
+            text = "Hold a button and drag it up to the top bar. Drag one down from the bar to take it off."
+            setTextColor(ColorUtils.setAlphaComponent(textColor, 170))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            val p = dp(context, 12f).toInt(); setPadding(p, dp(context, 2f).toInt(), p, dp(context, 12f).toInt())
+        }
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         val scroll = FitScrollView(context).apply {
-            addView(grid, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            setOnDragListener { v, e -> onMenuDrag(v, e) }
             // a plain colour: themes with a photo/gradient background can't be drawn on a view that has no size yet
             setBackgroundColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
             isClickable = true // don't let touches reach the keys underneath

@@ -287,3 +287,17 @@ private fun repeatToolbarKey(view: View, onClick: (view: View) -> Unit) {
 }
 
 private var customToolbarKeyCodes: EnumMap<ToolbarKey, Pair<Int?, Int?>>? = null
+
+/** Open Keyboard: the buttons on the top bar, left to right. The mic, when there, always sits at the right end. */
+fun getBarKeys(prefs: SharedPreferences): List<ToolbarKey> =
+    getEnabledToolbarKeys(prefs) + getPinnedToolbarKeys(prefs).filter { it == VOICE }
+
+/** Open Keyboard: saves which buttons are on the top bar and in what order (from dragging them in the menu). */
+fun setBarKeys(prefs: SharedPreferences, keys: List<ToolbarKey>) {
+    val onBar = keys.filter { it != VOICE }
+    val all = prefs.getString(Settings.PREF_TOOLBAR_KEYS, defaultToolbarPref)!!.split(Separators.ENTRY).map { it.substringBefore(Separators.KV) }
+    val rest = all.filter { name -> onBar.none { it.name == name } }
+    val value = (onBar.map { it.name + Separators.KV + true } + rest.map { it + Separators.KV + false }).joinToString(Separators.ENTRY)
+    prefs.edit { putString(Settings.PREF_TOOLBAR_KEYS, value) }
+    if (VOICE in keys) { if (VOICE !in getPinnedToolbarKeys(prefs)) addPinnedKey(prefs, VOICE) } else removePinnedKey(prefs, VOICE)
+}
