@@ -119,6 +119,10 @@ dependencies {
     // offline voice typing: sherpa-onnx speech recognition (Apache-2.0)
     implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v2.0.1")
 
+    // offline translation: Foxlet (MIT) running Mozilla's Bergamot engine (MPL-2.0), built from source, see third_party/README.md
+    implementation(files("libs/foxlet-0.5.0.aar"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")
