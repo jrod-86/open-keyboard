@@ -183,6 +183,9 @@ class ClipboardHistoryManager(
         // but a cache has to consider a few possible changes, so better don't implement without need
         clipboardSuggestionView = null
 
+        // Open Keyboard: a just-arrived SMS code comes first
+        if (parent != null) SmsCodes.recent()?.let { code -> return codeSuggestionView(code, editorInfo, parent) }
+
         // get the content, or return null
         if (!latinIME.mSettings.current.mSuggestClipboardContent) return null
         if (dontShowCurrentSuggestion) return null
@@ -250,6 +253,35 @@ class ClipboardHistoryManager(
         colors.setColor(closeButton, ColorType.REMOVE_SUGGESTION_ICON)
         colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
 
+        clipboardSuggestionView = binding.root
+        return clipboardSuggestionView
+    }
+
+    private fun codeSuggestionView(code: String, editorInfo: EditorInfo?, parent: ViewGroup): View? {
+        val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(latinIME), parent, false)
+        val textView = binding.clipboardSuggestionText
+        KeyboardTypeface.applyToTextView(textView)
+        textView.text = "🔑  Code $code"
+        textView.setOnClickListener {
+            SmsCodes.used()
+            latinIME.onTextInput(code)
+            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(KeyCode.NOT_SPECIFIED, it, HapticEvent.KEY_PRESS)
+            binding.root.isGone = true
+            latinIME.setNeutralSuggestionStrip()
+        }
+        val closeButton = binding.clipboardSuggestionClose
+        closeButton.setImageDrawable(KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.CLOSE_HISTORY.name.lowercase()))
+        closeButton.scaleX = 0.8f
+        closeButton.scaleY = 0.8f
+        closeButton.setOnClickListener {
+            SmsCodes.used()
+            binding.root.isGone = true
+            latinIME.setNeutralSuggestionStrip()
+        }
+        val colors = latinIME.mSettings.current.mColors
+        textView.setTextColor(colors.get(ColorType.KEY_TEXT))
+        colors.setColor(closeButton, ColorType.REMOVE_SUGGESTION_ICON)
+        colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
         clipboardSuggestionView = binding.root
         return clipboardSuggestionView
     }

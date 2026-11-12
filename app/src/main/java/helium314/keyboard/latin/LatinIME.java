@@ -502,6 +502,12 @@ public class LatinIME extends InputMethodService implements
                     return kotlin.Unit.INSTANCE;
                 });
         mSettings.startListener();
+        // Open Keyboard: show a just-arrived SMS code if the keyboard is open and nothing is being typed
+        SmsCodes.setOnNewCode(() -> {
+            if (!isInputViewShown() || getCurrentInputConnection() == null) return;
+            final CharSequence before = getCurrentInputConnection().getTextBeforeCursor(1, 0);
+            if (before == null || before.length() == 0 || Character.isWhitespace(before.charAt(0))) setNeutralSuggestionStrip();
+        });
         KeyboardIconsSet.Companion.getInstance().loadIcons(this);
         mRichImm = RichInputMethodManager.getInstance();
         AudioAndHapticFeedbackManager.init(this);

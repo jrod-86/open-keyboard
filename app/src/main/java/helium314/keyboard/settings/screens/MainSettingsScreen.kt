@@ -114,6 +114,21 @@ fun MainSettingsScreen(
                         icon = R.drawable.sym_keyboard_voice_rounded
                     ) { NextScreenIcon() }
                     GroupItem(
+                        name = "Fill in SMS codes",
+                        description = if (helium314.keyboard.latin.SmsCodes.isAllowed(ctx)) "On: login codes from messages appear in the suggestion bar"
+                            else "Off: tap to allow, so login codes appear with one tap",
+                        onClick = {
+                            val intent = if (android.os.Build.VERSION.SDK_INT >= 30)
+                                android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                                    .putExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                                        helium314.keyboard.latin.SmsCodes.Listener.component(ctx).flattenToString())
+                            else android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                            runCatching { ctx.startActivity(intent) }
+                                .onFailure { ctx.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }
+                        },
+                        icon = R.drawable.ic_settings_correction
+                    ) { NextScreenIcon() }
+                    GroupItem(
                         name = "Text shortcuts",
                         description = "Type @@ and it turns into your email",
                         onClick = onClickShortcuts,
