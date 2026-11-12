@@ -2,7 +2,7 @@
  "version": 1,
  "packs": [
   {
-   "id": "butter-faces",
+   "id": "butter-faces-v2",
    "name": "Butter Faces",
    "author": "jrod",
    "license": "CC0",
@@ -10,9 +10,9 @@
    "credit": "",
    "count": 24,
    "featured": true,
-   "icon": "butter-faces-icon.png",
-   "zip": "butter-faces.zip",
-   "size": 2376316
+   "icon": "butter-faces-v2-icon.png",
+   "zip": "butter-faces-v2.zip",
+   "size": 2372691
   },
   {
    "id": "mochi",
