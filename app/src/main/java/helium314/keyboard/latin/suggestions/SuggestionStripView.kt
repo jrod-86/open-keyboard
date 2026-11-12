@@ -322,6 +322,34 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         dismissMoreSuggestionsPanel()
     }
 
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        // Open Keyboard: last line of defence against an empty bar. If the word strip is showing but has
+        // nothing in it (for example after a clipboard chip was tapped, or a chip whose picture didn't load),
+        // show the buttons instead.
+        if (!toolbarContainer.isVisible && !stripHasContent()) post {
+            if (!toolbarContainer.isVisible && !stripHasContent()) {
+                suggestionsStrip.isVisible = false
+                toolbarContainer.isVisible = true
+                pinnedKeys.isVisible = true
+                toolbarExpandKey.scaleX = -1f * direction
+            }
+        }
+    }
+
+    private fun stripHasContent(): Boolean {
+        fun has(v: View): Boolean {
+            if (!v.isShown || v.width == 0) return false
+            if (v.javaClass.name.contains("Inline") || v is android.view.SurfaceView) return true
+            if (v is TextView) return !v.text.isNullOrBlank()
+            if (v is ImageButton) return false
+            if (v is android.widget.ImageView) return v.drawable != null
+            if (v is ViewGroup) return (0 until v.childCount).any { has(v.getChildAt(it)) }
+            return false
+        }
+        return suggestionsStrip.isVisible && has(suggestionsStrip)
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         // Called by the framework when the size is known. Show the important notice if applicable.
         // This may be overridden by showing suggestions later, if applicable.
