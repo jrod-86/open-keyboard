@@ -42,7 +42,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import helium314.keyboard.keyboard.KeyboardSwitcher
@@ -141,9 +143,7 @@ fun ThemeScreen(onClickBack: () -> Unit, onClickCustom: () -> Unit, onClickDesig
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Theme", settings = emptyList()) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Button(onClick = onClickDesign, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                Text("🎨  Design studio: ready-made designs, your own colours, key sounds")
-            }
+            DesignStudioBanner(onClickDesign)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AddTile("Custom colours", onClickCustom, Modifier.weight(1f))
                 AddTile("Your photo", {
@@ -169,6 +169,31 @@ fun ThemeScreen(onClickBack: () -> Unit, onClickCustom: () -> Unit, onClickDesig
                     }
                 }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** A large, colourful card so the Design studio is easy to spot. */
+@Composable
+private fun DesignStudioBanner(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        Modifier.fillMaxWidth().padding(bottom = 20.dp).height(96.dp).clip(shape)
+            .background(Brush.linearGradient(listOf(c("#7B5CFF"), c("#C850C0"), c("#FF8A65"))))
+            .clickable(onClick = onClick)
+    ) {
+        // a few soft circles for depth
+        Box(Modifier.size(120.dp).align(Alignment.TopEnd).padding(start = 30.dp, bottom = 30.dp).clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.12f)))
+        Box(Modifier.size(70.dp).align(Alignment.BottomStart).padding(top = 20.dp, end = 20.dp).clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.10f)))
+        Row(Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(52.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)), contentAlignment = Alignment.Center) {
+                Text("🎨", fontSize = 26.sp)
+            }
+            Spacer(Modifier.width(16.dp))
+            Text("Design studio", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("›", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light)
         }
     }
 }
