@@ -40,6 +40,7 @@ object MediaPanel {
         override fun sizeOf(key: String, value: ByteArray) = value.size
     }
     private var showingGifs = false
+    private var showingRecent = false
     private var generation = 0
     private var lastQuery: String? = null
     /** Sticker source: null for KLIPY, otherwise the name of one of the user's packs. */
@@ -53,7 +54,7 @@ object MediaPanel {
 
     /** Tapping the same button again closes the panel, like Gboard. */
     fun toggle(context: Context, gifs: Boolean) {
-        if (KeyboardMenu.currentOverlay is Root && showingGifs == gifs) KeyboardMenu.hide()
+        if (KeyboardMenu.currentOverlay is Root && !showingRecent && showingGifs == gifs) KeyboardMenu.hide()
         else show(context, gifs)
     }
 
@@ -75,8 +76,9 @@ object MediaPanel {
         }
     }
 
-    private fun show(context: Context, gifs: Boolean) {
+    private fun show(context: Context, gifs: Boolean, recent: Boolean = false) {
         showingGifs = gifs
+        showingRecent = recent
         val gen = ++generation
         val colors = Settings.getValues().mColors
         val text = colors.get(ColorType.KEY_TEXT)
@@ -110,12 +112,19 @@ object MediaPanel {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(context, 6f), 0, dp(context, 6f), 0)
-            addView(pill("Stickers", !gifs) { show(context, false) })
-            addView(pill("GIFs", gifs) { show(context, true) })
+            addView(pill("🕘 Recent", recent) { show(context, gifs, recent = true) })
+            addView(pill("Stickers", !gifs && !recent) { show(context, false) })
+            addView(pill("GIFs", gifs && !recent) { show(context, true) })
             addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
             addView(pill("ABC", false) { KeyboardMenu.hide() })
         }
         column.addView(header)
+
+        if (recent) {
+            showRecent(context, column, text, tile, gen)
+            KeyboardMenu.showOverlay(root)
+            return
+        }
 
         val grid = GridLayout(context).apply {
             columnCount = if (gifs) 3 else 4
@@ -238,6 +247,79 @@ object MediaPanel {
             }
         }
         KeyboardMenu.showOverlay(root)
+    }
+
+    /** Recently sent stickers, GIFs and emojis, newest first, all in one grid. */
+    private fun showRecent(context: Context, column: LinearLayout, text: Int, tile: Int, gen: Int) {
+        val items = MediaRecents.list(context)
+        if (items.isEmpty()) {
+            column.addView(TextView(context).apply {
+                this.text = "Stickers, GIFs and emojis you send will show up here."
+                setTextColor(text); gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding(dp(context, 24f), dp(context, 24f), dp(context, 24f), dp(context, 24f))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            return
+        }
+        val grid = GridLayout(context).apply {
+            columnCount = 4
+            setPadding(dp(context, 4f), 0, dp(context, 4f), dp(context, 4f))
+        }
+        val ime = ime(context)
+        items.forEach { item ->
+            val view: View = when (item) {
+                is RecentItem.Emoji -> TextView(context).apply {
+                    this.text = item.text
+                    gravity = Gravity.CENTER
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 40f)
+                    setOnClickListener {
+                        (ime as? helium314.keyboard.latin.LatinIME)?.onTextInput(item.text)
+                        MediaRecents.add(context, item)
+                    }
+                }
+                is RecentItem.Online -> ImageView(context).apply {
+                    if (item.sticker) {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        val p = dp(context, 4f); setPadding(p, p, p, p)
+                    } else {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        background = GradientDrawable().apply { cornerRadius = dp(context, 8f).toFloat(); setColor(tile) }
+                        clipToOutline = true
+                    }
+                    setOnClickListener {
+                        if (ime != null) MediaSender.sendGif(ime, item.gif, sticker = item.sticker)
+                        KeyboardMenu.hide()
+                    }
+                    loadGif(item.gif.previewUrl, gen) { setImageDrawable(it) }
+                }
+                is RecentItem.PackSticker -> ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    val p = dp(context, 4f); setPadding(p, p, p, p)
+                    setOnClickListener {
+                        if (ime != null) MediaSender.sendPackSticker(ime, item.file)
+                        KeyboardMenu.hide()
+                    }
+                    val iv = this
+                    loader.execute {
+                        val d = runCatching {
+                            ImageDecoder.decodeDrawable(ImageDecoder.createSource(item.file)) { decoder, info, _ ->
+                                val size = maxOf(info.size.width, info.size.height)
+                                if (size > 256) decoder.setTargetSampleSize(size / 256)
+                            }
+                        }.getOrNull()
+                        main.post {
+                            if (gen != generation || d == null) return@post
+                            iv.setImageDrawable(d)
+                            (d as? AnimatedImageDrawable)?.start()
+                        }
+                    }
+                }
+            }
+            val m = dp(context, 3f)
+            grid.addView(view, GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f))
+                .apply { width = 0; height = dp(context, 84f); setMargins(m, m, m, m) })
+        }
+        column.addView(ScrollView(context).apply { addView(grid) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     }
 
     private fun footer(context: Context, label: String, color: Int) = TextView(context).apply {

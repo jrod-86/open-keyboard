@@ -104,6 +104,7 @@ object MediaSender {
         val url = if (usePng) gif.pngUrl!! else gif.sendUrl
         val mime = if (usePng) "image/png" else "image/gif"
         val label = if (sticker) "Sticker" else "GIF"
+        MediaRecents.add(ime, RecentItem.Online(gif, sticker))
         io.execute {
             val file = runCatching {
                 val f = File(mediaDir(ime), "${label.lowercase()}_${gif.id.filter { it.isLetterOrDigit() }}.${if (usePng) "png" else "gif"}")
@@ -120,6 +121,7 @@ object MediaSender {
     /** Sends a sticker from one of the user's own packs. */
     fun sendPackSticker(ime: InputMethodService, file: File) {
         val mime = StickerPacks.mimeOf(file)
+        MediaRecents.add(ime, RecentItem.PackSticker(file))
         commit(ime, file, mime, "Sticker", null)
     }
 
@@ -241,5 +243,60 @@ object StickerPacks {
         val out = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt().coerceAtLeast(1),
             (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
         File(dir, "$baseName.png").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
+}
+
+/** One thing sent from the keyboard, for the Recent tab: a KLIPY GIF or sticker, a pack sticker, or an emoji. */
+sealed class RecentItem {
+    data class Online(val gif: Gif, val sticker: Boolean) : RecentItem()
+    data class PackSticker(val file: File) : RecentItem()
+    data class Emoji(val text: String) : RecentItem()
+
+    val key: String get() = when (this) {
+        is Online -> "o:${gif.id}:$sticker"
+        is PackSticker -> "p:${file.absolutePath}"
+        is Emoji -> "e:$text"
+    }
+}
+
+/** The most recently sent stickers, GIFs and emojis, newest first. Kept on the phone only. */
+object MediaRecents {
+    private const val MAX = 48
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("stickers_gifs", Context.MODE_PRIVATE)
+
+    fun list(ctx: Context): List<RecentItem> {
+        val arr = runCatching { org.json.JSONArray(prefs(ctx).getString("recents", "[]")) }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            runCatching {
+                val o = arr.getJSONObject(i)
+                when (o.getString("t")) {
+                    "o" -> RecentItem.Online(Gif(o.getString("id"), o.getString("pv"), o.getString("su"),
+                        o.optString("png").takeIf { it.isNotEmpty() }, o.optInt("w"), o.optInt("h")), o.optBoolean("s"))
+                    "p" -> File(o.getString("f")).takeIf { it.isFile }?.let { RecentItem.PackSticker(it) }
+                    else -> RecentItem.Emoji(o.getString("e"))
+                }
+            }.getOrNull()
+        }
+    }
+
+    fun add(ctx: Context, item: RecentItem) {
+        val items = (listOf(item) + list(ctx).filter { it.key != item.key }).take(MAX)
+        val arr = org.json.JSONArray()
+        items.forEach { it ->
+            arr.put(JSONObject().apply {
+                when (it) {
+                    is RecentItem.Online -> { put("t", "o"); put("id", it.gif.id); put("pv", it.gif.previewUrl); put("su", it.gif.sendUrl)
+                        put("png", it.gif.pngUrl ?: ""); put("w", it.gif.width); put("h", it.gif.height); put("s", it.sticker) }
+                    is RecentItem.PackSticker -> { put("t", "p"); put("f", it.file.absolutePath) }
+                    is RecentItem.Emoji -> { put("t", "e"); put("e", it.text) }
+                }
+            })
+        }
+        prefs(ctx).edit().putString("recents", arr.toString()).apply()
+    }
+
+    @JvmStatic
+    fun addEmoji(ctx: Context, text: String?) {
+        if (!text.isNullOrBlank()) add(ctx, RecentItem.Emoji(text))
     }
 }

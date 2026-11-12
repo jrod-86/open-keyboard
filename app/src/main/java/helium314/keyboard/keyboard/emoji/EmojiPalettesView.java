@@ -310,6 +310,9 @@ public final class EmojiPalettesView extends LinearLayout
     public void onReleaseKey(final Key key) {
         addRecentKey(key);
         final int code = key.getCode();
+        // Open Keyboard: emojis also show in the Recent tab of the sticker and GIF panel
+        if (code == KeyCode.MULTIPLE_CODE_POINTS) helium314.keyboard.media.MediaRecents.addEmoji(getContext(), key.getOutputText());
+        else if (code > 0) helium314.keyboard.media.MediaRecents.addEmoji(getContext(), new String(Character.toChars(code)));
         if (code == KeyCode.MULTIPLE_CODE_POINTS) {
             // todo: when we enter some emoticons, e.g. :-D, inline emoji search is triggered and emoji view is closed
             //  (one more instance of "emoji search should recognize emoticons", but in this case could be fixed in other ways)
