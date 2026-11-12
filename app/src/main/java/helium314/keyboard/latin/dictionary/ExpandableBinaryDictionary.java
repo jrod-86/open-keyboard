@@ -161,6 +161,38 @@ abstract public class ExpandableBinaryDictionary extends Dictionary {
         return mBinaryDictionary;
     }
 
+    /** Open Keyboard swipe typing: walk every word the user has added or typed. */
+    public void forEachWord(final ReadOnlyBinaryDictionary.WordVisitor visitor) {
+        reloadDictionaryIfRequired();
+        if (!mLock.readLock().tryLock()) return;
+        try {
+            final BinaryDictionary dict = mBinaryDictionary;
+            if (dict == null) return;
+            int token = 0;
+            do {
+                final BinaryDictionary.GetNextWordPropertyResult r = dict.getNextWordProperty(token);
+                final helium314.keyboard.latin.makedict.WordProperty wp = r.mWordProperty;
+                if (wp == null) break;
+                if (!wp.mIsNotAWord) visitor.visit(wp.mWord, wp.getProbability(), wp.mIsPossiblyOffensive);
+                token = r.mNextToken;
+            } while (token != 0);
+        } finally {
+            mLock.readLock().unlock();
+        }
+    }
+
+    /** Open Keyboard swipe typing: how likely word follows the previous word(s) for this user. */
+    public int getNgramProbability(final helium314.keyboard.latin.NgramContext ngramContext, final String word) {
+        if (mLock.readLock().tryLock()) {
+            try {
+                return mBinaryDictionary == null ? NOT_A_PROBABILITY : mBinaryDictionary.getNgramProbability(ngramContext, word);
+            } finally {
+                mLock.readLock().unlock();
+            }
+        }
+        return NOT_A_PROBABILITY;
+    }
+
     @Override
     public int getFrequency(final String word) {
         if (mLock.readLock().tryLock()) {

@@ -507,7 +507,9 @@ class DictionaryFacilitatorImpl : DictionaryFacilitator {
         val glideDict = dictionaryGroups[0].mainDictionary()
         if (composedData.mIsBatchMode && !helium314.keyboard.latin.utils.JniUtils.sHaveGestureLib && glideDict != null) {
             val glideResults = SuggestionResults(SuggestedWords.MAX_SUGGESTIONS, ngramContext, false)
-            helium314.keyboard.latin.glide.GlideTyping.decode(composedData.mInputPointers, keyboard, glideDict)
+            val userDicts = listOfNotNull(dictionaryGroups[0].getSubDict(Dictionary.TYPE_USER),
+                dictionaryGroups[0].getSubDict(Dictionary.TYPE_USER_HISTORY))
+            helium314.keyboard.latin.glide.GlideTyping.decode(composedData.mInputPointers, keyboard, glideDict, ngramContext, userDicts)
                 .forEach { if (!isBlacklisted(it.word)) glideResults.add(it) }
             return glideResults
         }

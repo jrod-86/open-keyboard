@@ -4,7 +4,9 @@ package helium314.keyboard.latin.glide
 import helium314.keyboard.keyboard.Keyboard
 import helium314.keyboard.latin.common.InputPointers
 import helium314.keyboard.latin.dictionary.Dictionary
+import helium314.keyboard.latin.NgramContext
 import helium314.keyboard.latin.dictionary.DictionaryCollection
+import helium314.keyboard.latin.dictionary.ExpandableBinaryDictionary
 import helium314.keyboard.latin.dictionary.ReadOnlyBinaryDictionary
 import helium314.keyboard.latin.settings.Settings
 import helium314.keyboard.latin.suggestions.SuggestedWordInfo
@@ -26,6 +28,9 @@ object GlideTyping {
     private const val SIGMA = 0.25f
     private const val PRIOR = 6f
     private const val MAX_RESULTS = 12
+    /** Weight of "this word often follows the previous word". */
+    private const val CONTEXT = 2.0f
+    private const val USER_REFRESH_MS = 20_000L
 
     private class Entry(val word: String, val path: CharArray, val freq: Int)
     private class Index(val buckets: HashMap<Int, ArrayList<Entry>>)
@@ -34,6 +39,47 @@ object GlideTyping {
     @Volatile private var index: Index? = null
     @Volatile private var loading: Dictionary? = null
     private val executor = Executors.newSingleThreadExecutor()
+
+    // words the user added or has typed, refreshed now and then
+    @Volatile private var userIndex: Index? = null
+    @Volatile private var userIndexAt = 0L
+    @Volatile private var userDictsKey: List<ExpandableBinaryDictionary> = emptyList()
+    @Volatile private var userLoading = false
+
+    private fun addEntry(buckets: HashMap<Int, ArrayList<Entry>>, word: String, freq: Int) {
+        val path = baseLetters(word)
+        if (path.length < 2) return
+        buckets.getOrPut(bucketKey(path.first(), path.last())) { ArrayList() }.add(Entry(word, path.toCharArray(), freq))
+    }
+
+    private fun refreshUserWords(userDicts: List<ExpandableBinaryDictionary>) {
+        val now = android.os.SystemClock.uptimeMillis()
+        val same = userDicts.size == userDictsKey.size && userDicts.indices.all { userDicts[it] === userDictsKey[it] }
+        if (userLoading || (same && now - userIndexAt < USER_REFRESH_MS)) return
+        userLoading = true
+        userIndexAt = now
+        executor.execute {
+            try {
+                val buckets = HashMap<Int, ArrayList<Entry>>()
+                val seen = HashSet<String>()
+                for (d in userDicts) {
+                    val personal = d.mDictType == Dictionary.TYPE_USER
+                    d.forEachWord { word, prob, _ ->
+                        if (word.length < 2 || word.any { it.isDigit() || it.isWhitespace() }) return@forEachWord
+                        if (!seen.add(word)) return@forEachWord
+                        // words you added yourself rank like common words; typed words a little lower
+                        addEntry(buckets, word, if (personal) 210 else maxOf(prob, 150))
+                    }
+                }
+                userIndex = Index(buckets)
+                userDictsKey = userDicts
+            } catch (e: Throwable) {
+                Log.w(TAG, "could not read user words", e)
+            } finally {
+                userLoading = false
+            }
+        }
+    }
 
     private fun bucketKey(a: Char, b: Char) = (a.code shl 16) or b.code
 
@@ -66,10 +112,7 @@ object GlideTyping {
                         if (word.uppercase() == word && word.length > 1) return@forEachWord // acronyms
                         if (word.any { it.isDigit() || it.isWhitespace() }) return@forEachWord
                         if (!seen.add(word)) return@forEachWord
-                        val path = baseLetters(word)
-                        if (path.length < 2) return@forEachWord
-                        buckets.getOrPut(bucketKey(path.first(), path.last())) { ArrayList() }
-                            .add(Entry(word, path.toCharArray(), prob))
+                        addEntry(buckets, word, prob)
                     }
                 }
                 index = Index(buckets)
@@ -122,10 +165,13 @@ object GlideTyping {
         while (count < N) { outX[count] = xs[n - 1]; outY[count] = ys[n - 1]; count++ }
     }
 
-    fun decode(pointers: InputPointers, keyboard: Keyboard, sourceDict: Dictionary): List<SuggestedWordInfo> {
+    fun decode(pointers: InputPointers, keyboard: Keyboard, sourceDict: Dictionary,
+               ngramContext: NgramContext, userDicts: List<ExpandableBinaryDictionary>): List<SuggestedWordInfo> {
         prepare(sourceDict)
+        refreshUserWords(userDicts)
         val idx = if (indexed === sourceDict) index else null
         if (idx == null) return emptyList()
+        val indexes = listOfNotNull(idx, userIndex)
         val size = pointers.pointerSize
         if (size < 2) return emptyList()
 
@@ -158,8 +204,8 @@ object GlideTyping {
         val prev = FloatArray(N); val cur = FloatArray(N)
         val results = ArrayList<Pair<Float, Entry>>()
 
-        for (a in starts) for (b in ends) {
-            val bucket = idx.buckets[bucketKey(a, b)] ?: continue
+        for (ix0 in indexes) for (a in starts) for (b in ends) {
+            val bucket = ix0.buckets[bucketKey(a, b)] ?: continue
             entries@ for (e in bucket) {
                 val m = e.path.size
                 if (m > px.size) continue
@@ -196,7 +242,20 @@ object GlideTyping {
             }
         }
         results.sortByDescending { it.first }
-        return results.take(MAX_RESULTS).map { (score, e) ->
+        // keep the best score for each word (a word can be in the dictionary and in your own words)
+        val best = LinkedHashMap<String, Pair<Float, Entry>>()
+        for (r in results) { if (best.size >= 40) break; best.putIfAbsent(r.second.word, r) }
+        // previous-word context: boost words that often follow what you just wrote
+        val readOnly = (if (sourceDict is DictionaryCollection) sourceDict.dictionaries else listOf(sourceDict))
+            .filterIsInstance<ReadOnlyBinaryDictionary>().firstOrNull()
+        val history = userDicts.firstOrNull { it.mDictType == Dictionary.TYPE_USER_HISTORY }
+        val ranked = if (!ngramContext.isValid) best.values.toList() else best.values.map { (score, e) ->
+            val p1 = readOnly?.getNgramProbability(ngramContext, e.word) ?: -1
+            val p2 = history?.getNgramProbability(ngramContext, e.word) ?: -1
+            val p = maxOf(p1, p2)
+            (if (p >= 0) score + CONTEXT * (0.5f + p / 255f) else score) to e
+        }.sortedByDescending { it.first }
+        return ranked.take(MAX_RESULTS).map { (score, e) ->
             SuggestedWordInfo(e.word, "", (1_000_000 + score * 100_000).toInt(),
                 SuggestedWordInfo.KIND_CORRECTION, sourceDict,
                 SuggestedWordInfo.NOT_AN_INDEX, SuggestedWordInfo.NOT_A_CONFIDENCE)

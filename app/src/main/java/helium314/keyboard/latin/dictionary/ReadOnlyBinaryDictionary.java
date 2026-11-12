@@ -57,6 +57,18 @@ public final class ReadOnlyBinaryDictionary extends Dictionary {
         }
     }
 
+    /** Open Keyboard swipe typing: how likely word follows the previous word(s), or NOT_A_PROBABILITY. */
+    public int getNgramProbability(final helium314.keyboard.latin.NgramContext ngramContext, final String word) {
+        if (mLock.readLock().tryLock()) {
+            try {
+                return mBinaryDictionary.getNgramProbability(ngramContext, word);
+            } finally {
+                mLock.readLock().unlock();
+            }
+        }
+        return NOT_A_PROBABILITY;
+    }
+
     public interface WordVisitor { void visit(String word, int probability, boolean possiblyOffensive); }
 
     public boolean isValidDictionary() {
