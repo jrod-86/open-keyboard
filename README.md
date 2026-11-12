@@ -27,4 +27,4 @@ Queer Foxcats by rawrafox (https://github.com/rawrafox/foxcats). CC0. Based on G
 By the PiterJS community (https://github.com/piterjs/stickers). MIT licence; the notice is inside the zip.
 
 ## Butter Faces
-24 face stickers made by Jarrod for Open Keyboard. CC0 (public domain).
+24 face stickers made by jrod for Open Keyboard. CC0 (public domain).
