@@ -307,6 +307,11 @@ object KeyboardMenu {
             keyItem("Voice typing", ToolbarKey.VOICE),
             Item("Translate", ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
             Item("Writing help", ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
+            Item("Scan text", ownIcon(R.drawable.ic_menu_scan)) {
+                hide()
+                context.startActivity(android.content.Intent(context, ScanTextActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            },
             keyItem("One-handed", ToolbarKey.ONE_HANDED),
             keyItem("Floating", ToolbarKey.FLOATING),
             keyItem("Text editing", ToolbarKey.DPAD),

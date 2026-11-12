@@ -85,6 +85,12 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:theme="@style/platformActivityTheme"
             android:exported="false" />
 
+        <activity android:name=".latin.ScanTextActivity"
+            android:label="Scan text"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.media"
             android:exported="false"

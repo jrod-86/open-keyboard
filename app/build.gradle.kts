@@ -125,6 +125,8 @@ dependencies {
     // offline writing help: llama.cpp (MIT) Android library, built from source with third_party/llama-android-open-keyboard.patch
     implementation(files("libs/llama-android.aar"))
     implementation("androidx.datastore:datastore-preferences:1.2.0")
+    // scan text with the camera: Tesseract OCR for Android (Apache-2.0), English "fast" model in assets/tessdata (Apache-2.0)
+    implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.8.0")
 
     // androidx
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23

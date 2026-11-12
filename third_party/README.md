@@ -15,3 +15,7 @@
   `third_party/llama-android-open-keyboard.patch` applied (fresh chat per request, minSdk 28, arm64 only),
   using `./gradlew :lib:assembleRelease`. The writing model (Qwen2.5-1.5B-Instruct GGUF, Apache-2.0)
   is downloaded on the phone from Hugging Face and checked against its SHA-256.
+
+- Tesseract4Android 4.8.0 (Apache-2.0; Tesseract Apache-2.0, Leptonica BSD-2-Clause, libjpeg/libpng permissive),
+  from JitPack. `app/src/main/assets/tessdata/eng.traineddata`: tesseract-ocr/tessdata_fast (Apache-2.0),
+  sha256 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2.
