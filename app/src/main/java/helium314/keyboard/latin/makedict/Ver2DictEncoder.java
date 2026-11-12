@@ -242,7 +242,7 @@ public class Ver2DictEncoder implements DictEncoder {
             int shortcutFlags = (shortcutIterator.hasNext() ? FormatSpec.FLAG_BIGRAM_SHORTCUT_ATTR_HAS_NEXT : 0)
                 + (target.getProbability() & FormatSpec.FLAG_BIGRAM_SHORTCUT_ATTR_FREQUENCY);
             mPosition = BinaryDictEncoderUtils.writeUIntToBuffer(mBuffer, mPosition, shortcutFlags, 1);
-            int shortcutShift = CharEncoding.writeString(mBuffer, mPosition, target.mWord, codePointToOneByteCodeMap);
+            int shortcutShift = CharEncoding.writeString(mBuffer, mPosition, target.mWord, null); // sizes are computed without the code table
             mPosition += shortcutShift;
         }
 

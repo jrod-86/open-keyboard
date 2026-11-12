@@ -111,6 +111,7 @@ public class BinaryDictEncoderUtils {
                 + FormatSpec.PTNODE_ATTRIBUTE_MAX_ADDRESS_SIZE)
                 * ptNode.mBigrams.size();
         }
+        size += getShortcutListSize(ptNode.mShortcutTargets, null); // Open Keyboard: was missing, broke dicts with shortcuts
         return size;
     }
     /**
