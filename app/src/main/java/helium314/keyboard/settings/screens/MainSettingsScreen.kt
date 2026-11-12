@@ -49,6 +49,7 @@ fun MainSettingsScreen(
     onClickDictionaries: () -> Unit,
     onClickBack: () -> Unit,
     onClickTheme: () -> Unit = {},
+    onClickShortcuts: () -> Unit = {},
 ) {
     SearchSettingsScreen(
         onClickBack = onClickBack,
@@ -111,6 +112,12 @@ fun MainSettingsScreen(
                         description = "Microphone, speech models and accuracy check",
                         onClick = { ctx.startActivity(android.content.Intent(ctx, helium314.keyboard.voice.VoiceSetupActivity::class.java)) },
                         icon = R.drawable.sym_keyboard_voice_rounded
+                    ) { NextScreenIcon() }
+                    GroupItem(
+                        name = "Text shortcuts",
+                        description = "Type @@ and it turns into your email",
+                        onClick = onClickShortcuts,
+                        icon = R.drawable.ic_settings_correction
                     ) { NextScreenIcon() }
                     GroupItem(
                         name = "Stickers and GIFs",

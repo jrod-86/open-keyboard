@@ -1282,6 +1282,25 @@ public class LatinIME extends InputMethodService implements
             // a key while voice typing: keep the text as shown and stop, so e.g. send gets the whole text
             mVoiceInput.cancel();
         }
+        // Open Keyboard: text shortcuts ("omw" + space -> "On my way! "), delete straight after undoes it
+        final kotlin.jvm.functions.Function2<Integer, Integer, kotlin.Unit> shortcutResync = (st, en) -> {
+            mInputLogic.resyncAfterVoiceInput(st, en);
+            return kotlin.Unit.INSTANCE;
+        };
+        if (event.getCodePoint() == ' ' && event.getKeyCode() != KeyCode.VOICE_INPUT) {
+            if (TextShortcuts.INSTANCE.expandOnSpace(this, getCurrentInputConnection(),
+                    () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; }, shortcutResync)) {
+                mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+                return;
+            }
+        } else if (event.getKeyCode() == KeyCode.DELETE) {
+            if (TextShortcuts.INSTANCE.undoOnDelete(getCurrentInputConnection(), shortcutResync)) {
+                mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+                return;
+            }
+        } else {
+            TextShortcuts.INSTANCE.forget();
+        }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         updateStateAfterInputTransaction(completeInputTransaction);
