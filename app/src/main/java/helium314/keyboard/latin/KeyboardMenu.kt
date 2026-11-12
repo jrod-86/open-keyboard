@@ -110,6 +110,34 @@ object KeyboardMenu {
         v.animate().translationX(tx).translationY(ty).setDuration(ANIM_MS).start()
     }
 
+    /** Android-style "move mode": every button wobbles gently while one is being dragged. */
+    private val jiggles = java.util.WeakHashMap<View, android.animation.Animator>()
+
+    private fun startJiggle(group: ViewGroup?) {
+        group ?: return
+        for (i in 0 until group.childCount) {
+            val v = group.getChildAt(i)
+            if (jiggles[v]?.isRunning == true) continue
+            val a = android.animation.ObjectAnimator.ofFloat(v, View.ROTATION, -2.2f, 2.2f).apply {
+                duration = 110L + (i % 3) * 15L
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                startDelay = (i * 37L) % 120L
+            }
+            a.start()
+            jiggles[v] = a
+        }
+    }
+
+    private fun stopJiggle(group: ViewGroup?) {
+        group ?: return
+        for (i in 0 until group.childCount) {
+            val v = group.getChildAt(i)
+            jiggles.remove(v)?.cancel()
+            v.rotation = 0f
+        }
+    }
+
     private fun resetAll(group: ViewGroup?) {
         group ?: return
         for (i in 0 until group.childCount) group.getChildAt(i).apply { animate().cancel(); translationX = 0f; translationY = 0f; alpha = 1f }
@@ -153,6 +181,7 @@ object KeyboardMenu {
         val (from, key) = dragged(event) ?: return false
         when (event.action) {
             android.view.DragEvent.ACTION_DRAG_STARTED -> {
+                startJiggle(toolbar)
                 if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
             }
             android.view.DragEvent.ACTION_DRAG_LOCATION -> if (key != ToolbarKey.VOICE) previewBar(toolbar, key, barIndex(strip, toolbar, event.x, key))
@@ -160,10 +189,10 @@ object KeyboardMenu {
                 resetAll(toolbar)
                 if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_ENDED -> resetAll(toolbar)
+            android.view.DragEvent.ACTION_DRAG_ENDED -> { resetAll(toolbar); stopJiggle(toolbar) }
             android.view.DragEvent.ACTION_DROP -> {
                 val index = barIndex(strip, toolbar, event.x, key)
-                resetAll(toolbar)
+                resetAll(toolbar); stopJiggle(toolbar)
                 val prefs = strip.context.prefs()
                 val bar = helium314.keyboard.latin.utils.getBarKeys(prefs)
                 val hasMic = ToolbarKey.VOICE in bar || key == ToolbarKey.VOICE
@@ -226,15 +255,16 @@ object KeyboardMenu {
         val label = labelOf(key)
         val othersCount = (0 until grid.childCount).count { grid.getChildAt(it).tag != label }
         when (event.action) {
-            android.view.DragEvent.ACTION_DRAG_STARTED -> if (from == "menu") previewGrid(grid, label, (0 until grid.childCount).indexOfFirst { grid.getChildAt(it).tag == label })
+            android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(grid) == Unit && from == "menu") previewGrid(grid, label, (0 until grid.childCount).indexOfFirst { grid.getChildAt(it).tag == label })
             android.view.DragEvent.ACTION_DRAG_LOCATION -> previewGrid(grid, label, gridIndex(menu, grid, event.x, event.y, othersCount))
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
                 resetAll(grid)
                 if (from == "menu") (0 until grid.childCount).map { grid.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_ENDED -> resetAll(grid)
+            android.view.DragEvent.ACTION_DRAG_ENDED -> { resetAll(grid); stopJiggle(grid) }
             android.view.DragEvent.ACTION_DROP -> {
                 val index = gridIndex(menu, grid, event.x, event.y, othersCount)
+                stopJiggle(grid)
                 val visible = (0 until grid.childCount).mapNotNull { grid.getChildAt(it).tag as? String }.filter { it != label }.toMutableList()
                 if (label != null) visible.add(index.coerceIn(0, visible.size), label)
                 val prefs = menu.context.prefs()
