@@ -74,7 +74,7 @@ class VoiceInputController(
             return
         }
         finishKeyboardComposing()
-        pending.clear(); current = ""
+        pending.clear(); current = ""; committed.clear()
         region = VoicePrefs.region(ime)
         val before = ic()?.getTextBeforeCursor(1, 0)
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
@@ -193,6 +193,12 @@ class VoiceInputController(
 
     /** Moves the spoken sentence to the waiting list and asks the accuracy model for its version. */
     private fun endSentence(session: Int, streamingText: String, audio: FloatArray) {
+        VoiceCommands.action(streamingText)?.let { action ->
+            main.post { if (session == sessionId) { current = ""; render() } }
+            // run after the sentences before it have been written
+            finalPass.execute { main.post { if (session == sessionId) runAction(action) } }
+            return
+        }
         val shown = formatStreaming(streamingText)
         main.post {
             if (session != sessionId) return@post
@@ -202,7 +208,7 @@ class VoiceInputController(
         finalPass.execute {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
-            val text = VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime))
+            val text = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
             main.post { if (session == sessionId) commitOldest(text) }
         }
     }
@@ -226,8 +232,12 @@ class VoiceInputController(
         pending.removeFirst()
         val ic = ic() ?: return
         ic.beginBatchEdit()
-        ic.commitText(lead() + finalText, 1)
-        needsLeadingSpace = true
+        val noLead = finalText.isEmpty() || finalText[0] in ",.!?;:…)\n"
+        val piece = (if (noLead) "" else lead()) + finalText
+        ic.commitText(piece, 1)
+        committed.addLast(piece)
+        if (committed.size > 20) committed.removeFirst()
+        needsLeadingSpace = !(finalText.endsWith("\n") || finalText.endsWith("("))
         wrote = true
         render()
         ic.endBatchEdit()
@@ -253,6 +263,45 @@ class VoiceInputController(
         return true
     }
 
+    private val committed = ArrayDeque<String>()
+
+    /** Spoken commands: "delete that", "send", "stop listening", "clear all". */
+    private fun runAction(action: VoiceCommands.Action) {
+        val ic = ic() ?: return
+        when (action) {
+            VoiceCommands.Action.DELETE_THAT -> {
+                val last = committed.removeLastOrNull() ?: return
+                if (ic.getTextBeforeCursor(last.length, 0)?.toString() == last) ic.deleteSurroundingText(last.length, 0)
+                val before = ic.getTextBeforeCursor(1, 0)
+                needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
+                resync()
+            }
+            VoiceCommands.Action.CLEAR_ALL -> {
+                ic.beginBatchEdit()
+                ic.finishComposingText()
+                ic.performContextMenuAction(android.R.id.selectAll)
+                ic.commitText("", 1)
+                ic.endBatchEdit()
+                committed.clear(); wrote = false; needsLeadingSpace = false
+                resync()
+            }
+            VoiceCommands.Action.STOP -> stop()
+            VoiceCommands.Action.SEND -> {
+                stop()
+                val editorAction = (ime.currentInputEditorInfo?.imeOptions ?: 0) and android.view.inputmethod.EditorInfo.IME_MASK_ACTION
+                val sendLike = editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                main.postDelayed({
+                    ic()?.finishComposingText()
+                    if (sendLike) ic()?.performEditorAction(editorAction)
+                    else toast("This app needs its own send button tapped")
+                }, 300)
+            }
+        }
+    }
+
     private fun finishIfIdle() {
         if (running || pending.isNotEmpty()) return
         if (current.isNotEmpty()) { current = ""; render() }
@@ -271,7 +320,7 @@ class VoiceInputController(
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
         val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
-        return VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region)
+        return VoiceCommands.punctuate(VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region))
     }
 
     private fun toast(message: String) = Toast.makeText(ime, message, Toast.LENGTH_SHORT).show()
