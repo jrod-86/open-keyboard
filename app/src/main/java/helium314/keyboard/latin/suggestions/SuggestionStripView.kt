@@ -179,6 +179,19 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             setupKey(button, colors)
             toolbar.addView(button)
         }
+        // Open Keyboard: menu buttons put on the bar (My info, Translate, app tiles…)
+        for (b in helium314.keyboard.latin.KeyboardMenu.barButtons(context)) {
+            val button = ImageButton(context, null, R.attr.suggestionWordStyle)
+            button.tag = "item:" + b.id
+            button.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            button.contentDescription = b.id
+            button.setImageDrawable(b.icon)
+            button.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
+            setupKey(button, colors)
+            if (!b.tint) button.clearColorFilter()
+            button.setOnClickListener { b.action() }
+            toolbar.addView(button, b.position.coerceIn(0, toolbar.childCount))
+        }
         for (pinnedKey in getPinnedToolbarKeys(context.prefs())) {
             val button = createToolbarKey(context, pinnedKey)
             button.layoutParams = toolbarKeyLayoutParams
@@ -420,6 +433,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     override fun onLongClick(view: View): Boolean {
         // Open Keyboard: with the menu open, hold a bar button to drag it down into the menu or along the bar
+        if (helium314.keyboard.latin.KeyboardMenu.isShowing && (view.tag as? String)?.startsWith("item:") == true) {
+            helium314.keyboard.latin.KeyboardMenu.startBarItemDrag(view, (view.tag as String).removePrefix("item:"))
+            return true
+        }
+        if ((view.tag as? String)?.startsWith("item:") == true) return false
         if (helium314.keyboard.latin.KeyboardMenu.isShowing && view.tag is ToolbarKey && (view.parent === toolbar || view.parent === pinnedKeys)) {
             helium314.keyboard.latin.KeyboardMenu.startDrag(view, "bar", view.tag as ToolbarKey)
             return true

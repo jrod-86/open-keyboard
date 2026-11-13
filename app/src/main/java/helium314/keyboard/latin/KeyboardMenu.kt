@@ -107,11 +107,13 @@ object KeyboardMenu {
     }
 
     private fun draggedItem(event: android.view.DragEvent): String? =
-        (event.localState as? String)?.takeIf { it.startsWith("item:") }?.substringAfter("item:")
+        (event.localState as? String)?.takeIf { it.startsWith("item:") || it.startsWith("baritem:") }?.substringAfter(":")
+
+    private fun draggedFromBar(event: android.view.DragEvent) = (event.localState as? String)?.startsWith("baritem:") == true
 
     private fun dragged(event: android.view.DragEvent): Pair<String, ToolbarKey>? {
         val state = event.localState as? String ?: return null
-        if (state.startsWith("item:")) return null
+        if (state.startsWith("item:") || state.startsWith("baritem:")) return null
         val key = runCatching { ToolbarKey.valueOf(state.substringAfter(':')) }.getOrNull() ?: return null
         return state.substringBefore(':') to key
     }
@@ -162,8 +164,46 @@ object KeyboardMenu {
 
     // ---- the top bar ----
 
+    /** Menu buttons without a built-in bar key (My info, Translate, app tiles…) that were put on the bar: (position, id). */
+    private const val PREF_BAR_ITEMS = "open_keyboard_bar_items"
+
+    private fun barItems(prefs: android.content.SharedPreferences): List<Pair<Int, String>> =
+        prefs.getString(PREF_BAR_ITEMS, "")!!.split("\n").filter { it.contains(':') }
+            .mapNotNull { e -> e.substringBefore(':').toIntOrNull()?.let { it to e.substringAfter(':') } }.sortedBy { it.first }
+
+    private fun setBarItems(prefs: android.content.SharedPreferences, items: List<Pair<Int, String>>) =
+        prefs.edit { putString(PREF_BAR_ITEMS, items.joinToString("\n") { "${it.first}:${it.second}" }) }
+
+    /** Buttons for the bar items, for the top bar to place at their positions: (position, id, icon, tint, action). */
+    class BarButton(val position: Int, val id: String, val icon: android.graphics.drawable.Drawable?, val tint: Boolean, val action: () -> Unit)
+
+    fun barButtons(context: Context): List<BarButton> {
+        val saved = barItems(context.prefs())
+        if (saved.isEmpty()) return emptyList()
+        val items = buildItems(context, lastOnCode ?: {}).associateBy { it.id }
+        return saved.mapNotNull { (pos, id) -> items[id]?.let { BarButton(pos, id, it.icon(), it.tint, it.action) } }
+    }
+
+    /** Whatever is on the bar now, left to right: a ToolbarKey or "item:<id>". */
+    private fun barTokens(toolbar: ViewGroup): List<Any> = (0 until toolbar.childCount).mapNotNull { toolbar.getChildAt(it).tag }
+
+    /** Saves the bar from a list of ToolbarKeys and "item:<id>" strings, keeping the mic as it was. */
+    private fun saveBar(prefs: android.content.SharedPreferences, tokens: List<Any>) {
+        val hasMic = ToolbarKey.VOICE in helium314.keyboard.latin.utils.getBarKeys(prefs)
+        val keys = tokens.filterIsInstance<ToolbarKey>()
+        helium314.keyboard.latin.utils.setBarKeys(prefs, if (hasMic) keys + ToolbarKey.VOICE else keys)
+        setBarItems(prefs, tokens.mapIndexedNotNull { i, t -> (t as? String)?.removePrefix("item:")?.let { i to it } })
+    }
+
+    /** Hold a bar button that came from the menu to move it (only while the menu is open). */
+    fun startBarItemDrag(view: View, id: String) {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val state = "baritem:$id"
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+    }
+
     /** Where along the bar a drop at [x] (in the strip) would go, among the bar buttons other than [key]. */
-    private fun barIndex(strip: View, toolbar: ViewGroup, x: Float, key: ToolbarKey): Int {
+    private fun barIndex(strip: View, toolbar: ViewGroup, x: Float, key: Any): Int {
         val loc = IntArray(2); strip.getLocationInWindow(loc)
         val wx = x + loc[0]
         var index = 0
@@ -177,7 +217,7 @@ object KeyboardMenu {
     }
 
     /** Slides the bar buttons apart to show where the dragged one would land. */
-    private fun previewBar(toolbar: ViewGroup, key: ToolbarKey, index: Int) {
+    private fun previewBar(toolbar: ViewGroup, key: Any, index: Int) {
         val others = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.tag != key }
         val n = others.size
         val fromBar = (0 until toolbar.childCount).any { toolbar.getChildAt(it).tag == key }
@@ -195,31 +235,38 @@ object KeyboardMenu {
 
     /** Drops on the top bar: add a menu button to the bar, or move a bar button along it. */
     fun onBarDrag(strip: View, event: android.view.DragEvent, toolbar: ViewGroup): Boolean {
-        val (from, key) = dragged(event) ?: return false
+        val itemId = draggedItem(event)
+        val from: String
+        val token: Any
+        if (itemId != null) { from = if (draggedFromBar(event)) "bar" else "menu"; token = "item:$itemId" }
+        else { val d = dragged(event) ?: return false; from = d.first; token = d.second }
+        fun self() = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == token }
         when (event.action) {
             android.view.DragEvent.ACTION_DRAG_STARTED -> {
                 startJiggle(toolbar)
-                if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
+                if (from == "bar") self()?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (key != ToolbarKey.VOICE) previewBar(toolbar, key, barIndex(strip, toolbar, event.x, key))
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (token != ToolbarKey.VOICE) previewBar(toolbar, token, barIndex(strip, toolbar, event.x, token))
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
                 resetAll(toolbar)
-                if (from == "bar") (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0.25f
+                if (from == "bar") self()?.alpha = 0.25f
             }
             android.view.DragEvent.ACTION_DRAG_ENDED -> { resetAll(toolbar); stopJiggle(toolbar) }
             android.view.DragEvent.ACTION_DROP -> {
-                val index = barIndex(strip, toolbar, event.x, key)
+                val index = barIndex(strip, toolbar, event.x, token)
                 resetAll(toolbar); stopJiggle(toolbar)
                 val prefs = strip.context.prefs()
-                val bar = helium314.keyboard.latin.utils.getBarKeys(prefs)
-                val hasMic = ToolbarKey.VOICE in bar || key == ToolbarKey.VOICE
-                val buttons = bar.filter { it != ToolbarKey.VOICE && it != key }.toMutableList()
-                if (key != ToolbarKey.VOICE) {
-                    buttons.add(index.coerceIn(0, buttons.size), key)
+                if (token == ToolbarKey.VOICE) {
+                    saveBar(prefs, barTokens(toolbar)) // the mic stays pinned at the end
+                    val keys = helium314.keyboard.latin.utils.getBarKeys(prefs)
+                    if (ToolbarKey.VOICE !in keys) helium314.keyboard.latin.utils.setBarKeys(prefs, keys + ToolbarKey.VOICE)
+                } else {
+                    val tokens = barTokens(toolbar).filter { it != token }.toMutableList()
+                    tokens.add(index.coerceIn(0, tokens.size), token)
                     // a full bar pushes its last other button back into the menu
-                    while (buttons.size > MAX_ON_BAR) buttons.removeAt(buttons.indexOfLast { it != key })
+                    while (tokens.size > MAX_ON_BAR) tokens.removeAt(tokens.indexOfLast { it != token })
+                    saveBar(prefs, tokens)
                 }
-                helium314.keyboard.latin.utils.setBarKeys(prefs, if (hasMic) buttons + ToolbarKey.VOICE else buttons)
                 onBarChanged?.invoke()
                 refreshMenu(strip.context)
             }
@@ -289,6 +336,13 @@ object KeyboardMenu {
                     helium314.keyboard.latin.utils.setBarKeys(prefs, helium314.keyboard.latin.utils.getBarKeys(prefs) - key)
                     onBarChanged?.invoke()
                 }
+                if (itemId != null && draggedFromBar(event)) {
+                    // positions after it move one to the left
+                    val left = barItems(prefs)
+                    val pos = left.firstOrNull { it.second == itemId }?.first
+                    setBarItems(prefs, left.filter { it.second != itemId }.map { (p, id) -> (if (pos != null && p > pos) p - 1 else p) to id })
+                    onBarChanged?.invoke()
+                }
                 refreshMenu(menu.context)
             }
         }
@@ -302,19 +356,14 @@ object KeyboardMenu {
         }
     }
 
-    private fun showMenu(context: Context, onCode: (Int) -> Unit) {
-        val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
-        lastOnCode = onCode
-        hide()
-        val colors = Settings.getValues().mColors
-        val textColor = colors.get(ColorType.KEY_TEXT)
-        val tileColor = colors.get(ColorType.FUNCTIONAL_KEY_BACKGROUND)
+    /** Every button the menu can show (and the ones that can sit on the top bar), in default order. */
+    private fun buildItems(context: Context, onCode: (Int) -> Unit): List<Item> {
         fun toolbarIcon(key: ToolbarKey) = { KeyboardIconsSet.instance.getNewDrawable(key.name, context) }
         fun ownIcon(res: Int) = { ContextCompat.getDrawable(context, res)?.mutate() }
 
         fun keyItem(label: String, key: ToolbarKey, action: (() -> Unit)? = null) =
             Item(label, toolbarIcon(key), key, action = action ?: { onCode(helium314.keyboard.latin.utils.getCodeForToolbarKey(key)) })
-        val allItems = listOf(
+        return listOf(
             Item("Theme", ownIcon(R.drawable.ic_menu_theme)) { openSettings(context, SettingsDestination.Theme) },
             Item("Resize", ownIcon(R.drawable.ic_menu_resize)) { showResize(context) },
             keyItem("Stickers", ToolbarKey.STICKER) { helium314.keyboard.media.MediaPanel.toggle(context, false) },
@@ -357,11 +406,22 @@ object KeyboardMenu {
                     Plugins.runAppAction(context, (c as? LatinIME)?.currentInputConnection, app)
                 }
             }
+    }
+
+    private fun showMenu(context: Context, onCode: (Int) -> Unit) {
+        val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
+        lastOnCode = onCode
+        hide()
+        val colors = Settings.getValues().mColors
+        val textColor = colors.get(ColorType.KEY_TEXT)
+        val tileColor = colors.get(ColorType.FUNCTIONAL_KEY_BACKGROUND)
+        val allItems = buildItems(context, onCode)
         // buttons already on the top bar aren't repeated here
         val onBar = helium314.keyboard.latin.utils.getBarKeys(context.prefs())
         allItems.forEach { if (it.key != null) menuLabels[it.key] = it.id }
         val order = context.prefs().getString(PREF_MENU_ORDER, "")!!.split(",")
-        val items = allItems.filter { it.key == null || it.key !in onBar }
+        val extras = barItems(context.prefs()).map { it.second }
+        val items = allItems.filter { (it.key == null || it.key !in onBar) && it.id !in extras }
             .sortedBy { order.indexOf(it.id).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
 
         val pager = TilePager(context, dp(context, 8f).toInt(), dp(context, 4f).toInt(), dp(context, 64f).toInt())
