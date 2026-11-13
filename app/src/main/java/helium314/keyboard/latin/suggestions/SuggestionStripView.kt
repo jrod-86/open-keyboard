@@ -341,8 +341,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         // Open Keyboard: last line of defence against an empty bar. If the word strip is showing but has
         // nothing in it (for example after a clipboard chip was tapped, or a chip whose picture didn't load),
         // show the buttons instead.
-        if (!toolbarContainer.isVisible && !stripHasContent()) post {
-            if (!toolbarContainer.isVisible && !stripHasContent()) {
+        if (isShown && !toolbarContainer.isVisible && !stripHasContent()) post {
+            if (isShown && !toolbarContainer.isVisible && !stripHasContent()) {
                 suggestionsStrip.isVisible = false
                 toolbarContainer.isVisible = true
                 pinnedKeys.isVisible = true
@@ -353,7 +353,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     private fun stripHasContent(): Boolean {
         fun has(v: View): Boolean {
-            if (!v.isShown || v.width == 0) return false
+            // judge by the strip's own children: while the keyboard is still appearing nothing is
+            // "shown" or measured yet, and a fresh paste chip must not be swapped for the buttons
+            if (v.visibility != VISIBLE || (v.isLaidOut && v.width == 0)) return false
             if (v.javaClass.name.contains("Inline") || v is android.view.SurfaceView) return true
             if (v is TextView) return !v.text.isNullOrBlank()
             if (v is ImageButton) return false

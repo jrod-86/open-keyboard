@@ -962,6 +962,9 @@ public class LatinIME extends InputMethodService implements
             mKeyboardSwitcher.onWindowShown();
             setNavigationBarColor();
             workaroundForHuaweiStatusBarIssue();
+            // Open Keyboard: coming back from copying a code in another app, offer it straight away
+            if (hasSuggestionStripView() && isTextFieldEmpty() && tryShowClipboardSuggestion())
+                mSuggestionStripView.setToolbarVisibility(!mSettings.getCurrent().mAutoHideToolbar);
         }
     }
 
