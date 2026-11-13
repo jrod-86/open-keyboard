@@ -49,6 +49,8 @@ class ScanTextActivity : Activity() {
     private lateinit var rightButton: Button
     private var photoFile: File? = null
     private var allText = ""
+    /** True when the photo reader wasn't available and Tesseract was used instead. */
+    @Volatile private var basicReader = false
 
     private enum class Mode { EMPTY, READING, PHOTO, SELECT, RESULT }
     private var mode = Mode.EMPTY
@@ -112,8 +114,9 @@ class ScanTextActivity : Activity() {
         status.text = when (m) {
             Mode.EMPTY -> "Take a photo of some text, or choose a picture or screenshot."
             Mode.READING -> "Reading the text…"
-            Mode.PHOTO -> if (photo.words.isEmpty()) "No text found. Try again with the text filling more of the photo."
-                else "Extract all the text, or tap T and run your finger over the part you want."
+            Mode.PHOTO -> (if (photo.words.isEmpty()) "No text found. Try again with the text filling more of the photo."
+                else "Extract all the text, or tap T and run your finger over the part you want.") +
+                (if (basicReader) " (Using the basic reader.)" else "")
             Mode.SELECT -> "Run your finger over the text you want. Do it again to change it."
             Mode.RESULT -> "Check the text, then tap Use this text."
         }
@@ -285,6 +288,7 @@ class ScanTextActivity : Activity() {
         setMode(Mode.READING)
         thread(name = "scan-text") {
             var bmp: Bitmap? = null
+            basicReader = false
             val words = mutableListOf<Word>()
             val text = try {
                 bmp = loadBitmap(uri) ?: throw IllegalStateException("Couldn't open the picture")
@@ -296,7 +300,11 @@ class ScanTextActivity : Activity() {
                 val crashed = File(paddleDir, "crashed")
                 // each installed build counts as a new version, so a fixed build tries again
                 val version = packageManager.getPackageInfo(packageName, 0).lastUpdateTime.toString()
-                if (running.exists()) { running.delete(); crashed.writeText(version) }
+                // a "running" left over from this same build means the reader crashed mid-way
+                if (running.exists()) {
+                    if (running.readText() == version) crashed.writeText(version)
+                    running.delete()
+                }
                 val paddleOk = !(crashed.exists() && crashed.readText() == version)
                 val lines = if (!paddleOk) null else try {
                     running.writeText(version)
@@ -310,7 +318,10 @@ class ScanTextActivity : Activity() {
                     val (text, found) = wordsFromLines(lines)
                     words += found
                     text
-                } else readWithTesseract(bmp, words)
+                } else {
+                    basicReader = true
+                    readWithTesseract(bmp, words)
+                }
             } catch (e: Throwable) {
                 runOnUiThread { setMode(Mode.EMPTY); status.text = "Didn't work: ${e.message}" }
                 return@thread
