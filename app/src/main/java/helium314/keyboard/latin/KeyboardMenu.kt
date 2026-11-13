@@ -348,7 +348,7 @@ object KeyboardMenu {
         ).filter { it.plugin == null || Plugins.isOn(context, it.plugin) } +
             Plugins.enabledAppActions(context).map { app ->
                 // the app's logo as a one-colour outline, so it matches the other tiles
-                val mono = appOutline(app.icon)
+                val mono = appOutline(context, app.component.packageName, app.icon)
                 Item(app.label, { mono?.first ?: app.icon?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
                     hide()
                     var c: Context = context
@@ -428,8 +428,18 @@ object KeyboardMenu {
      * the logo layer of its adaptive icon. Second is true when it's a full-size adaptive layer.
      * Null when the icon has no separate logo, so the colour icon is kept.
      */
-    private fun appOutline(icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
-        val adaptive = icon as? android.graphics.drawable.AdaptiveIconDrawable ?: return null
+    private fun appOutline(context: Context, pkg: String, icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
+        // Samsung (and some launchers' icon packs) hand out finished pictures; read the app's own icon layers instead
+        val raw = runCatching {
+            val pm = context.packageManager
+            val info = pm.getApplicationInfo(pkg, 0)
+            pm.getResourcesForApplication(info).getDrawableForDensity(info.icon, context.resources.displayMetrics.densityDpi, null)
+        }.getOrNull()
+        val adaptive = (raw as? android.graphics.drawable.AdaptiveIconDrawable) ?: (icon as? android.graphics.drawable.AdaptiveIconDrawable)
+        if (adaptive == null) {
+            helium314.keyboard.latin.utils.Log.i("KeyboardMenu", "$pkg icon isn't layered: ${raw?.javaClass?.simpleName} / ${icon?.javaClass?.simpleName}")
+            return null
+        }
         if (android.os.Build.VERSION.SDK_INT >= 33) adaptive.monochrome?.let { return (it.constantState?.newDrawable()?.mutate() ?: it) to true }
         val fg = adaptive.foreground ?: return null
         return (fg.constantState?.newDrawable()?.mutate() ?: fg) to true
