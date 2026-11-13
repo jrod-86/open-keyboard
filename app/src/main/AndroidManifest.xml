@@ -92,6 +92,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:exported="false" />
 
         <activity android:name="helium314.keyboard.latin.ScanTextActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:label="Scan text"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
