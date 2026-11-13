@@ -78,14 +78,12 @@ class VoiceInputController(
         finishKeyboardComposing()
         pending.clear(); current = ""; committed.clear()
         region = VoicePrefs.region(ime)
-        translateTo = helium314.keyboard.latin.KhmerTranslator.voiceTarget(ime)
-        if (translateTo != null) {
-            if (helium314.keyboard.latin.KhmerTranslator.downloaded(ime))
-                toast("Speak English, typing Khmer")
-            else {
-                helium314.keyboard.latin.KhmerTranslator.ensureDownload(ime)
+        translateTo = helium314.keyboard.latin.MadladTranslator.voiceTarget(ime)
+        translateTo?.let { tag ->
+            if (helium314.keyboard.latin.MadladTranslator.covers(tag) && !helium314.keyboard.latin.MadladTranslator.downloaded(ime)) {
+                helium314.keyboard.latin.MadladTranslator.ensureDownload(ime)
                 translateTo = null
-            }
+            } else toast("Speak English, typing " + helium314.keyboard.latin.TranslatePanel.name(tag))
         }
         val before = ic()?.getTextBeforeCursor(1, 0)
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
@@ -239,7 +237,7 @@ class VoiceInputController(
             val english = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
             val to = translateTo
             val text = if (to == null) english
-                else helium314.keyboard.latin.KhmerTranslator.translate(ime, english, to) ?: english
+                else helium314.keyboard.latin.TranslatePanel.translateBlocking(ime, english, "en", to) ?: english
             main.post { if (session == sessionId) commitOldest(text) }
         }
     }

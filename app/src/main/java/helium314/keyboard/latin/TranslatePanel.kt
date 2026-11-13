@@ -67,12 +67,13 @@ object TranslatePanel {
         "pl", "tr", "el", "sv", "da", "nb", "fi", "cs", "sk", "hu", "ro", "bg", "hr", "sr", "bs", "sl", "lt", "lv", "et",
         "ca", "gl", "eu", "ms", "fa", "he", "ur", "bn", "ta", "te", "kn", "ml", "mr", "gu", "is", "af", "az", "sq",
     )
-    // Khmer isn't in Mozilla's catalog; it uses MADLAD-400 (KhmerTranslator)
-    private val fromEnglish = order - setOf("sq") + "km"
-    private val intoEnglish = order - setOf("az") + "km"
+    // Khmer isn't in Mozilla's catalog; it uses MADLAD-400 (MadladTranslator)
+    // Languages Mozilla doesn't have use MADLAD-400 (MadladTranslator)
+    private val fromEnglish = order - setOf("sq") + MadladTranslator.languages
+    private val intoEnglish = order - setOf("az") + MadladTranslator.languages
 
-    private fun name(tag: String) = Locale.forLanguageTag(tag).getDisplayName(Locale.ENGLISH)
-        .replace("Norwegian Bokmål", "Norwegian")
+    fun name(tag: String) = Locale.forLanguageTag(tag).getDisplayName(Locale.ENGLISH)
+        .replace("Norwegian Bokmål", "Norwegian").replace("Central Kurdish", "Kurdish")
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics).toInt()
 
@@ -91,7 +92,25 @@ object TranslatePanel {
         }
     }
 
-    fun show(context: Context) {
+    /**
+     * Translates without touching the text box, for voice typing. Blocking: call off the main thread.
+     * Returns null if it couldn't translate.
+     */
+    fun translateBlocking(ctx: Context, text: String, from: String, to: String): String? {
+        if (MadladTranslator.covers(from) || MadladTranslator.covers(to)) return MadladTranslator.translate(ctx, text, to)
+        return kotlinx.coroutines.runBlocking {
+            try {
+                val fox = foxlet(ctx)
+                val model = fox.models.prepare(LanguagePair(from, to)) { }
+                fox.translator.translate(text, model)
+            } catch (e: Throwable) {
+                Log.w(TAG, "voice translation failed", e)
+                null
+            }
+        }
+    }
+
+    fun show(context: Context, forVoice: Boolean = false) {
         val colors = Settings.getValues().mColors
         val text = colors.get(ColorType.KEY_TEXT)
         val tile = colors.get(ColorType.FUNCTIONAL_KEY_BACKGROUND)
@@ -143,15 +162,51 @@ object TranslatePanel {
 
         val top = row().apply { gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(context).apply {
-            this.text = "Translate what you wrote"
+            this.text = if (forVoice) "Speak English, type in…" else "Translate what you wrote"
             setTextColor(text)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (undoText != null) top.addView(pill("Undo") { KeyboardMenu.hide(); undo(context) })
+        if (undoText != null && !forVoice) top.addView(pill("Undo") { KeyboardMenu.hide(); undo(context) })
         top.addView(pill("✕") { KeyboardMenu.hide() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(context, 6f) })
         column.addView(top)
 
-        val recent = context.prefs().getString(PREF_RECENT, "")!!.split(",").filter { it.isNotBlank() }
+        val voiceTarget = MadladTranslator.voiceTarget(context)
+        val recent = (listOfNotNull(voiceTarget.takeIf { forVoice }) + context.prefs().getString(PREF_RECENT, "")!!.split(",")).filter { it.isNotBlank() }.distinct()
+        // voice mode: what's on now, and the download for languages that need the big model
+        val voiceStatus = TextView(context).apply {
+            setTextColor(text)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(0, dp(context, 8f), 0, dp(context, 4f))
+        }
+        val voiceButtons = row()
+        fun voiceRefresh() {
+            val t = MadladTranslator.voiceTarget(context)
+            voiceStatus.text = when {
+                t == null -> "Off: voice typing types English. Pick a language and the mic will type what you say in that language."
+                MadladTranslator.covers(t) -> MadladTranslator.status(context, name(t))
+                else -> "On: speak English, and each sentence is typed in ${name(t)} when you pause. The first time, " +
+                    "it downloads ${name(t)} once (20–50 MB)."
+            }
+            voiceButtons.removeAllViews()
+            if (t != null) voiceButtons.addView(pill("Turn off (type English)") { MadladTranslator.setVoiceTarget(context, null); show(context, true) })
+            if (t != null && MadladTranslator.covers(t) && !MadladTranslator.downloaded(context) && !MadladTranslator.downloadRunningNow(context))
+                voiceButtons.addView(pill("Download", true) { MadladTranslator.clearError(); MadladTranslator.ensureDownload(context); voiceRefresh() },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(context, 8f) })
+        }
+        if (forVoice) {
+            column.addView(voiceStatus)
+            column.addView(voiceButtons)
+            voiceRefresh()
+            val ticker = object : Runnable {
+                override fun run() {
+                    if (root.parent == null) return
+                    val t = MadladTranslator.voiceTarget(context)
+                    if (t != null && MadladTranslator.covers(t)) voiceRefresh()
+                    root.postDelayed(this, 1000)
+                }
+            }
+            root.postDelayed(ticker, 1000)
+        }
         fun ordered(list: List<String>) = recent.filter { it in list } + list.filter { it !in recent }.sortedBy { name(it) }
 
         // A-Z strip to find a language quickly
@@ -163,10 +218,17 @@ object TranslatePanel {
         fun render() {
             langs.removeAllViews()
             fun keep(tag: String) = chosen == null || name(tag).first().uppercaseChar() == chosen
-            langs.addView(label("From English into"))
-            flow(ordered(fromEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, "en", tag) } }, langs)
-            langs.addView(label("Into English from"))
-            flow(ordered(intoEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, tag, "en") } }, langs)
+            if (forVoice) {
+                langs.addView(label("Type in"))
+                flow(ordered(fromEnglish).filter(::keep).map { tag -> pill(name(tag), tag == MadladTranslator.voiceTarget(context)) {
+                    MadladTranslator.setVoiceTarget(context, tag); remember(context, tag); show(context, true)
+                } }, langs)
+            } else {
+                langs.addView(label("From English into"))
+                flow(ordered(fromEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, "en", tag) } }, langs)
+                langs.addView(label("Into English from"))
+                flow(ordered(intoEnglish).filter(::keep).map { tag -> pill(name(tag), tag in recent) { KeyboardMenu.hide(); translate(context, tag, "en") } }, langs)
+            }
             letterViews.forEach { (c, v) ->
                 (v.background as? GradientDrawable)?.setColor(if (c == chosen) ColorUtils.setAlphaComponent(accent, 110) else tile)
             }
@@ -183,7 +245,8 @@ object TranslatePanel {
         column.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(strip) })
         column.addView(langs)
         render()
-        column.addView(label("The first time you use a language it downloads once (about 20–50 MB, or 1.9 GB for Khmer). After that it works offline, and your text never leaves the phone."))
+        column.addView(label("The first time you use a language it downloads once (about 20–50 MB). Khmer, Lao, Burmese, Filipino " +
+            "and the other less common languages share one 1.9 GB download. After that it works offline, and your text never leaves the phone."))
 
         KeyboardMenu.showOverlay(root)
     }
@@ -206,10 +269,10 @@ object TranslatePanel {
         if (source.isBlank()) { toast(context, "Write something first, then translate it"); return }
         remember(context, if (from == "en") to else from)
         toast(context, "Translating…")
-        if (from == "km" || to == "km") {
-            if (!KhmerTranslator.downloaded(context)) { KhmerTranslator.ensureDownload(context); return }
+        if (MadladTranslator.covers(from) || MadladTranslator.covers(to)) {
+            if (!MadladTranslator.downloaded(context)) { MadladTranslator.ensureDownload(context); return }
             scope.launch {
-                val result = withContext(Dispatchers.IO) { KhmerTranslator.translate(context, source, to) }
+                val result = withContext(Dispatchers.IO) { MadladTranslator.translate(context, source, to) }
                 if (result == null) toast(context, "Translation didn't work")
                 else withContext(Dispatchers.Main) { replace(ime, selected.isNotEmpty(), before, after, source, result) }
             }

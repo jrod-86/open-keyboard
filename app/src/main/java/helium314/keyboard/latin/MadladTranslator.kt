@@ -20,8 +20,8 @@ import java.util.concurrent.TimeUnit
  * llama.cpp (MIT) on the phone. Mozilla's models (used for the other languages) have no Khmer.
  * The model downloads once (about 1.9 GB); after that nothing leaves the phone.
  */
-object KhmerTranslator {
-    private const val TAG = "KhmerTranslator"
+object MadladTranslator {
+    private const val TAG = "MadladTranslator"
     private const val MODEL_URL = "https://huggingface.co/mtsdurica/madlad400-3b-mt-Q4_K_M-GGUF/resolve/" +
         "7f55e827c4c2fd1fdc52893879e18966d2867dba/madlad400-3b-mt-q4_k_m.gguf"
     private const val MODEL_SHA256 = "fc56f16d215db71e856de3c3770974c867e3d95a782d415d4cfabc9fb470b8e4"
@@ -43,15 +43,21 @@ object KhmerTranslator {
     /** "km" when voice typing should type Khmer from spoken English, otherwise null. */
     fun voiceTarget(ctx: Context): String? = prefs(ctx).getString(PREF_VOICE_TO, null)
 
-    /** Turns "speak English, type Khmer" on or off. Starts the model download if it's missing. Returns the new state. */
-    fun toggleVoiceKhmer(ctx: Context): Boolean {
-        val on = voiceTarget(ctx) == null
-        prefs(ctx).edit().putString(PREF_VOICE_TO, if (on) "km" else null).apply()
-        if (on) {
-            if (downloaded(ctx)) toast(ctx, "Voice typing: speak English, it types Khmer")
-            else ensureDownload(ctx)
-        } else toast(ctx, "Voice typing: back to English")
-        return on
+    /**
+     * Languages only this model covers (Mozilla's models, used for the rest, don't have them).
+     * Quality is good for Khmer; for the smaller languages it varies.
+     */
+    val languages = listOf(
+        "km", "lo", "my", "fil", "ceb", "jv", "su", "sw", "am", "so", "ha", "yo", "ig", "zu", "xh", "ne", "si", "pa",
+        "ps", "ku", "mn", "ka", "hy", "uz", "kk", "be", "mk", "cy", "ga", "mt", "lb", "la", "eo", "mi", "sm", "to", "fj",
+        "haw", "hmn",
+    )
+
+    fun covers(tag: String) = tag in languages
+
+    fun setVoiceTarget(ctx: Context, tag: String?) {
+        prefs(ctx).edit().putString(PREF_VOICE_TO, tag).apply()
+        if (tag != null && covers(tag) && !downloaded(ctx)) ensureDownload(ctx)
     }
 
     /** The model file is fully downloaded (it's checked the first time it's used). */
@@ -159,95 +165,16 @@ object KhmerTranslator {
         return null
     }
 
-    private fun status(ctx: Context): String {
-        val on = voiceTarget(ctx) != null
+    /** Status line for the voice language screen when [tag] needs this model. */
+    fun status(ctx: Context, langName: String): String {
         lastError?.let { return it }
-        if (downloaded(ctx)) return if (on) "On. Tap the mic and speak English: each sentence is typed in Khmer when you pause."
-            else "Off. Voice typing types English."
+        if (downloaded(ctx)) return "On: speak English, and each sentence is typed in $langName when you pause."
         val p = progress(ctx)
-        if (p != null) return "Downloading the Khmer model: ${p.first / 1_000_000} of ${p.second / 1_000_000} MB. " +
+        if (p != null) return "Downloading the language model for $langName: ${p.first / 1_000_000} of ${p.second / 1_000_000} MB. " +
             "You can close this; it keeps going and you'll get a notification."
-        return if (on) "The Khmer model isn't downloaded yet. Tap Download (1.9 GB, best on Wi-Fi)."
-            else "Off. Turning it on downloads the Khmer model once (1.9 GB, best on Wi-Fi)."
+        return "$langName needs a one-time 1.9 GB download (best on Wi-Fi). Tap Download."
     }
 
-    @android.annotation.SuppressLint("ViewConstructor")
-    private class Root(context: Context) : android.widget.FrameLayout(context) {
-        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.EXACTLY)
-                setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), 0)
-            else super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        }
-    }
-
-    /** The grid menu's "Voice → Khmer" screen: shows whether it's on and how the download is going. */
-    fun showPanel(context: Context) {
-        val colors = helium314.keyboard.latin.settings.Settings.getValues().mColors
-        val text = colors.get(helium314.keyboard.latin.common.ColorType.KEY_TEXT)
-        val tile = colors.get(helium314.keyboard.latin.common.ColorType.FUNCTIONAL_KEY_BACKGROUND)
-        val accent = colors.get(helium314.keyboard.latin.common.ColorType.GESTURE_TRAIL)
-        fun dp(v: Float) = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_DIP, v, context.resources.displayMetrics).toInt()
-        val root = Root(context).apply {
-            setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(colors.get(helium314.keyboard.latin.common.ColorType.MAIN_BACKGROUND), 255))
-            isClickable = true
-        }
-        val column = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
-        }
-        root.addView(android.widget.ScrollView(context).apply { addView(column) })
-        fun pill(s: String, highlight: Boolean, onClick: () -> Unit) = android.widget.TextView(context).apply {
-            this.text = s
-            setTextColor(text)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
-            gravity = android.view.Gravity.CENTER
-            setPadding(dp(18f), dp(10f), dp(18f), dp(10f))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(20f).toFloat()
-                setColor(if (highlight) androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 110) else tile)
-            }
-            setOnClickListener { onClick() }
-        }
-        val top = android.widget.LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
-        top.addView(android.widget.TextView(context).apply {
-            this.text = "Speak English, type Khmer"
-            setTextColor(text)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17f)
-        }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(pill("✕", false) { KeyboardMenu.hide() })
-        column.addView(top)
-        val statusView = android.widget.TextView(context).apply {
-            setTextColor(text)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
-            setPadding(0, dp(14f), 0, dp(14f))
-        }
-        column.addView(statusView)
-        val buttons = android.widget.LinearLayout(context)
-        column.addView(buttons)
-        fun refresh() {
-            statusView.text = status(context)
-            buttons.removeAllViews()
-            val on = voiceTarget(context) != null
-            buttons.addView(pill(if (on) "Turn off" else "Turn on", !on) {
-                prefs(context).edit().putString(PREF_VOICE_TO, if (on) null else "km").apply()
-                if (!on && !downloaded(context)) ensureDownload(context)
-                statusView.post { refresh() }
-            })
-            if (on && !downloaded(context) && progress(context) == null) buttons.addView(pill("Download", true) {
-                lastError = null
-                ensureDownload(context); refresh()
-            }, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10f) })
-        }
-        refresh()
-        // keep the download progress up to date while the screen is open
-        val ticker = object : Runnable {
-            override fun run() {
-                if (root.parent == null) return
-                statusView.text = status(context)
-                root.postDelayed(this, 1000)
-            }
-        }
-        root.postDelayed(ticker, 1000)
-        KeyboardMenu.showOverlay(root)
-    }
+    fun downloadRunningNow(ctx: Context) = progress(ctx) != null
+    fun clearError() { lastError = null }
 }

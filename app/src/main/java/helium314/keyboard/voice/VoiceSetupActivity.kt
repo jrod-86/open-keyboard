@@ -253,23 +253,14 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
             }
 
             Text("6. Type in another language", style = MaterialTheme.typography.titleMedium)
-            var khmer by remember { mutableStateOf(helium314.keyboard.latin.KhmerTranslator.voiceTarget(ctx) != null) }
-            Row(
-                Modifier.fillMaxWidth().selectable(selected = khmer, onClick = {
-                    khmer = helium314.keyboard.latin.KhmerTranslator.toggleVoiceKhmer(ctx)
-                }),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Speak English, type Khmer")
-                    Text(
-                        "Each sentence you say is translated on the phone and typed in Khmer. Needs a one-time " +
-                                "1.9 GB download. Also in the keyboard's grid menu as \"Voice → Khmer\".",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Switch(checked = khmer, onCheckedChange = null)
-            }
+            val target = helium314.keyboard.latin.MadladTranslator.voiceTarget(ctx)
+            Text(
+                (if (target == null) "Off: voice typing types English. "
+                else "On: you speak English and it types " +
+                        java.util.Locale.forLanguageTag(target).getDisplayName(java.util.Locale.ENGLISH) + ". ") +
+                        "To choose a language, open the keyboard's grid menu and tap \"Voice translate\".",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text("7. Use it", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Tap the mic at the top right of the keyboard and start talking. Tap it again, " +
