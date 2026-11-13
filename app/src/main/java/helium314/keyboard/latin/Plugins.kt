@@ -53,13 +53,18 @@ object Plugins {
 
     private fun processTextIntent() = Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain")
 
+    /** "Translate (Google Translate)", so an app's button can't be mistaken for the keyboard's own. */
+    private fun labelWithApp(action: String, app: String) =
+        if (app.isBlank() || action.equals(app, ignoreCase = true)) action else "$action ($app)"
+
     /** Apps that offer a text action, excluding this app. */
     fun appActions(ctx: Context): List<AppAction> {
         val pm = ctx.packageManager
         return runCatching { pm.queryIntentActivities(processTextIntent(), 0) }.getOrDefault(emptyList())
             .filter { it.activityInfo.packageName != ctx.packageName && it.activityInfo.exported }
             .map { AppAction(ComponentName(it.activityInfo.packageName, it.activityInfo.name),
-                it.loadLabel(pm).toString(), runCatching { it.loadIcon(pm) }.getOrNull()) }
+                labelWithApp(it.loadLabel(pm).toString(), it.activityInfo.applicationInfo.loadLabel(pm).toString()),
+                runCatching { it.loadIcon(pm) }.getOrNull()) }
             .distinctBy { it.id }
             .sortedBy { it.label.lowercase() }
     }
