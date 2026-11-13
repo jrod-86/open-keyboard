@@ -157,10 +157,12 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         rebuildToolbarKeys()
         // Open Keyboard: buttons can be dragged between the menu and the bar while the menu is open
         setOnDragListener { _, event -> helium314.keyboard.latin.KeyboardMenu.onBarDrag(this, event, toolbar) }
-        toolbarContainer.doOnNextLayout {
-            // set min with of the toolbar so the weight of the toolbar keys actually does something
-            // todo: results in requestLayout() improperly called by android.widget.LinearLayout during layout: running second layout pass
-            toolbar.minimumWidth = toolbarContainer.width
+        // set min with of the toolbar so the weight of the toolbar keys actually does something.
+        // Open Keyboard: keep it matched whenever the space changes (e.g. the mic appears or goes
+        // on the right), otherwise the buttons overflow and a scroll bar shows
+        toolbarContainer.isHorizontalScrollBarEnabled = false
+        toolbarContainer.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            if (v.width > 0 && toolbar.minimumWidth != v.width) post { toolbar.minimumWidth = toolbarContainer.width }
         }
 
         updateKeys()
