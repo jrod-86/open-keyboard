@@ -101,6 +101,8 @@ public class KeyDetector {
                 primaryKey = key;
             }
         }
+        // Open Keyboard: lean towards where this person usually taps (learns your fingers)
+        if (primaryKey != null) primaryKey = FingerModel.adjust(mKeyboard, primaryKey, touchX, touchY);
         return primaryKey;
     }
 }

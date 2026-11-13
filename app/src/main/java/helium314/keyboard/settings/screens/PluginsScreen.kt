@@ -71,6 +71,12 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
             Plugins.builtIn.forEach { row(it.id, it.name, it.description) }
+            if (remember(version) { Plugins.isOn(ctx, "fingers") }) {
+                val taps = remember(version) { helium314.keyboard.keyboard.FingerModel.learnedTaps(ctx) }
+                androidx.compose.material3.TextButton(onClick = {
+                    helium314.keyboard.keyboard.FingerModel.reset(ctx); version++
+                }) { Text(if (taps == 0) "Learns your fingers: still watching how you type" else "Forget how I tap (learned from $taps taps)") }
+            }
             Spacer(Modifier.height(16.dp))
             Text("MCP servers", style = MaterialTheme.typography.titleMedium)
             Text("Add an MCP server and its tools become / commands. Nothing is sent to it until you " +

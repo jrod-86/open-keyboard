@@ -28,6 +28,7 @@ object Plugins {
         Plugin("shortcuts", "Text shortcuts", "Type a shortcut like @@ and press space to get the full text"),
         Plugin("translate", "Translate", "Translate what you type, all on the phone"),
         Plugin("writing", "Writing help", "Fix, shorten or change the tone of your text with on-phone AI"),
+        Plugin("fingers", "Learns your fingers", "Notices where you really tap each letter and moves the key's target to match"),
         Plugin("compose", "Smart compose", "Suggests the next few words when you pause (uses the writing help model)"),
         Plugin("scan", "Scan text", "Take a photo of text and type it in"),
         Plugin("app_commands", "Commands from your apps", "Apps made for Open Keyboard can add their own / commands"),

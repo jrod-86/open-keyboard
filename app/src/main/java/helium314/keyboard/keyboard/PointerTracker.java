@@ -330,6 +330,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         // Even if the key is disabled, it should respond if it is in the altCodeWhileTyping state.
         if (key.isEnabled() || altersCode) {
             sTypingTimeRecorder.onCodeInput(code, eventTime);
+            if (!isKeyRepeat || code == KeyCode.DELETE) FingerModel.INSTANCE.onKey(key, code, x, y);
             if (code == KeyCode.MULTIPLE_CODE_POINTS) {
                 sListener.onTextInput(key.getOutputText());
             } else if (code != KeyCode.NOT_SPECIFIED) {

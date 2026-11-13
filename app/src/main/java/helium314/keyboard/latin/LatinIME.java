@@ -496,6 +496,7 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onCreate() {
         Plugins.INSTANCE.init(this);
+        helium314.keyboard.keyboard.FingerModel.INSTANCE.init(this);
         mVoiceInput = new VoiceInputController(this, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; },
                 listening -> { if (mSuggestionStripView != null) mSuggestionStripView.setVoiceActive(listening); return kotlin.Unit.INSTANCE; },
                 (selStart, selEnd) -> {
