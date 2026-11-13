@@ -81,7 +81,10 @@ object KeyboardMenu {
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
-    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, val action: () -> Unit)
+    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, idOverride: String? = null, val action: () -> Unit) {
+        /** Stays the same when the label changes (e.g. "Voice → Khmer"), so the saved order holds. */
+        val id: String = idOverride ?: label
+    }
 
     // ---- moving buttons between the menu and the top bar ----
 
@@ -96,8 +99,19 @@ object KeyboardMenu {
         view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
     }
 
+    /** Buttons that can't go on the top bar (Translate, app actions…) can still be moved around the menu. */
+    private fun startItemDrag(view: View, id: String) {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val state = "item:$id"
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+    }
+
+    private fun draggedItem(event: android.view.DragEvent): String? =
+        (event.localState as? String)?.takeIf { it.startsWith("item:") }?.substringAfter("item:")
+
     private fun dragged(event: android.view.DragEvent): Pair<String, ToolbarKey>? {
         val state = event.localState as? String ?: return null
+        if (state.startsWith("item:")) return null
         val key = runCatching { ToolbarKey.valueOf(state.substringAfter(':')) }.getOrNull() ?: return null
         return state.substringBefore(':') to key
     }
@@ -251,9 +265,10 @@ object KeyboardMenu {
 
     /** Drops on the menu: take a button off the bar, or move a menu button to another spot. */
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
-        val (from, key) = dragged(event) ?: return false
+        val itemId = draggedItem(event)
+        val (from, key) = if (itemId != null) "menu" to null else (dragged(event) ?: return false)
         val grid = currentGrid ?: return false
-        val label = labelOf(key)
+        val label = itemId ?: labelOf(key!!)
         val othersCount = (0 until grid.childCount).count { grid.getChildAt(it).tag != label }
         when (event.action) {
             android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(grid) == Unit && from == "menu") previewGrid(grid, label, (0 until grid.childCount).indexOfFirst { grid.getChildAt(it).tag == label })
@@ -271,7 +286,7 @@ object KeyboardMenu {
                 val prefs = menu.context.prefs()
                 val saved = prefs.getString(PREF_MENU_ORDER, "")!!.split(",").filter { it.isNotEmpty() && it !in visible }
                 prefs.edit { putString(PREF_MENU_ORDER, (visible + saved).joinToString(",")) }
-                if (from == "bar") {
+                if (from == "bar" && key != null) {
                     helium314.keyboard.latin.utils.setBarKeys(prefs, helium314.keyboard.latin.utils.getBarKeys(prefs) - key)
                     onBarChanged?.invoke()
                 }
@@ -308,7 +323,7 @@ object KeyboardMenu {
             keyItem("Voice typing", ToolbarKey.VOICE),
             Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
             Item(MadladTranslator.voiceTarget(context)?.let { "Voice → " + TranslatePanel.name(it) } ?: "Voice translate", plugin = "translate",
-                icon = toolbarIcon(ToolbarKey.VOICE)) { TranslatePanel.show(context, forVoice = true) },
+                icon = toolbarIcon(ToolbarKey.VOICE), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
             Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
@@ -342,10 +357,10 @@ object KeyboardMenu {
             }
         // buttons already on the top bar aren't repeated here
         val onBar = helium314.keyboard.latin.utils.getBarKeys(context.prefs())
-        allItems.forEach { if (it.key != null) menuLabels[it.key] = it.label }
+        allItems.forEach { if (it.key != null) menuLabels[it.key] = it.id }
         val order = context.prefs().getString(PREF_MENU_ORDER, "")!!.split(",")
         val items = allItems.filter { it.key == null || it.key !in onBar }
-            .sortedBy { order.indexOf(it.label).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
+            .sortedBy { order.indexOf(it.id).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
 
         val columns = 4
         val grid = GridLayout(context).apply {
@@ -366,13 +381,13 @@ object KeyboardMenu {
                 isClickable = true
                 isFocusable = true
                 contentDescription = item.label
-                tag = item.label
+                tag = item.id
                 setOnClickListener {
                     it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                     if (item.label != "Resize") hide()
                     item.action()
                 }
-                if (item.key != null) setOnLongClickListener { startDrag(it, "menu", item.key); true }
+                setOnLongClickListener { if (item.key != null) startDrag(it, "menu", item.key) else startItemDrag(it, item.id); true }
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
