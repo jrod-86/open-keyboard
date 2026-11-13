@@ -221,43 +221,45 @@ class StickerMakerActivity : Activity() {
         }
         if (x1 < 0 || (x1 - x0) * (y1 - y0) < w * h / 100) return null
         val full = Bitmap.createBitmap(photoPx, w, h, Bitmap.Config.ARGB_8888)
-        val margin = (max(x1 - x0, y1 - y0) * 0.06f).toInt()
+        val margin = (max(x1 - x0, y1 - y0) * 0.01f).toInt()
         val l = max(0, x0 - margin); val t = max(0, y0 - margin)
         return Bitmap.createBitmap(full, l, t, min(w, x1 + margin + 1) - l, min(h, y1 + margin + 1) - t)
     }
 
-    /** The sticker as it will be saved: up to 512 px, white outline around a cut-out, optional text. */
+    /** The sticker as it will be saved: fills a canvas of at most 512 px, white outline, optional text. */
     private fun compose(): Bitmap? {
         val src = (if (cutOut.isChecked) cut ?: photo else photo) ?: return null
         val text = caption.text.toString().trim()
-        val scale = 440f / max(src.width, src.height)
-        val sw = (src.width * scale).roundToInt().coerceAtLeast(1); val sh = (src.height * scale).roundToInt().coerceAtLeast(1)
+        val outline = if (cutOut.isChecked && cut != null) 8 else 0
         val textH = if (text.isEmpty()) 0 else 84
-        val out = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        // as big as possible: apps scale a sticker so its longer side fills their box, so no spare border
+        val scale = min((512f - 2 * outline) / src.width, (512f - 2 * outline - textH) / src.height)
+        val sw = (src.width * scale).roundToInt().coerceAtLeast(1); val sh = (src.height * scale).roundToInt().coerceAtLeast(1)
+        val outW = if (text.isEmpty()) sw + 2 * outline else 512
+        val out = Bitmap.createBitmap(outW, sh + 2 * outline + textH, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
-        val left = (512 - sw) / 2f
-        val top = (512 - textH - sh) / 2f
+        val left = (outW - sw) / 2f
+        val top = outline.toFloat()
         val scaled = Bitmap.createScaledBitmap(src, sw, sh, true)
-        if (cutOut.isChecked && cut != null) {
+        if (outline > 0) {
             // a white sticker outline: the silhouette drawn in white around the edges
             val white = Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) }
-            val r = 8f
             for (k in 0 until 16) {
                 val ang = k * Math.PI / 8
-                c.drawBitmap(scaled, left + (r * Math.cos(ang)).toFloat(), top + (r * Math.sin(ang)).toFloat(), white)
+                c.drawBitmap(scaled, left + (outline * Math.cos(ang)).toFloat(), top + (outline * Math.sin(ang)).toFloat(), white)
             }
         }
         c.drawBitmap(scaled, left, top, Paint(Paint.FILTER_BITMAP_FLAG))
         if (text.isNotEmpty()) {
             val size = 64f.coerceAtMost(64f * 14 / max(14, text.length))
-            val y = 512f - 26f
+            val y = out.height - 22f
             val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = size; typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER
                 style = Paint.Style.STROKE; strokeWidth = size / 5; color = Color.BLACK; strokeJoin = Paint.Join.ROUND
             }
             val fill = Paint(stroke).apply { style = Paint.Style.FILL; color = Color.WHITE }
-            c.drawText(text, 256f, y, stroke)
-            c.drawText(text, 256f, y, fill)
+            c.drawText(text, outW / 2f, y, stroke)
+            c.drawText(text, outW / 2f, y, fill)
         }
         return out
     }
