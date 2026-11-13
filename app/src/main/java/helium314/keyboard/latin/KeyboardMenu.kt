@@ -264,6 +264,19 @@ object KeyboardMenu {
         toolbar.overlay.add(box)
     }
 
+    /** A button dragged off the bar: the others spread out to fill its space, like the home screen dock. */
+    private fun closeBarGap(toolbar: ViewGroup, key: Any) {
+        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }
+        val others = all.filter { it.tag != key }
+        val total = toolbar.width.toFloat().takeIf { it > 0 } ?: return
+        if (others.isEmpty()) return
+        others.forEachIndexed { j, v ->
+            val tx = (j + 0.5f) * total / others.size - (all.indexOf(v) + 0.5f) * total / all.size
+            anim(v, tx)
+        }
+        all.firstOrNull { it.tag == key }?.alpha = 0f
+    }
+
     /** Like the grid: the bar only makes room once you rest on a spot for a moment. */
     private var barPendingIndex = -1
     private var barPending: Runnable? = null
@@ -296,7 +309,7 @@ object KeyboardMenu {
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
                 clearBarPreview(toolbar)
                 resetAll(toolbar)
-                if (from == "bar") self()?.alpha = 0.25f
+                if (from == "bar") closeBarGap(toolbar, token)
             }
             android.view.DragEvent.ACTION_DRAG_ENDED -> { clearBarPreview(toolbar); resetAll(toolbar); stopJiggle(toolbar) }
             android.view.DragEvent.ACTION_DROP -> {
@@ -364,12 +377,16 @@ object KeyboardMenu {
     /** Drops on the menu: take a button off the bar, or move a menu button to another spot. */
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
         val itemId = draggedItem(event)
-        val (from, key) = if (itemId != null) "menu" to null else (dragged(event) ?: return false)
+        val (from, key) = if (itemId != null) (if (draggedFromBar(event)) "bar" else "menu") to null else (dragged(event) ?: return false)
         val pager = currentGrid ?: return false
         val label = itemId ?: labelOf(key!!)
         val othersCount = (0 until pager.childCount).count { pager.getChildAt(it).tag != label }
         when (event.action) {
-            android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(pager) == Unit && from == "menu") previewGrid(pager, label, (0 until pager.childCount).indexOfFirst { pager.getChildAt(it).tag == label })
+            android.view.DragEvent.ACTION_DRAG_STARTED -> {
+                // a tile picked up from the grid leaves a gap where it was; one coming from the bar changes nothing yet
+                val own = (0 until pager.childCount).indexOfFirst { pager.getChildAt(it).tag == label }
+                if (from == "menu" && own >= 0) previewGrid(pager, label, own)
+            }
             android.view.DragEvent.ACTION_DRAG_LOCATION -> {
                 edgeCheck(pager, event.x)
                 previewAfterPause(pager, label, gridIndex(pager, event.x, event.y, othersCount))
