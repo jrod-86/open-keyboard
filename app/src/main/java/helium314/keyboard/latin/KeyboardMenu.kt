@@ -72,6 +72,7 @@ object KeyboardMenu {
         val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
         hide()
         view.tag = OVERLAY_TAG
+        view.clearSystemButtons()
         wrapper.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         menuView = view
     }
@@ -415,6 +416,7 @@ object KeyboardMenu {
             isClickable = true // don't let touches reach the keys underneath
         }
         scroll.tag = OVERLAY_TAG
+        scroll.clearSystemButtons()
         wrapper.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         menuView = scroll
     }
@@ -444,6 +446,7 @@ object KeyboardMenu {
         hide()
         val view = ResizeOverlay(context)
         view.tag = OVERLAY_TAG
+        view.clearSystemButtons()
         wrapper.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         resizeView = view
     }
@@ -549,6 +552,24 @@ object KeyboardMenu {
             return true
         }
 
+    }
+
+    /**
+     * Keeps a panel's content above the phone's own buttons along the bottom (hide keyboard, switch
+     * keyboard), which sit on top of the keyboard area and would otherwise take taps on the last row.
+     */
+    private fun View.clearSystemButtons() {
+        fun apply(insets: android.view.WindowInsets?) {
+            val nav = insets?.let {
+                if (android.os.Build.VERSION.SDK_INT >= 30)
+                    it.getInsets(android.view.WindowInsets.Type.navigationBars() or android.view.WindowInsets.Type.tappableElement()).bottom
+                else @Suppress("DEPRECATION") it.systemWindowInsetBottom
+            } ?: 0
+            val bottom = maxOf(nav, dp(context, 48f).toInt())
+            setPadding(paddingLeft, paddingTop, paddingRight, bottom)
+            if (this is ViewGroup) clipToPadding = false
+        }
+        apply(rootWindowInsets ?: KeyboardSwitcher.getInstance().wrapperView?.rootWindowInsets)
     }
 
     /** Takes the keyboard's size instead of making the keyboard taller. */
