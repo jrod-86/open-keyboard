@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.latin
 
+import helium314.keyboard.latin.utils.fitAboveKeyboard
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipData
@@ -98,6 +99,7 @@ class ScanTextActivity : Activity() {
         actions.addView(rightButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(actions)
         setContentView(root)
+        root.fitAboveKeyboard()
         setMode(Mode.EMPTY)
         if (savedInstanceState == null) takePhoto()
     }

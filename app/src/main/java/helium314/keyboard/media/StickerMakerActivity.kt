@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.media
 
+import helium314.keyboard.latin.utils.fitAboveKeyboard
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -91,6 +92,7 @@ class StickerMakerActivity : Activity() {
         save = Button(this).apply { text = "Save sticker"; isEnabled = false; setOnClickListener { saveSticker() } }
         root.addView(save)
         setContentView(root)
+        root.fitAboveKeyboard()
         if (savedInstanceState == null) choose()
     }
 
@@ -213,7 +215,7 @@ class StickerMakerActivity : Activity() {
         var x0 = w; var y0 = h; var x1 = -1; var y1 = -1
         for (i in 0 until w * h) {
             var a = maskPx[i] ushr 24
-            a = if (a < 40) 0 else if (a > 215) 255 else (a - 40) * 255 / 175 // firmer edges
+            a = if (a < 70) 0 else if (a > 215) 255 else (a - 70) * 255 / 145 // firmer edges, less haze
             photoPx[i] = (photoPx[i] and 0xFFFFFF) or (a shl 24)
             if (a > 0) { val x = i % w; val y = i / w; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
         }
