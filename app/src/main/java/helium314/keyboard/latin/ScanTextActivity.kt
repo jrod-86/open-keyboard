@@ -126,8 +126,8 @@ class ScanTextActivity : Activity() {
         return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(degrees) }, true)
     }
 
-    /** Copies the bundled model to where Tesseract expects it. */
-    private fun dataPath(): String {
+    /** Copies the bundled small model to where Tesseract expects it. */
+    private fun fastDataPath(): String {
         val base = File(filesDir, "ocr")
         val target = File(base, "tessdata/eng.traineddata")
         if (target.length() == 0L) {
@@ -135,6 +135,61 @@ class ScanTextActivity : Activity() {
             assets.open("tessdata/eng.traineddata").use { input -> target.outputStream().use { input.copyTo(it) } }
         }
         return base.absolutePath
+    }
+
+    /**
+     * The more accurate model (tessdata_best, Apache-2.0, 15 MB) is downloaded once on first use,
+     * pinned to a commit and checked by its SHA-256. Returns null if it can't be had right now.
+     */
+    private fun bestDataPath(): String? {
+        val base = File(filesDir, "ocr-best")
+        val target = File(base, "tessdata/eng.traineddata")
+        if (target.length() == BEST_SIZE) return base.absolutePath
+        return try {
+            runOnUiThread { status.text = "Getting the better text reader (15 MB, only once)…" }
+            target.parentFile?.mkdirs()
+            val tmp = File(target.parentFile, "eng.part")
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            (java.net.URL(BEST_URL).openConnection() as java.net.HttpURLConnection).run {
+                connectTimeout = 10000; readTimeout = 30000
+                inputStream.use { input -> tmp.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) { val n = input.read(buf); if (n < 0) break; digest.update(buf, 0, n); out.write(buf, 0, n) }
+                } }
+                disconnect()
+            }
+            val hex = digest.digest().joinToString("") { "%02x".format(it) }
+            if (hex != BEST_SHA256 || tmp.length() != BEST_SIZE) { tmp.delete(); return null }
+            tmp.renameTo(target)
+            runOnUiThread { status.text = "Reading the text…" }
+            base.absolutePath
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Grey, with the contrast stretched, which helps with photos of screens and coloured paper. */
+    private fun prepare(src: Bitmap): Bitmap {
+        val w = src.width; val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+        val hist = IntArray(256)
+        for (i in px.indices) {
+            val c = px[i]
+            val l = ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000
+            px[i] = l; hist[l]++
+        }
+        val cut = px.size / 100
+        var lo = 0; var acc = 0
+        while (lo < 255 && acc + hist[lo] <= cut) { acc += hist[lo]; lo++ }
+        var hi = 255; acc = 0
+        while (hi > 0 && acc + hist[hi] <= cut) { acc += hist[hi]; hi-- }
+        val range = (hi - lo).coerceAtLeast(1)
+        for (i in px.indices) {
+            val v = ((px[i] - lo) * 255 / range).coerceIn(0, 255)
+            px[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
     }
 
     private fun recognise(uri: Uri) {
@@ -146,8 +201,11 @@ class ScanTextActivity : Activity() {
                 val bmp = loadBitmap(uri) ?: throw IllegalStateException("Couldn't open the picture")
                 val api = TessBaseAPI()
                 try {
-                    if (!api.init(dataPath(), "eng")) throw IllegalStateException("Text recognition couldn't start")
-                    api.setImage(bmp)
+                    val started = bestDataPath()?.let { api.init(it, "eng") } == true || api.init(fastDataPath(), "eng")
+                    if (!started) throw IllegalStateException("Text recognition couldn't start")
+                    // find the blocks of text on the page instead of reading it as one block
+                    api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
+                    api.setImage(prepare(bmp))
                     api.utF8Text.orEmpty()
                 } finally {
                     api.recycle()
@@ -170,10 +228,36 @@ class ScanTextActivity : Activity() {
         }
     }
 
-    /** Joins lines that belong to one paragraph, keeps blank-line paragraph breaks. */
-    private fun tidy(raw: String) = raw.trim()
-        .split(Regex("\\n\\s*\\n"))
-        .joinToString("\n\n") { para -> para.lines().joinToString(" ") { it.trim() }.replace(Regex(" {2,}"), " ") }
+    /**
+     * Joins lines that belong to one paragraph and keeps paragraph breaks. Drops the bits of noise
+     * a photo picks up (stray marks, edges of pictures) and turns a lone "|" back into "I".
+     */
+    private fun tidy(raw: String): String {
+        val lower = Regex("[a-z]")
+        fun junk(w: String) = !w.any { it.isLetterOrDigit() } || (w.length == 1 && w !in setOf("I", "a", "A"))
+        fun cleanLine(line: String): String? {
+            val t = line.split(Regex("\\s+")).filter { it.isNotEmpty() }.toMutableList()
+            for (i in t.indices) {
+                if (t[i] == "|" && (i == 0 || lower.containsMatchIn(t[i - 1].takeLast(1)) || (i + 1 < t.size && lower.containsMatchIn(t[i + 1].take(1)))))
+                    t[i] = "I"
+                if (Regex("^\\|t[a-z]*$").matches(t[i])) t[i] = "I" + t[i].substring(1)
+            }
+            while (t.isNotEmpty() && junk(t.first())) t.removeAt(0)
+            while (t.isNotEmpty() && junk(t.last()) && !Regex("[.!?…]+").matches(t.last())) t.removeAt(t.size - 1)
+            val s = t.joinToString(" ")
+            val letters = s.count { it.isLetter() }
+            if (letters < 3 || letters < 0.5 * s.count { !it.isWhitespace() } || !Regex("\\p{L}{3,}").containsMatchIn(s)) return null
+            return s
+        }
+        val paras = mutableListOf<String>()
+        val cur = mutableListOf<String>()
+        for (line in raw.lines()) {
+            if (line.isBlank()) { if (cur.isNotEmpty()) { paras += cur.joinToString(" "); cur.clear() }; continue }
+            cleanLine(line)?.let { cur += it }
+        }
+        if (cur.isNotEmpty()) paras += cur.joinToString(" ")
+        return paras.joinToString("\n\n")
+    }
 
     private fun useText() {
         val text = result.text.toString().trim()
@@ -186,5 +270,8 @@ class ScanTextActivity : Activity() {
     companion object {
         private const val REQ_CAMERA = 1
         private const val REQ_PICK = 2
+        private const val BEST_URL = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/e12c65a915945e4c28e237a9b52bc4a8f39a0cec/eng.traineddata"
+        private const val BEST_SHA256 = "8280aed0782fe27257a68ea10fe7ef324ca0f8d85bd2fd145d1c2b560bcb66ba"
+        private const val BEST_SIZE = 15400601L
     }
 }
