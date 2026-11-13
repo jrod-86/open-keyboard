@@ -81,7 +81,7 @@ object KeyboardMenu {
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
-    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, idOverride: String? = null, val action: () -> Unit) {
+    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, idOverride: String? = null, val bigIcon: Boolean = false, val action: () -> Unit) {
         /** Stays the same when the label changes (e.g. "Voice → Khmer"), so the saved order holds. */
         val id: String = idOverride ?: label
     }
@@ -347,7 +347,9 @@ object KeyboardMenu {
             },
         ).filter { it.plugin == null || Plugins.isOn(context, it.plugin) } +
             Plugins.enabledAppActions(context).map { app ->
-                Item(app.label, { app.icon?.mutate() }, tint = false) { // the app's own colourful icon
+                // the app's logo as a one-colour outline, so it matches the other tiles
+                val mono = appOutline(app.icon)
+                Item(app.label, { mono?.first ?: app.icon?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
                     hide()
                     var c: Context = context
                     while (c is ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -388,7 +390,11 @@ object KeyboardMenu {
                 if (item.tint) setColorFilter(textColor)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
-            tile.addView(icon, LinearLayout.LayoutParams(dp(context, 26f).toInt(), dp(context, 26f).toInt()))
+            if (item.bigIcon) {
+                // an adaptive icon layer has a wide margin around the logo; show it larger so the logo matches in size
+                val big = dp(context, 39f).toInt(); val m = -dp(context, 6.5f).toInt()
+                tile.addView(icon, LinearLayout.LayoutParams(big, big).apply { setMargins(m, m, m, m) })
+            } else tile.addView(icon, LinearLayout.LayoutParams(dp(context, 26f).toInt(), dp(context, 26f).toInt()))
             val label = TextView(context).apply {
                 text = item.label
                 setTextColor(textColor)
@@ -415,6 +421,18 @@ object KeyboardMenu {
         pager.clearSystemButtons()
         wrapper.addView(pager, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         menuView = pager
+    }
+
+    /**
+     * An app's icon as a single-colour shape: its themed (monochrome) icon when it has one, otherwise
+     * the logo layer of its adaptive icon. Second is true when it's a full-size adaptive layer.
+     * Null when the icon has no separate logo, so the colour icon is kept.
+     */
+    private fun appOutline(icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
+        val adaptive = icon as? android.graphics.drawable.AdaptiveIconDrawable ?: return null
+        if (android.os.Build.VERSION.SDK_INT >= 33) adaptive.monochrome?.let { return (it.constantState?.newDrawable()?.mutate() ?: it) to true }
+        val fg = adaptive.foreground ?: return null
+        return (fg.constantState?.newDrawable()?.mutate() ?: fg) to true
     }
 
     private fun openSettings(context: Context, destination: String) {
