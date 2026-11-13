@@ -96,14 +96,14 @@ object KeyboardMenu {
     fun startDrag(view: View, from: String, key: ToolbarKey) {
         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         val state = "$from:${key.name}"
-        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), LiftedShadow(view), state, 0)
     }
 
     /** Buttons that can't go on the top bar (Translate, app actions…) can still be moved around the menu. */
     private fun startItemDrag(view: View, id: String) {
         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         val state = "item:$id"
-        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), LiftedShadow(view), state, 0)
     }
 
     private fun draggedItem(event: android.view.DragEvent): String? =
@@ -123,7 +123,8 @@ object KeyboardMenu {
     /** The page the menu was on, so it reopens there after moving a tile. */
     private var lastPage = 0
     private const val COLUMNS = 4
-    private const val ANIM_MS = 140L
+    private const val ANIM_MS = 220L
+    private const val JIGGLE = false
 
     private fun anim(v: View, tx: Float, ty: Float = 0f) {
         v.animate().translationX(tx).translationY(ty).setDuration(ANIM_MS).start()
@@ -133,7 +134,8 @@ object KeyboardMenu {
     private val jiggles = java.util.WeakHashMap<View, android.animation.Animator>()
 
     private fun startJiggle(group: ViewGroup?) {
-        group ?: return
+        // Samsung's home screen doesn't wobble; tiles just slide out of the way
+        if (!JIGGLE || group == null) return
         for (i in 0 until group.childCount) {
             val v = group.getChildAt(i)
             if (jiggles[v]?.isRunning == true) continue
@@ -160,6 +162,21 @@ object KeyboardMenu {
     private fun resetAll(group: ViewGroup?) {
         group ?: return
         for (i in 0 until group.childCount) group.getChildAt(i).apply { animate().cancel(); translationX = 0f; translationY = 0f; alpha = 1f }
+    }
+
+    /** The tile you're holding, drawn a little bigger and fully solid, like picking up an app icon. */
+    private class LiftedShadow(v: View) : View.DragShadowBuilder(v) {
+        private val scale = 1.12f
+        override fun onProvideShadowMetrics(size: android.graphics.Point, touch: android.graphics.Point) {
+            val w = (view.width * scale).toInt(); val h = (view.height * scale).toInt()
+            size.set(w, h); touch.set(w / 2, h / 2)
+        }
+        override fun onDrawShadow(canvas: android.graphics.Canvas) {
+            canvas.scale(scale, scale)
+            val r = view.rotation; view.rotation = 0f
+            view.draw(canvas)
+            view.rotation = r
+        }
     }
 
     // ---- the top bar ----
@@ -199,7 +216,7 @@ object KeyboardMenu {
     fun startBarItemDrag(view: View, id: String) {
         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         val state = "baritem:$id"
-        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), View.DragShadowBuilder(view), state, 0)
+        view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), LiftedShadow(view), state, 0)
     }
 
     /** Where along the bar a drop at [x] (in the strip) would go, among the bar buttons other than [key]. */
@@ -280,8 +297,24 @@ object KeyboardMenu {
     private fun gridIndex(pager: TilePager, x: Float, y: Float, count: Int): Int =
         (pager.page * pager.perPage + pager.slotAt(x, y)).coerceIn(0, count)
 
+    /** Like the home screen: the tiles only make room once you rest on a spot for a moment. */
+    private var pendingIndex = -1
+    private var pendingPreview: Runnable? = null
+    private fun previewAfterPause(pager: TilePager, label: String?, index: Int) {
+        if (index == pendingIndex) return
+        pendingIndex = index
+        pendingPreview?.let { pager.removeCallbacks(it) }
+        pendingPreview = Runnable { pendingPreview = null; previewGrid(pager, label, index) }.also { pager.postDelayed(it, 180) }
+    }
+    private fun cancelPreview(pager: TilePager) {
+        pendingPreview?.let { pager.removeCallbacks(it) }
+        pendingPreview = null; pendingIndex = -1
+        pager.placeholderSlot = -1
+    }
+
     /** Slides the tiles along to open a gap where the dragged one would land. */
     private fun previewGrid(pager: TilePager, label: String?, index: Int) {
+        pager.placeholderSlot = index
         val children = (0 until pager.childCount).map { pager.getChildAt(it) }
         val others = children.filter { it.tag != label }
         others.forEachIndexed { j, v ->
@@ -315,16 +348,18 @@ object KeyboardMenu {
             android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(pager) == Unit && from == "menu") previewGrid(pager, label, (0 until pager.childCount).indexOfFirst { pager.getChildAt(it).tag == label })
             android.view.DragEvent.ACTION_DRAG_LOCATION -> {
                 edgeCheck(pager, event.x)
-                previewGrid(pager, label, gridIndex(pager, event.x, event.y, othersCount))
+                previewAfterPause(pager, label, gridIndex(pager, event.x, event.y, othersCount))
             }
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                cancelPreview(pager)
                 edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null
                 resetAll(pager)
                 if (from == "menu") (0 until pager.childCount).map { pager.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_ENDED -> { edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null; resetAll(pager); stopJiggle(pager) }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> { cancelPreview(pager); edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null; resetAll(pager); stopJiggle(pager) }
             android.view.DragEvent.ACTION_DROP -> {
                 val index = gridIndex(pager, event.x, event.y, othersCount)
+                cancelPreview(pager)
                 stopJiggle(pager)
                 lastPage = pager.page
                 val visible = (0 until pager.childCount).mapNotNull { pager.getChildAt(it).tag as? String }.filter { it != label }.toMutableList()
@@ -664,6 +699,9 @@ object KeyboardMenu {
     private class TilePager(context: Context, private val pad: Int, private val gap: Int, private val minCell: Int) : ViewGroup(context) {
         var dotColor = 0
         var startPage = 0
+        /** Where the held tile would land: drawn as a dashed outline, like the home screen. */
+        var placeholderSlot = -1
+            set(value) { if (field != value) { field = value; invalidate() } }
         var onPageChanged: ((Int) -> Unit)? = null
         var perPage = 16; private set
         private var rows = 4
@@ -718,6 +756,17 @@ object KeyboardMenu {
 
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
+            if (placeholderSlot >= 0 && cellW > 0f) {
+                val d = resources.displayMetrics.density
+                val (x, y) = slotPosition(placeholderSlot)
+                val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    style = android.graphics.Paint.Style.STROKE
+                    strokeWidth = 2f * d
+                    color = androidx.core.graphics.ColorUtils.setAlphaComponent(dotColor, 150)
+                    pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f * d, 5f * d), 0f)
+                }
+                canvas.drawRoundRect(x + d, y + d, x + cellW - 2 * gap - d, y + cellH - 2 * gap - d, 22f * d, 22f * d, p)
+            }
             if (pageCount < 2) return
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             val d = resources.displayMetrics.density
