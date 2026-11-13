@@ -1266,7 +1266,7 @@ public final class InputLogic {
 
         // Open Keyboard: holding delete just deletes. Words are not re-composed and suggestions are
         // not looked up on every step (that made the text fight back, especially in web based apps);
-        // after about a second it goes word by word, like Gboard. Suggestions come back on release.
+        // it starts slow, goes word by word after 2.5 s and fast after 4 s. Suggestions come back on release.
         final boolean held = event.isKeyRepeat();
         if (held) {
             mDeleteHeld = true;
@@ -1275,10 +1275,20 @@ public final class InputLogic {
                 mWordComposer.reset();
             }
             mLastComposedWord = LastComposedWord.NOT_A_COMPOSED_WORD;
-            if (mDeleteCount > WORD_DELETE_AT) {
-                if ((mDeleteCount - WORD_DELETE_AT) % 3 != 1) return; // a word about every 150 ms
+            // speeds up the longer you hold: letters slowly, then words, then words really fast
+            final long heldMs = inputTransaction.getTimestamp() - mDeleteStartTime;
+            mDeleteStep++;
+            if (heldMs < DELETE_WORDS_AFTER_MS) {
+                if (mDeleteStep % 2 != 0) return; // a letter every 100 ms
+            } else if (heldMs < DELETE_FAST_AFTER_MS) {
+                if (mDeleteStep % 4 != 0) return; // a word every 200 ms
                 deleteWord = true;
+            } else {
+                deleteWord = true; // a word every 50 ms
             }
+        } else {
+            mDeleteStartTime = inputTransaction.getTimestamp();
+            mDeleteStep = 0;
         }
 
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
@@ -1383,7 +1393,7 @@ public final class InputLogic {
             // best thing is to leave it to whatever it thinks is best.
             sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL);
             int totalDeletedLength = 1;
-            if (!deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+            if (!held && !deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
                 // If this is an accelerated (i.e., double) deletion, then we need to
                 // consider unlearning here because we may have already reached
                 // the previous word, and will lose it after next deletion.
@@ -1415,7 +1425,7 @@ public final class InputLogic {
                 : mConnection.getGraphemeLengthBeforeCursor();
             mConnection.deleteTextBeforeCursor(lengthToDelete);
             int totalDeletedLength = lengthToDelete;
-            if (!deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+            if (!held && !deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
                 // If this is an accelerated (i.e., double) deletion, then we need to
                 // consider unlearning here because we may have already reached
                 // the previous word, and will lose it after next deletion.
@@ -1439,7 +1449,10 @@ public final class InputLogic {
         restartSuggestionsAfterDelete(inputTransaction);
     }
 
-    private static final int WORD_DELETE_AT = 14; // ~1.1 s of holding delete
+    private static final long DELETE_WORDS_AFTER_MS = 2500;
+    private static final long DELETE_FAST_AFTER_MS = 4000;
+    private long mDeleteStartTime;
+    private int mDeleteStep;
     private boolean mDeleteHeld;
 
     /** Open Keyboard: delete was let go after being held; show suggestions for where the cursor is now. */
