@@ -1028,6 +1028,7 @@ public class LatinIME extends InputMethodService implements
             if (!fieldCleared) return;
             mVoiceInput.cancel();
         }
+        if (isInputViewShown()) SmartCompose.INSTANCE.onTextChanged(this);
         SettingsValues settingsValues = mSettings.getCurrent();
         if (isInputViewShown()
                 && mInputLogic.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
@@ -1407,6 +1408,12 @@ public class LatinIME extends InputMethodService implements
             mSuggestionStripView.setToolbarVisibility(false);
             return;
         }
+        final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
+        if (compose != null) {
+            mSuggestionStripView.setExternalSuggestionView(compose, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
 
         boolean noSuggestionsFromDictionaries = suggestedWords.isEmpty()
                 || suggestedWords instanceof PunctuationSuggestions
@@ -1496,6 +1503,12 @@ public class LatinIME extends InputMethodService implements
             final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
             if (slash != null) {
                 mSuggestionStripView.setExternalSuggestionView(slash, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
+            final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
+            if (compose != null) {
+                mSuggestionStripView.setExternalSuggestionView(compose, false);
                 mSuggestionStripView.setToolbarVisibility(false);
                 return;
             }

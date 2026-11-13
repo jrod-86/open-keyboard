@@ -99,6 +99,24 @@ object WritingTools {
         toast(ctx, "Downloading the writing model (about 1.1 GB). You'll get a notification when it's done.")
     }
 
+    /** True when the writing model is downloaded and checked, so smart compose can use it. */
+    fun modelReady(ctx: Context): Boolean {
+        val f = modelFile(ctx)
+        return isReady(ctx) && File(f.path + ".ok").let { it.exists() && it.lastModified() >= f.lastModified() }
+    }
+
+    /** Runs [block] with the loaded model, or returns null if writing help is busy right now. */
+    suspend fun <T> withEngine(ctx: Context, block: suspend (InferenceEngine) -> T): T? {
+        if (!lock.tryLock()) return null
+        unloadJob?.cancel()
+        try {
+            return block(engine(ctx))
+        } finally {
+            lock.unlock()
+            scheduleUnload(ctx)
+        }
+    }
+
     private fun verified(file: File): Boolean {
         val marker = File(file.path + ".ok")
         if (marker.exists() && marker.lastModified() >= file.lastModified()) return true
