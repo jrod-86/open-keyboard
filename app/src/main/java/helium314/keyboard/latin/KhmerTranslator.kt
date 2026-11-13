@@ -34,6 +34,8 @@ object KhmerTranslator {
     private val idle = Executors.newSingleThreadScheduledExecutor()
     private var unload: ScheduledFuture<*>? = null
 
+    @Volatile private var lastError: String? = null
+
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun modelFile(ctx: Context) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/madlad400-3b-mt-q4_k_m.gguf")
     private fun toast(ctx: Context, s: String) = main.post { Toast.makeText(ctx, s, Toast.LENGTH_LONG).show() }
@@ -80,11 +82,18 @@ object KhmerTranslator {
         f.parentFile?.mkdirs()
         f.delete()
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return false
-        val id = dm.enqueue(DownloadManager.Request(Uri.parse(MODEL_URL))
-            .setTitle("Open Keyboard Khmer translation")
-            .setDescription("About 1.9 GB, needed once for offline Khmer")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationUri(Uri.fromFile(f)))
+        val id = try {
+            dm.enqueue(DownloadManager.Request(Uri.parse(MODEL_URL))
+                .setTitle("Open Keyboard Khmer translation")
+                .setDescription("About 1.9 GB, needed once for offline Khmer")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationUri(Uri.fromFile(f)))
+        } catch (e: Throwable) {
+            Log.w(TAG, "download failed to start", e)
+            lastError = "The download couldn't start: ${e.message}"
+            return false
+        }
+        lastError = null
         prefs(ctx).edit().putLong(PREF_DOWNLOAD_ID, id).apply()
         toast(ctx, "Downloading the Khmer model (about 1.9 GB, best on Wi-Fi). You'll get a notification when it's done.")
         return false
@@ -135,4 +144,110 @@ object KhmerTranslator {
 
     private fun splitSentences(s: String): List<String> =
         Regex("(?<=[.!?។៕])\\s+").split(s.trim()).filter { it.isNotBlank() }
+
+    /** Download progress as (bytes so far, total) or null when no download is running. */
+    private fun progress(ctx: Context): Pair<Long, Long>? {
+        val id = prefs(ctx).getLong(PREF_DOWNLOAD_ID, -1)
+        if (id < 0) return null
+        val dm = ctx.getSystemService(DownloadManager::class.java) ?: return null
+        dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+            if (!c.moveToFirst()) return null
+            val status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            if (status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED) return null
+            return c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)) to MODEL_SIZE
+        }
+        return null
+    }
+
+    private fun status(ctx: Context): String {
+        val on = voiceTarget(ctx) != null
+        lastError?.let { return it }
+        if (downloaded(ctx)) return if (on) "On. Tap the mic and speak English: each sentence is typed in Khmer when you pause."
+            else "Off. Voice typing types English."
+        val p = progress(ctx)
+        if (p != null) return "Downloading the Khmer model: ${p.first / 1_000_000} of ${p.second / 1_000_000} MB. " +
+            "You can close this; it keeps going and you'll get a notification."
+        return if (on) "The Khmer model isn't downloaded yet. Tap Download (1.9 GB, best on Wi-Fi)."
+            else "Off. Turning it on downloads the Khmer model once (1.9 GB, best on Wi-Fi)."
+    }
+
+    @android.annotation.SuppressLint("ViewConstructor")
+    private class Root(context: Context) : android.widget.FrameLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.EXACTLY)
+                setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), 0)
+            else super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+    }
+
+    /** The grid menu's "Voice → Khmer" screen: shows whether it's on and how the download is going. */
+    fun showPanel(context: Context) {
+        val colors = helium314.keyboard.latin.settings.Settings.getValues().mColors
+        val text = colors.get(helium314.keyboard.latin.common.ColorType.KEY_TEXT)
+        val tile = colors.get(helium314.keyboard.latin.common.ColorType.FUNCTIONAL_KEY_BACKGROUND)
+        val accent = colors.get(helium314.keyboard.latin.common.ColorType.GESTURE_TRAIL)
+        fun dp(v: Float) = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_DIP, v, context.resources.displayMetrics).toInt()
+        val root = Root(context).apply {
+            setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(colors.get(helium314.keyboard.latin.common.ColorType.MAIN_BACKGROUND), 255))
+            isClickable = true
+        }
+        val column = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
+        }
+        root.addView(android.widget.ScrollView(context).apply { addView(column) })
+        fun pill(s: String, highlight: Boolean, onClick: () -> Unit) = android.widget.TextView(context).apply {
+            this.text = s
+            setTextColor(text)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(18f), dp(10f), dp(18f), dp(10f))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(20f).toFloat()
+                setColor(if (highlight) androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 110) else tile)
+            }
+            setOnClickListener { onClick() }
+        }
+        val top = android.widget.LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        top.addView(android.widget.TextView(context).apply {
+            this.text = "Speak English, type Khmer"
+            setTextColor(text)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17f)
+        }, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(pill("✕", false) { KeyboardMenu.hide() })
+        column.addView(top)
+        val statusView = android.widget.TextView(context).apply {
+            setTextColor(text)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
+            setPadding(0, dp(14f), 0, dp(14f))
+        }
+        column.addView(statusView)
+        val buttons = android.widget.LinearLayout(context)
+        column.addView(buttons)
+        fun refresh() {
+            statusView.text = status(context)
+            buttons.removeAllViews()
+            val on = voiceTarget(context) != null
+            buttons.addView(pill(if (on) "Turn off" else "Turn on", !on) {
+                prefs(context).edit().putString(PREF_VOICE_TO, if (on) null else "km").apply()
+                if (!on && !downloaded(context)) ensureDownload(context)
+                statusView.post { refresh() }
+            })
+            if (on && !downloaded(context) && progress(context) == null) buttons.addView(pill("Download", true) {
+                lastError = null
+                ensureDownload(context); refresh()
+            }, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10f) })
+        }
+        refresh()
+        // keep the download progress up to date while the screen is open
+        val ticker = object : Runnable {
+            override fun run() {
+                if (root.parent == null) return
+                statusView.text = status(context)
+                root.postDelayed(this, 1000)
+            }
+        }
+        root.postDelayed(ticker, 1000)
+        KeyboardMenu.showOverlay(root)
+    }
 }
