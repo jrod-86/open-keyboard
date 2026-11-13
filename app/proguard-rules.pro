@@ -15,3 +15,6 @@
 
 # sherpa-onnx speech recognition uses JNI, keep its classes and fields as they are
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# ONNX Runtime's native code creates its Java objects (TensorInfo, OnnxTensor, ...) by name
+-keep class ai.onnxruntime.** { *; }

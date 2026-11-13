@@ -290,11 +290,12 @@ class ScanTextActivity : Activity() {
                 bmp = loadBitmap(uri) ?: throw IllegalStateException("Couldn't open the picture")
                 runOnUiThread { photo.setPhoto(bmp, emptyList()); photo.visibility = View.VISIBLE }
                 // If the photo reader crashed the app last time (a native crash can't be caught),
-                // use Tesseract instead until the next app version.
+                // use Tesseract instead until a new build is installed.
                 val paddleDir = File(filesDir, "ocr-paddle").apply { mkdirs() }
                 val running = File(paddleDir, "running")
                 val crashed = File(paddleDir, "crashed")
-                val version = BuildConfig.VERSION_CODE.toString()
+                // each installed build counts as a new version, so a fixed build tries again
+                val version = packageManager.getPackageInfo(packageName, 0).lastUpdateTime.toString()
                 if (running.exists()) { running.delete(); crashed.writeText(version) }
                 val paddleOk = !(crashed.exists() && crashed.readText() == version)
                 val lines = if (!paddleOk) null else try {
