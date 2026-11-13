@@ -184,6 +184,54 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 Switch(checked = noiseReduction, onCheckedChange = null)
             }
 
+            var callMic by remember { mutableStateOf(VoicePrefs.callMic(ctx)) }
+            Row(
+                Modifier.fillMaxWidth().selectable(selected = callMic, onClick = {
+                    callMic = !callMic
+                    VoicePrefs.setCallMic(ctx, callMic)
+                }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Loud places mode")
+                    Text(
+                        "Records like a phone call, so your phone uses all its mics to cancel noise. Try it in " +
+                                "the car, a truck or on the street. Turn off if quiet speech gets worse.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = callMic, onCheckedChange = null)
+            }
+            var keep by remember { mutableStateOf(VoicePrefs.keepRecording(ctx)) }
+            Row(
+                Modifier.fillMaxWidth().selectable(selected = keep, onClick = {
+                    keep = !keep
+                    VoicePrefs.setKeepRecording(ctx, keep)
+                    if (!keep) VoicePrefs.lastRecording(ctx).delete()
+                }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Keep my last recording")
+                    Text(
+                        "Saves only your most recent voice typing on the phone, so you can share it to help " +
+                                "tune accuracy in noisy places. Nothing is sent anywhere unless you share it.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = keep, onCheckedChange = null)
+            }
+            if (keep) OutlinedButton(onClick = {
+                val f = VoicePrefs.lastRecording(ctx)
+                if (!f.isFile) android.widget.Toast.makeText(ctx, "No recording yet: use voice typing first", android.widget.Toast.LENGTH_SHORT).show()
+                else {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".media", f)
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("audio/wav")
+                        .putExtra(android.content.Intent.EXTRA_STREAM, uri).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    ctx.startActivity(android.content.Intent.createChooser(send, "Share recording"))
+                }
+            }) { Text("Share last recording") }
+
             Text("5. Where you're from", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Sets the spelling (colour or color, realise or realize). For strong accents, try Whisper " +

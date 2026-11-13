@@ -112,10 +112,22 @@ class VoiceInputController(
 
     private fun ic(): InputConnection? = ime.currentInputConnection
 
+    private fun writeWav(file: java.io.File, pcm: ByteArray) {
+        file.parentFile?.mkdirs()
+        val rate = VoiceEngine.SAMPLE_RATE
+        val h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        h.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray())
+        h.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(rate).putInt(rate * 2).putShort(2).putShort(16)
+        h.put("data".toByteArray()).putInt(pcm.size)
+        file.outputStream().use { it.write(h.array()); it.write(pcm) }
+    }
+
     @SuppressLint("MissingPermission") // checked in start()
     private fun listen(session: Int) {
         val minBuffer = AudioRecord.getMinBufferSize(VoiceEngine.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val record = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, VoiceEngine.SAMPLE_RATE,
+        // "call" mic: the phone's call processing (several mics, strong noise cancelling) for loud places
+        val source = if (VoicePrefs.callMic(ime)) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION
+        val record = AudioRecord(source, VoiceEngine.SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, VoiceEngine.SAMPLE_RATE * 2 * 5))
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             main.post { toast("Microphone is not available"); stop() }
@@ -147,11 +159,15 @@ class VoiceInputController(
         var segment = SampleBuffer()
         var lastPartial = ""
         var lastSpeechAt = android.os.SystemClock.uptimeMillis()
+        // optional copy of the whole session for tuning (at most 3 minutes)
+        val keep = if (VoicePrefs.keepRecording(ime)) java.io.ByteArrayOutputStream() else null
         try {
             while (running && session == sessionId) {
                 val n = record.read(chunk, 0, chunk.size)
                 if (n <= 0) continue
                 val samples = FloatArray(n) { chunk[it] / 32768f }
+                if (keep != null && keep.size() < VoiceEngine.SAMPLE_RATE * 2 * 180)
+                    for (i in 0 until n) { keep.write(chunk[i].toInt() and 0xff); keep.write(chunk[i].toInt() shr 8 and 0xff) }
                 stream.acceptWaveform(samples, VoiceEngine.SAMPLE_RATE)
                 segment.add(samples)
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
@@ -187,6 +203,7 @@ class VoiceInputController(
             suppressor?.release()
             record.release()
             stream.release()
+            if (keep != null) runCatching { writeWav(VoicePrefs.lastRecording(ime), keep.toByteArray()) }
             finalPass.execute { main.post { if (session == sessionId) finishIfIdle() } }
         }
     }

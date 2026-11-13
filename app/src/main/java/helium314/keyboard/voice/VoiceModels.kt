@@ -87,6 +87,15 @@ object VoicePrefs {
     fun noiseReduction(context: Context) = prefs(context).getBoolean("noise_reduction", true)
     fun setNoiseReduction(context: Context, on: Boolean) = prefs(context).edit().putBoolean("noise_reduction", on).apply()
 
+    /** "call": record like a phone call, so the phone's strongest noise cancelling is used (trucks, traffic). */
+    fun callMic(context: Context) = prefs(context).getBoolean("call_mic", false)
+    fun setCallMic(context: Context, on: Boolean) = prefs(context).edit().putBoolean("call_mic", on).apply()
+
+    /** Keep a copy of the last voice session, so it can be shared to help tune for noisy places. Off by default. */
+    fun keepRecording(context: Context) = prefs(context).getBoolean("keep_recording", false)
+    fun setKeepRecording(context: Context, on: Boolean) = prefs(context).edit().putBoolean("keep_recording", on).apply()
+    fun lastRecording(context: Context) = java.io.File(context.cacheDir, "voice/last-recording.wav")
+
     /** Where you're from: sets the spelling used for voice typing. */
     fun region(context: Context): EnglishRegion =
         EnglishRegion.entries.firstOrNull { it.name == prefs(context).getString("region", null) } ?: EnglishRegion.US
