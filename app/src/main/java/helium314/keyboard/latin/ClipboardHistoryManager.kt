@@ -81,10 +81,20 @@ class ClipboardHistoryManager(
         if (description.hasMimeType("text/*")) {
             val content = clipItem.coerceToText(latinIME)
             if (TextUtils.isEmpty(content)) return
+            // Open Keyboard: passwords copied from a password manager never go into the history
+            if (ClipboardManagerCompat.getClipSensitivity(description) == true) return
             clipboardDao?.addClip(timeStamp, false, content.toString())
+            // one-time codes are only useful for a few minutes, so they tidy themselves away
+            if (content.length <= 12 && codeIn(content) != null) forgetLater(content.toString(), 5 * 60_000L)
         } else if (maySaveFromUri(clipItem.uri, latinIME)) {
             clipboardDao?.addClipUri(timeStamp, false, clipItem.uri, description, latinIME)
         }
+    }
+
+    private fun forgetLater(text: String, delayMs: Long) {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (clipboardDao?.forgetIfUnpinned(text) == false) forgetLater(text, 60_000L) // history open: try again soon
+        }, delayMs)
     }
 
     fun getPrimaryClipIfText(): String? {

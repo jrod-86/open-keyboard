@@ -108,6 +108,21 @@ class ClipboardHistoryView @JvmOverloads constructor(
             colors.setBackground(key, ColorType.STRIP_BACKGROUND)
             toolbarKeys.add(key)
         }
+        // Open Keyboard: search the clipboard history
+        val search = ImageButton(context, null, R.attr.suggestionWordStyle).apply {
+            setImageDrawable(helium314.keyboard.keyboard.internal.KeyboardIconsSet.instance.getIconDrawable(
+                helium314.keyboard.keyboard.internal.KeyboardIconsSet.NAME_SEARCH_KEY))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Search clipboard"
+            setOnClickListener {
+                context.startActivity(android.content.Intent(context, helium314.keyboard.latin.ClipboardSearchActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+        clipboardStrip.addView(search, 0)
+        colors.setColor(search, ColorType.TOOL_BAR_KEY)
+        colors.setBackground(search, ColorType.STRIP_BACKGROUND)
+        toolbarKeys.add(search)
     }
 
     private fun setupClipKey(params: KeyDrawParams) {

@@ -175,6 +175,13 @@ class ClipboardDao private constructor(private val db: Database) {
         db.writableDatabase.update(TABLE, cv, "$COLUMN_ID = ${entry.id}", null)
     }
 
+    /** Open Keyboard: forget a short-lived clip (a one-time code) unless it was pinned. False if the history is open now. */
+    fun forgetIfUnpinned(text: String): Boolean {
+        if (listener != null) return false
+        delete(cache.filter { it.text == text && !it.isPinned })
+        return true
+    }
+
     // RecyclerView initiates this, so we don't call listener (or we'll get an IndexOutOfRangeException from RecyclerView)
     fun deleteClipAt(index: Int) {
         delete(listOf(cache[index]))
