@@ -18,6 +18,6 @@
 
 - Tesseract4Android 4.8.0 (Apache-2.0; Tesseract Apache-2.0, Leptonica BSD-2-Clause, libjpeg/libpng permissive),
   from JitPack. `app/src/main/assets/tessdata/eng.traineddata`: tesseract-ocr/tessdata_fast (Apache-2.0),
+  sha256 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2.
   Scan text also downloads tesseract-ocr/tessdata_best eng.traineddata (Apache-2.0) on first use, pinned to
   commit e12c65a9 and checked by SHA-256; it is not bundled.
-  sha256 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2.
