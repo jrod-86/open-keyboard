@@ -180,13 +180,13 @@ object MediaPanel {
 
         if (pack != null) {
             val ime = ime(context)
-            StickerPacks.stickers(pack).forEach { file ->
+            StickerPacks.byUse(context, pack).forEach { file ->
                 val view = ImageView(context).apply {
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     val p = dp(context, 4f); setPadding(p, p, p, p)
                     setOnClickListener {
                         if (ime != null) MediaSender.sendPackSticker(ime, file)
-                        KeyboardMenu.hide()
+                        // stay open to send another, like Gboard
                     }
                 }
                 val m = dp(context, 3f)
@@ -265,7 +265,7 @@ object MediaPanel {
                             }
                             setOnClickListener {
                                 if (ime != null) MediaSender.sendGif(ime, gif, sticker = !gifs)
-                                KeyboardMenu.hide()
+                                // stay open to send another, like Gboard
                             }
                         }
                         val m = dp(context, 3f)
@@ -318,7 +318,7 @@ object MediaPanel {
                     }
                     setOnClickListener {
                         if (ime != null) MediaSender.sendGif(ime, item.gif, sticker = item.sticker)
-                        KeyboardMenu.hide()
+                        // stay open to send another, like Gboard
                     }
                     loadGif(item.gif.previewUrl, gen) { setImageDrawable(it) }
                 }
@@ -327,7 +327,7 @@ object MediaPanel {
                     val p = dp(context, 4f); setPadding(p, p, p, p)
                     setOnClickListener {
                         if (ime != null) MediaSender.sendPackSticker(ime, item.file)
-                        KeyboardMenu.hide()
+                        // stay open to send another, like Gboard
                     }
                     val iv = this
                     loader.execute {

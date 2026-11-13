@@ -122,6 +122,7 @@ object MediaSender {
     fun sendPackSticker(ime: InputMethodService, file: File) {
         val mime = StickerPacks.mimeOf(file)
         MediaRecents.add(ime, RecentItem.PackSticker(file))
+        StickerPacks.used(ime, file)
         commit(ime, file, mime, "Sticker", null)
     }
 
@@ -162,6 +163,34 @@ object StickerPacks {
 
     fun packs(ctx: Context): List<File> =
         root(ctx).listFiles()?.filter { it.isDirectory && stickers(it).isNotEmpty() }?.sortedBy { it.name.lowercase() } ?: emptyList()
+
+    private const val USE_PREFS = "sticker_use"
+    private const val HALF_LIFE_MS = 7 * 24 * 3600 * 1000.0
+
+    /** Remembers a sticker was sent, so it moves up its pack. */
+    fun used(ctx: Context, file: File) {
+        val prefs = ctx.getSharedPreferences(USE_PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val (score, at) = useOf(prefs.getString(file.path, null))
+        prefs.edit().putString(file.path, "${decayed(score, at, now) + 1}:$now").apply()
+    }
+
+    private fun useOf(s: String?): Pair<Double, Long> =
+        s?.split(':')?.let { (it[0].toDoubleOrNull() ?: 0.0) to (it.getOrNull(1)?.toLongOrNull() ?: 0L) } ?: (0.0 to 0L)
+
+    private fun decayed(score: Double, at: Long, now: Long) = score * Math.pow(0.5, (now - at) / HALF_LIFE_MS)
+
+    /** A pack's stickers with the last one sent first, then the most used, then the rest in order. */
+    fun byUse(ctx: Context, pack: File): List<File> {
+        val list = stickers(pack)
+        val prefs = ctx.getSharedPreferences(USE_PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val uses = list.associateWith { useOf(prefs.getString(it.path, null)) }
+        val latest = list.filter { uses[it]!!.second > 0 }.maxByOrNull { uses[it]!!.second }
+        val rest = list.filter { it != latest }
+            .sortedByDescending { val (sc, at) = uses[it]!!; decayed(sc, at, now) } // stable: unused keep their order
+        return listOfNotNull(latest) + rest
+    }
 
     fun stickers(pack: File): List<File> =
         pack.listFiles()?.filter { it.isFile && it.extension.lowercase() in listOf("png", "webp", "gif", "jpg", "jpeg") }
