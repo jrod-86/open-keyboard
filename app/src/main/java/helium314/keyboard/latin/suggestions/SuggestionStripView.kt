@@ -424,6 +424,12 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             helium314.keyboard.latin.KeyboardMenu.startDrag(view, "bar", view.tag as ToolbarKey)
             return true
         }
+        // Open Keyboard: hold the mic to choose the language voice typing types in (or turn translation off)
+        if (view.tag == ToolbarKey.VOICE) {
+            AudioAndHapticFeedbackManager.getInstance().performHapticFeedback(this, HapticEvent.KEY_LONG_PRESS)
+            helium314.keyboard.latin.TranslatePanel.show(context, forVoice = true)
+            return true
+        }
         if (view.tag is ToolbarKey) {
             onLongClickToolbarKey(view)
             return true

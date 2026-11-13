@@ -135,7 +135,7 @@ object MadladTranslator {
                 val out = text.split("\n").joinToString("\n") { line ->
                     if (line.isBlank()) line
                     else splitSentences(line).joinToString(if (to == "km") " " else " ") { s ->
-                        OfflineTranslator.translate("<2$to> $s", 256).trim().ifEmpty { s }
+                        clean(OfflineTranslator.translate("<2$to> $s", 256)).ifEmpty { s }
                     }
                 }
                 return out
@@ -146,6 +146,20 @@ object MadladTranslator {
                 unload = idle.schedule({ synchronized(this) { OfflineTranslator.unload() } }, 90, TimeUnit.SECONDS)
             }
         }
+    }
+
+    /** The model sometimes writes HTML codes like "&#160;" (often spaced out as "& # 160 ;"); turn them back into text. */
+    private fun clean(out: String): String {
+        var t = Regex("&\\s*#\\s*(\\d{2,6})\\s*;").replace(out) { m ->
+            m.groupValues[1].toIntOrNull()?.let { String(Character.toChars(it)) } ?: ""
+        }
+        t = t.replace(Regex("&\\s*(nbsp|amp|quot|lt|gt|apos)\\s*;")) { m ->
+            when (m.groupValues[1]) { "nbsp" -> " "; "amp" -> "&"; "quot" -> "\""; "lt" -> "<"; "gt" -> ">"; else -> "'" }
+        }
+        t = t.replace('\u00a0', ' ').replace(Regex(" {2,}"), " ")
+        // no space before Khmer or Western sentence endings
+        t = t.replace(Regex("\\s+([។៕.!?,])"), "$1")
+        return t.trim()
     }
 
     private fun splitSentences(s: String): List<String> =
