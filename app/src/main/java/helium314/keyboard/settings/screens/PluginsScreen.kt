@@ -2,6 +2,7 @@
 package helium314.keyboard.settings.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,7 +66,7 @@ fun PluginsScreen(onClickBack: () -> Unit) {
     }
 
     SearchSettingsScreen(onClickBack = onClickBack, title = "Plugins", settings = emptyList()) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp)) {
             Text("Everything extra in the keyboard is a plugin. Switch off what you don't use and it " +
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
