@@ -74,7 +74,7 @@ object McpServers {
             main.post {
                 SlashCommands.setExternal("mcp", found.mapNotNull { t ->
                     val name = commandName(t.name).ifEmpty { return@mapNotNull null }
-                    SlashCommands.Command(name, ("/$name " + (firstStringArg(t.schema) ?: "")).trim(), remote = "mcp") { null }
+                    SlashCommands.Command(name, ("/$name " + requiredStrings(t.schema).ifEmpty { listOfNotNull(firstStringArg(t.schema)) }.joinToString(" ")).trim(), remote = "mcp") { null }
                 })
                 done?.invoke()
             }
@@ -82,6 +82,13 @@ object McpServers {
     }
 
     fun commandName(tool: String) = tool.lowercase().filter { it in 'a'..'z' || it in '0'..'9' }
+
+    private fun requiredStrings(schema: JSONObject?): List<String> {
+        val props = schema?.optJSONObject("properties") ?: return emptyList()
+        val required = schema.optJSONArray("required") ?: return emptyList()
+        return (0 until required.length()).map { required.getString(it) }
+            .filter { props.optJSONObject(it)?.optString("type") == "string" }
+    }
 
     private fun firstStringArg(schema: JSONObject?): String? {
         val props = schema?.optJSONObject("properties") ?: return null
@@ -107,7 +114,12 @@ object McpServers {
                 }
             }
         } else if (typed.isNotBlank()) {
-            firstStringArg(tool.schema)?.let { args.put(it, typed) }
+            // two required text fields (like "repo" and "question"): the first word fills the first,
+            // the rest fills the second, so "/askquestion owner/repo how does it work" just works
+            val req = requiredStrings(tool.schema)
+            val words = typed.trim().split(Regex("\\s+"), limit = 2)
+            if (req.size >= 2 && words.size == 2) { args.put(req[0], words[0]); args.put(req[1], words[1]) }
+            else firstStringArg(tool.schema)?.let { args.put(it, typed) }
         }
         return args
     }
