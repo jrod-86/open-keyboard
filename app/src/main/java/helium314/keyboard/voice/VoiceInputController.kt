@@ -38,6 +38,33 @@ class VoiceInputController(
     /** Rising chime when the mic turns on, falling chime when it turns off. */
     private fun click(on: Boolean) = chimes.play(on)
 
+    private val audioManager = ime.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    private val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        .setAudioAttributes(android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        .setOnAudioFocusChangeListener { }
+        .build()
+    private var hasFocus = false
+
+    /**
+     * Mic on: ask other apps (YouTube, podcasts, music) to pause while you talk.
+     * Mic off: hand the sound back so what you were playing carries on.
+     */
+    private fun listening(on: Boolean) {
+        onListeningChanged(on)
+        runCatching {
+            if (on && !hasFocus) {
+                hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                Log.i(TAG, "media paused for voice: $hasFocus")
+            } else if (!on && hasFocus) {
+                audioManager.abandonAudioFocusRequest(focusRequest)
+                hasFocus = false
+                Log.i(TAG, "media handed back")
+            }
+        }
+    }
+
     @Volatile private var running = false
     private var audioThread: Thread? = null
 
@@ -92,8 +119,8 @@ class VoiceInputController(
         wrote = false
         running = true
         val session = ++sessionId
+        listening(true) // pause other media first, so the chime isn't talked over
         click(true)
-        onListeningChanged(true)
         audioThread = thread(name = "voice-input") { listen(session) }
     }
 
@@ -103,7 +130,7 @@ class VoiceInputController(
         if (!running) return
         running = false
         click(false)
-        onListeningChanged(false)
+        listening(false)
     }
 
     /** Stops immediately when the text field goes away, keeping what is on screen. */
@@ -291,7 +318,7 @@ class VoiceInputController(
         running = false
         sessionId++
         pending.clear(); current = ""; wrote = false; needsLeadingSpace = false
-        if (wasRunning) { click(false); onListeningChanged(false) }
+        if (wasRunning) { click(false); listening(false) }
         ic.finishComposingText()
         resync()
         return true
