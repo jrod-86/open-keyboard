@@ -28,6 +28,7 @@ class App : Application() {
         appContext = applicationContext
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
+        NativeCrashes.collect(this)
 
         val scope = CoroutineScope(Dispatchers.Default)
         // other inits can be in parallel, except what depends on SubtypeSettings
