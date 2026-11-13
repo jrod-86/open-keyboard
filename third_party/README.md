@@ -21,3 +21,11 @@
   sha256 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2.
   Scan text also downloads tesseract-ocr/tessdata_best eng.traineddata (Apache-2.0) on first use, pinned to
   commit e12c65a9 and checked by SHA-256; it is not bundled.
+- PaddleOCR models for Scan text (Apache-2.0, PaddlePaddle), downloaded on first use, pinned and checked by
+  SHA-256: text detection PP-OCRv4 mobile (ONNX conversion from huggingface.co/SWHL/RapidOCR, Apache-2.0,
+  commit 1cfba2e9) and English recognition PP-OCRv5 mobile with its dictionary (ONNX conversion from
+  huggingface.co/monkt/paddleocr-onnx, Apache-2.0, commit 7b02d0a3). Not bundled.
+- ONNX Runtime Java API 1.28.0 (MIT, com.microsoft.onnxruntime:onnxruntime-android): its classes are in
+  `app/libs/onnxruntime-android-1.28.0-classes.jar`, and its JNI library in `app/src/main/jniLibs/*/
+  libonnxruntime4j_jni.so`, retargeted with `tools/onnxruntime/retarget_jni.py` to use the ONNX Runtime
+  1.28.2 that sherpa-onnx ships.

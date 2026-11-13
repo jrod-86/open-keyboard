@@ -289,17 +289,16 @@ class ScanTextActivity : Activity() {
             val text = try {
                 bmp = loadBitmap(uri) ?: throw IllegalStateException("Couldn't open the picture")
                 runOnUiThread { photo.setPhoto(bmp, emptyList()); photo.visibility = View.VISIBLE }
-                val model = bestDataPath() ?: fastDataPath()
-                // Read the photo three ways at once: in grey, and using only the red or green light.
-                // White writing on a coloured bubble often only stands out in one of them. Keep the
-                // reading that found the most text it was sure of.
-                val passes = listOf(CH_GRAY, CH_RED, CH_GREEN).map { ch ->
-                    var out: Pass? = null
-                    thread(name = "scan-text-$ch") { out = runCatching { readPass(model, prepare(bmp, ch)) }.getOrNull() } to { out }
-                }.map { (t, get) -> t.join(); get() }.filterNotNull()
-                val best = passes.maxByOrNull { it.score } ?: throw IllegalStateException("Text recognition couldn't start")
-                words += best.words
-                best.text
+                val paddle = PaddleOcr.open(File(filesDir, "ocr-paddle")) {
+                    runOnUiThread { status.text = "Getting the photo text reader (13 MB, only once)…" }
+                }
+                runOnUiThread { status.text = "Reading the text…" }
+                val lines = paddle?.use { runCatching { it.read(bmp) }.getOrNull() }
+                if (lines != null) {
+                    val (text, found) = wordsFromLines(lines)
+                    words += found
+                    text
+                } else readWithTesseract(bmp, words)
             } catch (e: Throwable) {
                 runOnUiThread { setMode(Mode.EMPTY); status.text = "Didn't work: ${e.message}" }
                 return@thread
@@ -314,6 +313,45 @@ class ScanTextActivity : Activity() {
                 setMode(Mode.PHOTO)
             }
         }
+    }
+
+    /**
+     * Turns PaddleOCR's lines into words in reading order, with lines grouped into paragraphs:
+     * a new paragraph starts after a gap, or where the text starts somewhere else across the page.
+     */
+    private fun wordsFromLines(lines: List<PaddleOcr.Line>): Pair<String, List<Word>> {
+        val sorted = lines.filter { it.confidence >= 0.5f }.sortedBy { it.box.top }
+        val words = mutableListOf<Word>()
+        val sb = StringBuilder()
+        var para = 0
+        var prev: PaddleOcr.Line? = null
+        sorted.forEachIndexed { n, line ->
+            val p = prev
+            val h = line.box.height()
+            if (p == null || line.box.top - p.box.bottom > 0.6f * h || kotlin.math.abs(line.box.left - p.box.left) > 1.5f * h) {
+                para++
+                if (p != null) sb.append("\n\n")
+            } else sb.append("\n")
+            sb.append(line.text)
+            line.words.forEach { (t, box) -> words += Word(t, box, n, para, line.confidence * 100) }
+            prev = line
+        }
+        return sb.toString() to words
+    }
+
+    /** Fallback when the photo reader can't be downloaded: Tesseract, which comes with the app. */
+    private fun readWithTesseract(bmp: Bitmap, words: MutableList<Word>): String {
+        val model = bestDataPath() ?: fastDataPath()
+        // Read the photo three ways at once: in grey, and using only the red or green light.
+        // White writing on a coloured bubble often only stands out in one of them. Keep the
+        // reading that found the most text it was sure of.
+        val passes = listOf(CH_GRAY, CH_RED, CH_GREEN).map { ch ->
+            var out: Pass? = null
+            thread(name = "scan-text-$ch") { out = runCatching { readPass(model, prepare(bmp, ch)) }.getOrNull() } to { out }
+        }.map { (t, get) -> t.join(); get() }.filterNotNull()
+        val best = passes.maxByOrNull { it.score } ?: throw IllegalStateException("Text recognition couldn't start")
+        words += best.words
+        return best.text
     }
 
     private class Pass(val text: String, val words: List<Word>, val score: Int)

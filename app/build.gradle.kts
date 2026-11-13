@@ -118,6 +118,10 @@ android {
 dependencies {
     // offline voice typing: sherpa-onnx speech recognition (Apache-2.0)
     implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v2.0.1")
+    // scan text: ONNX Runtime's Java API (MIT) to run PaddleOCR models (Apache-2.0). Only its classes
+    // and its JNI library (retargeted by tools/onnxruntime/retarget_jni.py) are used; the runtime itself
+    // is the libonnxruntime.so that sherpa-onnx already ships.
+    implementation(files("libs/onnxruntime-android-1.28.0-classes.jar"))
 
     // offline translation: Foxlet (MIT) running Mozilla's Bergamot engine (MPL-2.0), built from source, see third_party/README.md
     implementation(files("libs/foxlet-0.5.0.aar"))
