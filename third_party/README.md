@@ -29,3 +29,10 @@
   `app/libs/onnxruntime-android-1.28.0-classes.jar`, and its JNI library in `app/src/main/jniLibs/*/
   libonnxruntime4j_jni.so`, retargeted with `tools/onnxruntime/retarget_jni.py` to use the ONNX Runtime
   1.28.2 that sherpa-onnx ships.
+
+## U²-Net small (u2netp) cut-out model
+
+`app/src/main/assets/u2netp.onnx` is the small U²-Net salient-object model by Xuebin Qin et al.
+(https://github.com/xuebinqin/U-2-Net), licensed Apache-2.0, in the ONNX export distributed by
+rembg (https://github.com/danielgatis/rembg, MIT). SHA-256
+309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8. Used by the sticker maker.

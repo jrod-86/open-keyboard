@@ -146,6 +146,10 @@ object MediaPanel {
             addView(iconPill(helium314.keyboard.latin.R.drawable.ic_sticker, null, !gifs && !recent, "Stickers") { show(context, false) })
             addView(iconPill(helium314.keyboard.latin.R.drawable.ic_gif, null, gifs && !recent, "GIFs") { show(context, true) })
             addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            if (!gifs && !recent) addView(pill("+ Make", false) {
+                KeyboardMenu.hide()
+                context.startActivity(Intent(context, StickerMakerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            })
             addView(pill("ABC", false) { KeyboardMenu.hide() })
         }
         column.addView(header)

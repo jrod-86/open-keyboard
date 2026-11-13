@@ -221,6 +221,12 @@ object StickerPacks {
         return dir.apply { mkdirs() }
     }
 
+    /** Adds a sticker made in the sticker maker to the pack with this name, making the pack if needed. */
+    fun addMade(ctx: Context, name: String, bmp: android.graphics.Bitmap) {
+        val dir = File(root(ctx), safeName(name)).apply { mkdirs() }
+        File(dir, "made_${System.currentTimeMillis()}.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     /** Makes a pack from pictures the user picked. Returns how many stickers were added. */
     fun createFromImages(ctx: Context, name: String, uris: List<Uri>): Int {
         val dir = newPackDir(ctx, name)
