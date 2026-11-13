@@ -123,6 +123,8 @@ class KeyboardLayoutSet internal constructor(private val mContext: Context, priv
 
         init {
             params.mode = getKeyboardMode(settingsValues?.mInputAttributes?.mInputType ?: ei?.inputType ?: InputType.TYPE_NULL)
+            // the person tapped ABC on the number pad of this field: give them letters
+            if (params.mode != KeyboardMode.TEXT && ei != null && lettersField == fieldKey(ei)) params.mode = KeyboardMode.TEXT
             params.editorInfo = ei ?: EMPTY_EDITOR_INFO
             params.settingsValues = settingsValues
         }
@@ -200,6 +202,10 @@ class KeyboardLayoutSet internal constructor(private val mContext: Context, priv
 
     companion object {
         private val TAG = KeyboardLayoutSet::class.java.simpleName
+
+        /** The field where ABC was tapped on the number pad, so it shows letters until another field. */
+        @JvmStatic var lettersField: String? = null
+        @JvmStatic fun fieldKey(ei: EditorInfo) = "${ei.packageName}/${ei.fieldId}/${ei.inputType}/${ei.fieldName}"
         private const val DEBUG_CACHE = false
 
         class KeyboardLayoutSetException(cause: Throwable, val keyboardId: KeyboardId) : RuntimeException(cause)

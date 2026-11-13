@@ -19,7 +19,7 @@
   ],
   [
     { "$": "variation_selector",
-      "default": { "label": ",", "type": "numeric", "groupId": 1 },
+      "default": { "label": "alpha", "type": "function" },
       "date": { "label": ".", "type": "numeric", "groupId": 1 },
       "time": { "label": ".", "type": "numeric", "groupId": 1, "popup": { "relevant": [
         { "label": "!fixedColumnOrder!2" },
@@ -36,7 +36,10 @@
     },
     { "label": "0", "type": "numeric" },
     { "$": "variation_selector",
-      "default": { "label": ".", "type": "numeric", "labelFlags": 1073741824 },
+      "default": { "label": ".", "type": "numeric", "labelFlags": 1073741824, "popup": { "relevant": [
+        { "label": "!noPanelAutoPopupKey!" },
+        { "label": "," }
+      ] } },
       "date": { "label": "/", "type": "numeric" },
       "time": { "label": ":", "type": "numeric" },
       "datetime": { "label": "/ :|/", "type": "numeric", "popup": { "relevant": [

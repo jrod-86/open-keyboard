@@ -105,6 +105,14 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onCodeInput(primaryCode: Int, x: Int, y: Int, isKeyRepeat: Boolean) {
         when (primaryCode) {
+            KeyCode.ALPHA -> {
+                val element = keyboardSwitcher.keyboard?.mId?.element
+                if (element == KeyboardElement.NUMBER || element == KeyboardElement.PHONE || element == KeyboardElement.PHONE_SYMBOLS) {
+                    latinIME.currentInputEditorInfo?.let { KeyboardLayoutSet.lettersField = KeyboardLayoutSet.fieldKey(it) }
+                    keyboardSwitcher.reloadKeyboard()
+                    return
+                }
+            }
             KeyCode.TOGGLE_AUTOCORRECT -> return settings.toggleAutoCorrect()
             KeyCode.TOGGLE_INCOGNITO_MODE -> {
                 settings.toggleAlwaysIncognitoMode()

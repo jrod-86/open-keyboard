@@ -196,9 +196,15 @@ class ClipboardHistoryManager(
         val hasText = clipData.description?.hasMimeType("text/*") == true
         val hasImage = clipData.description?.hasMimeType("image/*") == true && clipItem.uri != null
         if (!hasText && !hasImage) return null
+        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
+        var content: CharSequence = clipItem.coerceToText(latinIME)
+        // Open Keyboard: in a number field offer just the code, even if it was copied as "123 456"
+        // or inside a sentence. Codes stay on offer a bit longer, since you switch apps to get them.
+        val code = if (hasText) codeIn(content) else null
+        if (hasText && InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber() && code != null) content = code
         val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)
-        if (System.currentTimeMillis() - timeStamp > RECENT_TIME_MILLIS) return null
-        val content = clipItem.coerceToText(latinIME)
+        val window = if (code != null && InputTypeUtils.isNumberInputType(inputType)) RECENT_CODE_MILLIS else RECENT_TIME_MILLIS
+        if (System.currentTimeMillis() - timeStamp > window) return null
 
         // create the view
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(latinIME), parent, false)
@@ -206,7 +212,6 @@ class ClipboardHistoryManager(
         val clipIcon = KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.PASTE.name.lowercase())
         clipIcon?.setBounds(0, 0, textView.lineHeight, textView.lineHeight) // scale the icon to the text
         textView.setCompoundDrawablesRelative(clipIcon, null, null, null)
-        val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
         if (hasText) {
             if (TextUtils.isEmpty(content)) return null
             if (InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber()) return null
@@ -303,6 +308,19 @@ class ClipboardHistoryManager(
         // avoid showing the current suggestion because it has been dismissed or pasted
         private var dontShowCurrentSuggestion: Boolean = false
 
+        const val RECENT_CODE_MILLIS = 3 * 60 * 1000L
+        private val spacedCode = Regex("""^\s*\d{2,4}(?:[ -]\d{2,4}){0,3}\s*$""")
+        private val codeInText = Regex("""(?<![\d.,])\d{4,8}(?![\d.,])""")
+
+        /** The one-time code in copied text: "123 456", "123-456", or "Your code is 123456". */
+        fun codeIn(text: CharSequence): String? {
+            if (text.length > 300) return null
+            if (spacedCode.matches(text)) {
+                val digits = text.filter { it.isDigit() }.toString()
+                return digits.takeIf { it.length in 4..8 }
+            }
+            return codeInText.findAll(text).map { it.value }.singleOrNull()
+        }
         const val RECENT_TIME_MILLIS = 60 * 1000L // Open Keyboard: 1 minute, so the paste chip doesn't hide the buttons for long
 
         private fun maySaveFromUri(uri: Uri?, context: Context): Boolean {
