@@ -309,8 +309,10 @@ object KeyboardMenu {
             Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
-                context.startActivity(android.content.Intent(context, ScanTextActivity::class.java)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                runCatching {
+                    context.startActivity(android.content.Intent(context, ScanTextActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Scan text couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
             },
             keyItem("One-handed", ToolbarKey.ONE_HANDED),
             keyItem("Floating", ToolbarKey.FLOATING),
