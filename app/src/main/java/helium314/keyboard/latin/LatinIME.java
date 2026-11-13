@@ -964,7 +964,7 @@ public class LatinIME extends InputMethodService implements
             workaroundForHuaweiStatusBarIssue();
             // Open Keyboard: coming back from copying a code in another app, offer it straight away
             if (hasSuggestionStripView() && isTextFieldEmpty() && tryShowClipboardSuggestion())
-                mSuggestionStripView.setToolbarVisibility(!mSettings.getCurrent().mAutoHideToolbar);
+                mSuggestionStripView.setToolbarVisibility(false);
         }
     }
 
@@ -1421,7 +1421,7 @@ public class LatinIME extends InputMethodService implements
             // ...unless there's something to paste (a copied code, say), which comes first
             if (KeyboardMenu.INSTANCE.getKeepToolbar()) mSuggestionStripView.setToolbarVisibility(true);
             else if (isTextFieldEmpty() && noSuggestionsFromDictionaries && tryShowClipboardSuggestion())
-                mSuggestionStripView.setToolbarVisibility(!currentSettingsValues.mAutoHideToolbar);
+                mSuggestionStripView.setToolbarVisibility(false);
             else if (isTextFieldEmpty()) mSuggestionStripView.setToolbarVisibility(true);
         }
     }
@@ -1496,8 +1496,9 @@ public class LatinIME extends InputMethodService implements
             }
         }
         if (tryShowClipboardSuggestion()) {
-            // clipboard suggestion has been set
-            if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
+            // clipboard suggestion has been set. Open Keyboard: always show it, like Gboard, even
+            // when "auto hide toolbar" is off, otherwise the buttons cover it (seen in number fields)
+            if (hasSuggestionStripView())
                 mSuggestionStripView.setToolbarVisibility(false);
             return;
         }
