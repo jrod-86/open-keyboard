@@ -150,6 +150,22 @@ object MyInfo {
         KeyboardSwitcher.getInstance().updateShiftState(ime.currentAutoCapsState, ime.currentRecapitalizeState)
     }
 
+    /** Replaces the typed start with the whole saved text, then a space. */
+    private fun complete(ime: LatinIME, typed: String, full: String) {
+        val ic = ime.currentInputConnection ?: return
+        ime.mInputLogic.finishInput()
+        ic.beginBatchEdit()
+        ic.finishComposingText()
+        if (ic.getTextBeforeCursor(typed.length, 0)?.toString().equals(typed, ignoreCase = true)) ic.deleteSurroundingText(typed.length, 0)
+        ic.commitText("$full ", 1)
+        ic.endBatchEdit()
+        val ex = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+        if (ex != null && ex.selectionStart >= 0)
+            ime.mInputLogic.resyncAfterVoiceInput(ex.startOffset + ex.selectionStart, ex.startOffset + ex.selectionEnd)
+        KeyboardSwitcher.getInstance().updateShiftState(ime.currentAutoCapsState, ime.currentRecapitalizeState)
+        ime.setNeutralSuggestionStrip()
+    }
+
     // ---- offering the right detail for the box ----
 
     private fun kindOf(ei: EditorInfo?): Kind? {
@@ -188,22 +204,52 @@ object MyInfo {
         }
     }
 
-    /** A chip for the top bar when the box is empty and asks for something saved here. */
+    private fun isPassword(ei: EditorInfo?): Boolean {
+        ei ?: return false
+        val v = ei.inputType and InputType.TYPE_MASK_VARIATION
+        val cls = ei.inputType and InputType.TYPE_MASK_CLASS
+        return (cls == InputType.TYPE_CLASS_TEXT && (v == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            v == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD || v == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)) ||
+            (cls == InputType.TYPE_CLASS_NUMBER && v == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+    }
+
+    /** Saved text that starts with what's being typed (at least 3 letters), e.g. "jro" → your email. */
+    private fun completion(ctx: Context, before: String): Pair<String, String>? {
+        val token = before.takeLastWhile { !it.isWhitespace() }
+        if (token.length < 3) return null
+        val item = TextShortcuts.load(ctx).firstOrNull { val t = it.text.trim(); t.length > token.length && t.startsWith(token, ignoreCase = true) }
+            ?: return null
+        return token to item.text.trim()
+    }
+
+    /** A chip for the top bar: the start of something saved here was typed, or the empty box asks for it. */
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         if (!Plugins.isOn(ime, "shortcuts")) return null
-        val kind = kindOf(ime.currentInputEditorInfo) ?: return null
+        val ei = ime.currentInputEditorInfo
+        if (isPassword(ei)) return null
         val ic = ime.currentInputConnection ?: return null
-        if (!ic.getTextBeforeCursor(1, 0).isNullOrEmpty() || !ic.getTextAfterCursor(1, 0).isNullOrEmpty()) return null
+        val before = ic.getTextBeforeCursor(80, 0)?.toString().orEmpty()
+        val after = ic.getTextAfterCursor(1, 0)?.toString().orEmpty()
+        if (before.isNotEmpty() && (after.isEmpty() || after[0].isWhitespace())) {
+            val (typed, full) = completion(ime, before) ?: return null
+            return makeChip(ime, parent, "★  ${full.lineSequence().first()}") { complete(ime, typed, full) }
+        }
+        val kind = kindOf(ei) ?: return null
+        if (before.isNotEmpty() || after.isNotEmpty()) return null
         val value = match(ime, kind) ?: return null
+        val icon = when (kind) { Kind.EMAIL -> "✉"; Kind.PHONE -> "☎"; Kind.ADDRESS -> "⌂"; Kind.NAME -> "☺" }
+        return makeChip(ime, parent, "$icon  ${value.lineSequence().first()}") { type(ime, value); ime.setNeutralSuggestionStrip() }
+    }
+
+    private fun makeChip(ime: LatinIME, parent: ViewGroup, label: String, onTap: () -> Unit): View {
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
-        val icon = when (kind) { Kind.EMAIL -> "✉"; Kind.PHONE -> "☎"; Kind.ADDRESS -> "⌂"; Kind.NAME -> "☺" }
-        textView.text = "$icon  ${value.lineSequence().first()}"
+        textView.text = label
         val colors = ime.mSettings.current.mColors
         textView.setTextColor(colors.get(ColorType.KEY_TEXT))
         colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
         binding.clipboardSuggestionClose.visibility = View.GONE
-        textView.setOnClickListener { type(ime, value); ime.setNeutralSuggestionStrip() }
+        textView.setOnClickListener { onTap() }
         return binding.root
     }
 }

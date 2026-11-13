@@ -91,7 +91,7 @@ object KeyboardMenu {
     /** Tells the top bar to rebuild its buttons after one was dragged. */
     var onBarChanged: (() -> Unit)? = null
     private var lastOnCode: ((Int) -> Unit)? = null
-    private const val MAX_ON_BAR = 5 // not counting the menu button and the mic
+    private const val MAX_ON_BAR = 6 // not counting the menu button; the mic counts like any other
 
     fun startDrag(view: View, from: String, key: ToolbarKey) {
         view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
@@ -206,9 +206,7 @@ object KeyboardMenu {
 
     /** Saves the bar from a list of ToolbarKeys and "item:<id>" strings, keeping the mic as it was. */
     private fun saveBar(prefs: android.content.SharedPreferences, tokens: List<Any>) {
-        val hasMic = ToolbarKey.VOICE in helium314.keyboard.latin.utils.getBarKeys(prefs)
-        val keys = tokens.filterIsInstance<ToolbarKey>()
-        helium314.keyboard.latin.utils.setBarKeys(prefs, if (hasMic) keys + ToolbarKey.VOICE else keys)
+        helium314.keyboard.latin.utils.setBarKeys(prefs, tokens.filterIsInstance<ToolbarKey>())
         setBarItems(prefs, tokens.mapIndexedNotNull { i, t -> (t as? String)?.removePrefix("item:")?.let { i to it } })
     }
 
@@ -294,7 +292,7 @@ object KeyboardMenu {
                 startJiggle(toolbar)
                 if (from == "bar") self()?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (token != ToolbarKey.VOICE) previewBarAfterPause(toolbar, token, barIndex(strip, toolbar, event.x, token))
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> previewBarAfterPause(toolbar, token, barIndex(strip, toolbar, event.x, token))
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
                 clearBarPreview(toolbar)
                 resetAll(toolbar)
@@ -305,17 +303,11 @@ object KeyboardMenu {
                 val index = barIndex(strip, toolbar, event.x, token)
                 clearBarPreview(toolbar); resetAll(toolbar); stopJiggle(toolbar)
                 val prefs = strip.context.prefs()
-                if (token == ToolbarKey.VOICE) {
-                    saveBar(prefs, barTokens(toolbar)) // the mic stays pinned at the end
-                    val keys = helium314.keyboard.latin.utils.getBarKeys(prefs)
-                    if (ToolbarKey.VOICE !in keys) helium314.keyboard.latin.utils.setBarKeys(prefs, keys + ToolbarKey.VOICE)
-                } else {
-                    val tokens = barTokens(toolbar).filter { it != token }.toMutableList()
-                    tokens.add(index.coerceIn(0, tokens.size), token)
-                    // a full bar pushes its last other button back into the menu
-                    while (tokens.size > MAX_ON_BAR) tokens.removeAt(tokens.indexOfLast { it != token })
-                    saveBar(prefs, tokens)
-                }
+                val tokens = barTokens(toolbar).filter { it != token }.toMutableList()
+                tokens.add(index.coerceIn(0, tokens.size), token)
+                // a full bar pushes its last other button back into the menu
+                while (tokens.size > MAX_ON_BAR) tokens.removeAt(tokens.indexOfLast { it != token })
+                saveBar(prefs, tokens)
                 onBarChanged?.invoke()
                 refreshMenu(strip.context)
             }
@@ -438,7 +430,7 @@ object KeyboardMenu {
             keyItem("Voice typing", ToolbarKey.VOICE),
             Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
             Item(MadladTranslator.voiceTarget(context)?.let { "Voice → " + TranslatePanel.name(it) } ?: "Voice translate", plugin = "translate",
-                icon = toolbarIcon(ToolbarKey.VOICE), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
+                icon = ownIcon(R.drawable.ic_menu_voice_translate), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
             Item("My info", plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
             Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {

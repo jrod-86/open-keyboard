@@ -173,6 +173,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         val colors = Settings.getValues().mColors
         toolbar.removeAllViews()
         pinnedKeys.removeAllViews()
+        helium314.keyboard.latin.utils.migrateMicToBar(context.prefs())
         for (key in getEnabledToolbarKeys(context.prefs())) {
             val button = createToolbarKey(context, key)
             button.layoutParams = toolbarKeyLayoutParams
