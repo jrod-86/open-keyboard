@@ -182,20 +182,25 @@ class ClipboardHistoryManager(
         // maybe no need to create a new view
         // but a cache has to consider a few possible changes, so better don't implement without need
         clipboardSuggestionView = null
+        // Open Keyboard: say in the app's log why no paste chip shows (Settings > About > Save log)
+        fun no(why: String): View? {
+            Log.i(TAG, "paste chip: none ($why) inputType=0x${Integer.toHexString(editorInfo?.inputType ?: 0)} pkg=${editorInfo?.packageName}")
+            return null
+        }
 
         // Open Keyboard: a just-arrived SMS code comes first
         if (parent != null) SmsCodes.recent()?.let { code -> return codeSuggestionView(code, editorInfo, parent) }
 
         // get the content, or return null
-        if (!latinIME.mSettings.current.mSuggestClipboardContent) return null
-        if (dontShowCurrentSuggestion) return null
-        if (parent == null) return null
-        val clipData = clipboardManager.primaryClip ?: return null
-        if (clipData.itemCount == 0) return null
-        val clipItem = clipData.getItemAt(0) ?: return null
+        if (!latinIME.mSettings.current.mSuggestClipboardContent) return no("2")
+        if (dontShowCurrentSuggestion) return no("3")
+        if (parent == null) return no("4")
+        val clipData = clipboardManager.primaryClip ?: return no("5")
+        if (clipData.itemCount == 0) return no("6")
+        val clipItem = clipData.getItemAt(0) ?: return no("7")
         val hasText = clipData.description?.hasMimeType("text/*") == true
         val hasImage = clipData.description?.hasMimeType("image/*") == true && clipItem.uri != null
-        if (!hasText && !hasImage) return null
+        if (!hasText && !hasImage) return no("8")
         val inputType = editorInfo?.inputType ?: InputType.TYPE_NULL
         var content: CharSequence = clipItem.coerceToText(latinIME)
         // Open Keyboard: in a number field offer just the code, even if it was copied as "123 456"
@@ -204,7 +209,7 @@ class ClipboardHistoryManager(
         if (hasText && InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber() && code != null) content = code
         val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)
         val window = if (code != null && InputTypeUtils.isNumberInputType(inputType)) RECENT_CODE_MILLIS else RECENT_TIME_MILLIS
-        if (System.currentTimeMillis() - timeStamp > window) return null
+        if (System.currentTimeMillis() - timeStamp > window) return no("9")
 
         // create the view
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(latinIME), parent, false)
@@ -213,8 +218,8 @@ class ClipboardHistoryManager(
         clipIcon?.setBounds(0, 0, textView.lineHeight, textView.lineHeight) // scale the icon to the text
         textView.setCompoundDrawablesRelative(clipIcon, null, null, null)
         if (hasText) {
-            if (TextUtils.isEmpty(content)) return null
-            if (InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber()) return null
+            if (TextUtils.isEmpty(content)) return no("10")
+            if (InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber()) return no("11")
             val shortenedContent = content.take(200) // for display only
             KeyboardTypeface.applyToTextView(textView)
             textView.text = (if (isClipSensitive(inputType)) "*".repeat(shortenedContent.length) else shortenedContent)
@@ -230,14 +235,14 @@ class ClipboardHistoryManager(
         textView.setOnClickListener(onClickListener)
 
         if (hasImage) {
-            if (InputTypeUtils.isNumberInputType(inputType)) return null
+            if (InputTypeUtils.isNumberInputType(inputType)) return no("12")
             val imageView = binding.clipboardSuggestionImage
             imageView.isVisible = true
             try {
                 imageView.setImageURI(clipItem.uri)
             } catch (e: Exception) {
                 Log.w(TAG, "error setting clipboard image", e) // happens with SecurityException: Permission Denial
-                return null
+                return no("13")
             }
             imageView.setOnClickListener(onClickListener)
         }

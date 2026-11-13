@@ -239,6 +239,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     fun setToolbarVisibility(visible: Boolean) {
+        if (visible && isExternalSuggestionVisible && suggestionsStrip.isVisible) chipLog("covered by buttons")
         // Open Keyboard: never leave the bar empty. With no word suggestions, show the buttons like Gboard.
         val toolbarVisible = visible || barWouldBeEmpty()
         pinnedKeys.isVisible = true // Open Keyboard: keep the mic at the right, like Gboard
@@ -272,6 +273,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     fun setExternalSuggestionView(view: View?, addCloseButton: Boolean) {
         clear()
+        chipLog("shown")
         isExternalSuggestionVisible = true
 
         if (addCloseButton) {
@@ -343,6 +345,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         // show the buttons instead.
         if (isShown && !toolbarContainer.isVisible && !stripHasContent()) post {
             if (isShown && !toolbarContainer.isVisible && !stripHasContent()) {
+                chipLog("empty-bar check")
                 suggestionsStrip.isVisible = false
                 toolbarContainer.isVisible = true
                 pinnedKeys.isVisible = true
@@ -551,7 +554,14 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         }
     }
 
+    /** Open Keyboard: notes in the app's log who hid a chip, to chase paste-chip problems. */
+    private fun chipLog(what: String) {
+        val by = Throwable().stackTrace.drop(2).take(4).joinToString(" < ") { "${it.fileName?.removeSuffix(".kt")?.removeSuffix(".java")}:${it.lineNumber}" }
+        helium314.keyboard.latin.utils.Log.i("SuggestionStripView", "chip $what by $by")
+    }
+
     private fun clear() {
+        if (isExternalSuggestionVisible && suggestionsStrip.childCount > 0) chipLog("cleared")
         suggestionsStrip.removeAllViews()
         if (DEBUG_SUGGESTIONS) removeAllDebugInfoViews()
         if (!toolbarContainer.isVisible)
