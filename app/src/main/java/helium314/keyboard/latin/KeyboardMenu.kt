@@ -117,7 +117,9 @@ object KeyboardMenu {
     }
 
     private const val PREF_MENU_ORDER = "open_keyboard_menu_order"
-    private var currentGrid: GridLayout? = null
+    private var currentGrid: TilePager? = null
+    /** The page the menu was on, so it reopens there after moving a tile. */
+    private var lastPage = 0
     private const val COLUMNS = 4
     private const val ANIM_MS = 140L
 
@@ -225,39 +227,31 @@ object KeyboardMenu {
         return true
     }
 
-    // ---- the menu grid ----
+    // ---- the menu grid: pages of tiles you swipe between ----
 
-    private fun cellSize(grid: GridLayout): Pair<Float, Float>? {
-        val first = grid.getChildAt(0) ?: return null
-        val lp = first.layoutParams as ViewGroup.MarginLayoutParams
-        val colW = (grid.width - grid.paddingLeft - grid.paddingRight).toFloat() / COLUMNS
-        val rowH = (first.height + lp.topMargin + lp.bottomMargin).toFloat()
-        return colW to rowH
-    }
+    /** Which tile spot (counting across all pages) a drop at [x], [y] in the pager would go to. */
+    private fun gridIndex(pager: TilePager, x: Float, y: Float, count: Int): Int =
+        (pager.page * pager.perPage + pager.slotAt(x, y)).coerceIn(0, count)
 
-    private fun slotXY(slot: Int, size: Pair<Float, Float>) = (slot % COLUMNS) * size.first to (slot / COLUMNS) * size.second
-
-    /** Which grid spot a drop at [x], [y] (in the scroll view) would go to. */
-    private fun gridIndex(menu: View, grid: GridLayout, x: Float, y: Float, count: Int): Int {
-        val size = cellSize(grid) ?: return 0
-        val gy = y + menu.scrollY - grid.top - grid.paddingTop
-        val gx = x - grid.left - grid.paddingLeft
-        val row = (gy / size.second).toInt().coerceAtLeast(0)
-        val col = (gx / size.first).toInt().coerceIn(0, COLUMNS - 1)
-        return (row * COLUMNS + col).coerceIn(0, count)
-    }
-
-    /** Slides the menu buttons along to open a gap where the dragged one would land. */
-    private fun previewGrid(grid: GridLayout, label: String?, index: Int) {
-        val size = cellSize(grid) ?: return
-        val others = (0 until grid.childCount).map { grid.getChildAt(it) }.filter { it.tag != label }
+    /** Slides the tiles along to open a gap where the dragged one would land. */
+    private fun previewGrid(pager: TilePager, label: String?, index: Int) {
+        val children = (0 until pager.childCount).map { pager.getChildAt(it) }
+        val others = children.filter { it.tag != label }
         others.forEachIndexed { j, v ->
-            val current = (0 until grid.childCount).indexOfFirst { grid.getChildAt(it) === v }
             val slot = if (j < index) j else j + 1
-            val (cx, cy) = slotXY(current, size); val (nx, ny) = slotXY(slot, size)
-            anim(v, nx - cx, ny - cy)
+            val (nx, ny) = pager.slotPosition(slot)
+            anim(v, nx - v.left, ny - v.top)
         }
-        (0 until grid.childCount).map { grid.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0f
+        children.firstOrNull { it.tag == label }?.alpha = 0f
+    }
+
+    /** While dragging, hold a tile at the left or right edge to turn the page. */
+    private var edgeFlip: Runnable? = null
+    private fun edgeCheck(pager: TilePager, x: Float) {
+        val dir = when { x < pager.width * 0.07f -> -1; x > pager.width * 0.93f -> 1; else -> 0 }
+        if (dir == 0) { edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null; return }
+        if (edgeFlip != null) return
+        edgeFlip = Runnable { edgeFlip = null; pager.goTo(pager.page + dir) }.also { pager.postDelayed(it, 550) }
     }
 
     private fun labelOf(key: ToolbarKey) = menuLabels[key]
@@ -267,21 +261,26 @@ object KeyboardMenu {
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
         val itemId = draggedItem(event)
         val (from, key) = if (itemId != null) "menu" to null else (dragged(event) ?: return false)
-        val grid = currentGrid ?: return false
+        val pager = currentGrid ?: return false
         val label = itemId ?: labelOf(key!!)
-        val othersCount = (0 until grid.childCount).count { grid.getChildAt(it).tag != label }
+        val othersCount = (0 until pager.childCount).count { pager.getChildAt(it).tag != label }
         when (event.action) {
-            android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(grid) == Unit && from == "menu") previewGrid(grid, label, (0 until grid.childCount).indexOfFirst { grid.getChildAt(it).tag == label })
-            android.view.DragEvent.ACTION_DRAG_LOCATION -> previewGrid(grid, label, gridIndex(menu, grid, event.x, event.y, othersCount))
-            android.view.DragEvent.ACTION_DRAG_EXITED -> {
-                resetAll(grid)
-                if (from == "menu") (0 until grid.childCount).map { grid.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0.25f
+            android.view.DragEvent.ACTION_DRAG_STARTED -> if (startJiggle(pager) == Unit && from == "menu") previewGrid(pager, label, (0 until pager.childCount).indexOfFirst { pager.getChildAt(it).tag == label })
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                edgeCheck(pager, event.x)
+                previewGrid(pager, label, gridIndex(pager, event.x, event.y, othersCount))
             }
-            android.view.DragEvent.ACTION_DRAG_ENDED -> { resetAll(grid); stopJiggle(grid) }
+            android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null
+                resetAll(pager)
+                if (from == "menu") (0 until pager.childCount).map { pager.getChildAt(it) }.firstOrNull { it.tag == label }?.alpha = 0.25f
+            }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> { edgeFlip?.let { pager.removeCallbacks(it) }; edgeFlip = null; resetAll(pager); stopJiggle(pager) }
             android.view.DragEvent.ACTION_DROP -> {
-                val index = gridIndex(menu, grid, event.x, event.y, othersCount)
-                stopJiggle(grid)
-                val visible = (0 until grid.childCount).mapNotNull { grid.getChildAt(it).tag as? String }.filter { it != label }.toMutableList()
+                val index = gridIndex(pager, event.x, event.y, othersCount)
+                stopJiggle(pager)
+                lastPage = pager.page
+                val visible = (0 until pager.childCount).mapNotNull { pager.getChildAt(it).tag as? String }.filter { it != label }.toMutableList()
                 if (label != null) visible.add(index.coerceIn(0, visible.size), label)
                 val prefs = menu.context.prefs()
                 val saved = prefs.getString(PREF_MENU_ORDER, "")!!.split(",").filter { it.isNotEmpty() && it !in visible }
@@ -298,7 +297,7 @@ object KeyboardMenu {
 
     private fun refreshMenu(context: Context) {
         val onCode = lastOnCode ?: return
-        if (menuView?.parent != null && menuView?.tag == OVERLAY_TAG && menuView is FitScrollView) {
+        if (menuView?.parent != null && menuView?.tag == OVERLAY_TAG && menuView is TilePager) {
             menuView?.post { showMenu(context, onCode) }
         }
     }
@@ -362,12 +361,7 @@ object KeyboardMenu {
         val items = allItems.filter { it.key == null || it.key !in onBar }
             .sortedBy { order.indexOf(it.id).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
 
-        val columns = 4
-        val grid = GridLayout(context).apply {
-            columnCount = columns
-            val pad = dp(context, 8f).toInt()
-            setPadding(pad, pad, pad, pad)
-        }
+        val pager = TilePager(context, dp(context, 8f).toInt(), dp(context, 4f).toInt(), dp(context, 64f).toInt())
         for (item in items) {
             val tile = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -404,36 +398,23 @@ object KeyboardMenu {
                 setPadding(0, dp(context, 4f).toInt(), 0, 0)
             }
             tile.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            val m = dp(context, 4f).toInt()
-            grid.addView(tile, GridLayout.LayoutParams(
-                GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f)
-            ).apply { width = 0; setMargins(m, m, m, m) })
+            pager.addView(tile)
         }
 
-        currentGrid = grid
-        val hint = TextView(context).apply {
-            text = "Hold a button to move it: up to the top bar, or to another spot here. Drag one down from the bar to take it off."
-            setTextColor(ColorUtils.setAlphaComponent(textColor, 170))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
-            val p = dp(context, 12f).toInt(); setPadding(p, dp(context, 2f).toInt(), p, dp(context, 12f).toInt())
-        }
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        val scroll = FitScrollView(context).apply {
-            addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        currentGrid = pager
+        pager.apply {
+            dotColor = textColor
+            startPage = lastPage
             setOnDragListener { v, e -> onMenuDrag(v, e) }
             // a plain colour: themes with a photo/gradient background can't be drawn on a view that has no size yet
             setBackgroundColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
             isClickable = true // don't let touches reach the keys underneath
+            onPageChanged = { lastPage = it }
         }
-        scroll.tag = OVERLAY_TAG
-        scroll.clearSystemButtons()
-        wrapper.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        menuView = scroll
+        pager.tag = OVERLAY_TAG
+        pager.clearSystemButtons()
+        wrapper.addView(pager, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        menuView = pager
     }
 
     private fun openSettings(context: Context, destination: String) {
@@ -585,6 +566,156 @@ object KeyboardMenu {
             if (this is ViewGroup) clipToPadding = false
         }
         apply(rootWindowInsets ?: KeyboardSwitcher.getInstance().wrapperView?.rootWindowInsets)
+    }
+
+    /**
+     * The grid menu: 4 columns and up to 4 rows a page (fewer if the keyboard is short), swipe left or
+     * right for the next page, dots along the bottom. Pages never run under the phone's own buttons.
+     */
+    private class TilePager(context: Context, private val pad: Int, private val gap: Int, private val minCell: Int) : ViewGroup(context) {
+        var dotColor = 0
+        var startPage = 0
+        var onPageChanged: ((Int) -> Unit)? = null
+        var perPage = 16; private set
+        private var rows = 4
+        private var cellW = 0f
+        private var cellH = 0f
+        private val dotsH get() = (resources.displayMetrics.density * 18).toInt()
+        val pageCount get() = maxOf(1, (childCount + perPage - 1) / perPage)
+        var page = 0; private set
+
+        init { setWillNotDraw(false) }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val w = MeasureSpec.getSize(widthMeasureSpec)
+            // take the keyboard's size instead of making the keyboard taller
+            val h = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else 0
+            setMeasuredDimension(w, h)
+            if (h == 0) return
+            val availH = h - paddingTop - pad - paddingBottom - dotsH
+            rows = (availH / minCell).coerceIn(1, 4)
+            perPage = COLUMNS * rows
+            cellW = (w - 2f * pad) / COLUMNS
+            cellH = availH.toFloat() / rows
+            val cw = MeasureSpec.makeMeasureSpec((cellW - 2 * gap).toInt().coerceAtLeast(0), MeasureSpec.EXACTLY)
+            val ch = MeasureSpec.makeMeasureSpec((cellH - 2 * gap).toInt().coerceAtLeast(0), MeasureSpec.EXACTLY)
+            for (i in 0 until childCount) getChildAt(i).measure(cw, ch)
+        }
+
+        /** Top-left corner of tile spot [slot] (counting across pages), in this view's own coordinates. */
+        fun slotPosition(slot: Int): Pair<Float, Float> {
+            val p = slot / perPage; val s = slot % perPage
+            return (p * width + pad + (s % COLUMNS) * cellW + gap) to (paddingTop + pad + (s / COLUMNS) * cellH + gap)
+        }
+
+        /** The spot on the current page under [x], [y] (as seen on screen). */
+        fun slotAt(x: Float, y: Float): Int {
+            if (cellW <= 0f || cellH <= 0f) return 0
+            val col = ((x - pad) / cellW).toInt().coerceIn(0, COLUMNS - 1)
+            val row = ((y - paddingTop - pad) / cellH).toInt().coerceIn(0, rows - 1)
+            return row * COLUMNS + col
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            for (i in 0 until childCount) {
+                val c = getChildAt(i)
+                val (x, y) = slotPosition(i)
+                c.layout(x.toInt(), y.toInt(), x.toInt() + c.measuredWidth, y.toInt() + c.measuredHeight)
+            }
+            if (startPage >= 0) { page = startPage.coerceIn(0, pageCount - 1); startPage = -1 }
+            page = page.coerceIn(0, pageCount - 1)
+            if (!scroller.isRunning) scrollTo(page * width, 0)
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            if (pageCount < 2) return
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            val d = resources.displayMetrics.density
+            val r = 3.5f * d; val space = 14f * d
+            val cy = height - paddingBottom - dotsH / 2f
+            val startX = scrollX + width / 2f - (pageCount - 1) * space / 2f
+            for (i in 0 until pageCount) {
+                paint.color = androidx.core.graphics.ColorUtils.setAlphaComponent(dotColor, if (i == page) 255 else 90)
+                canvas.drawCircle(startX + i * space, cy, r, paint)
+            }
+        }
+
+        // ---- swiping between pages ----
+        private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+        private var downX = 0f; private var downY = 0f; private var downScroll = 0
+        private var dragging = false
+        private var velocity: android.view.VelocityTracker? = null
+        private var scroller = android.animation.ValueAnimator()
+
+        override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = ev.x; downY = ev.y; downScroll = scrollX; dragging = false
+                    velocity?.recycle(); velocity = android.view.VelocityTracker.obtain()
+                    velocity?.addMovement(ev)
+                    if (scroller.isRunning) { scroller.cancel(); downScroll = scrollX; dragging = true }
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    velocity?.addMovement(ev)
+                    val dx = ev.x - downX; val dy = ev.y - downY
+                    if (pageCount > 1 && kotlin.math.abs(dx) > slop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                        dragging = true; downX = ev.x; downScroll = scrollX
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
+            }
+            return dragging
+        }
+
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(ev: android.view.MotionEvent): Boolean {
+            velocity?.addMovement(ev)
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { downX = ev.x; downY = ev.y; downScroll = scrollX; return true }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = ev.x - downX
+                    if (!dragging && kotlin.math.abs(dx) > slop && pageCount > 1) { dragging = true; downX = ev.x; downScroll = scrollX }
+                    if (dragging) {
+                        val max = (pageCount - 1) * width
+                        var target = downScroll - (ev.x - downX)
+                        if (target < 0) target /= 3f else if (target > max) target = max + (target - max) / 3f // a little give at the ends
+                        scrollTo(target.toInt(), 0)
+                    }
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) {
+                        velocity?.computeCurrentVelocity(1000)
+                        val vx = velocity?.xVelocity ?: 0f
+                        val moved = scrollX - page * width
+                        val target = when {
+                            vx < -800 -> page + 1
+                            vx > 800 -> page - 1
+                            moved > width / 3 -> page + 1
+                            moved < -width / 3 -> page - 1
+                            else -> page
+                        }
+                        goTo(target)
+                    }
+                    dragging = false
+                    velocity?.recycle(); velocity = null
+                }
+            }
+            return true
+        }
+
+        fun goTo(target: Int) {
+            page = target.coerceIn(0, pageCount - 1)
+            onPageChanged?.invoke(page)
+            scroller.cancel()
+            scroller = android.animation.ValueAnimator.ofInt(scrollX, page * width).apply {
+                duration = 220
+                interpolator = android.view.animation.DecelerateInterpolator()
+                addUpdateListener { scrollTo(it.animatedValue as Int, 0); invalidate() }
+                start()
+            }
+            invalidate()
+        }
     }
 
     /** Takes the keyboard's size instead of making the keyboard taller. */
