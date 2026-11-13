@@ -63,7 +63,8 @@ object SlashCommands {
     /** What is being typed: the text to replace, what the chip shows, and what tapping inserts (null = hint only). */
     class Match(val replaceLength: Int, val shown: String, val insert: String?, val ask: (() -> kotlin.Unit)? = null)
 
-    private val slash = Regex("(?:^|\\s)(/([a-z]*)(?:\\s+(.*))?)$")
+    // a stray ` before the command (copied from a chat) is allowed
+    private val slash = Regex("(?:^|[\\s`])(/([a-z]*)(?:\\s+(.*))?)$")
     private val equals = Regex("(?:^|\\s)(=\\s*([0-9.,+\\-*/x×÷^%() ]*[0-9)]))$")
 
     /** Whether the cursor is inside a command, so autocorrect leaves it alone. */
@@ -84,7 +85,7 @@ object SlashCommands {
         }
         val m = slash.find(line) ?: return null
         val name = m.groupValues[2]
-        val args = m.groupValues[3]
+        val args = m.groupValues[3].trimEnd('`').replace('“', '"').replace('”', '"')
         val exact = commands.firstOrNull { it.name == name }
         if (exact != null && (args.isNotBlank() || exact.usage == "/${exact.name}" || exact.usage.contains("("))) {
             if (exact.remote == "mcp") {
