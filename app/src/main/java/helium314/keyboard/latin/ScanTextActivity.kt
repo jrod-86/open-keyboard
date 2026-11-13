@@ -252,14 +252,18 @@ class ScanTextActivity : Activity() {
     }
 
     /** Grey, with the contrast stretched, which helps with photos of screens and coloured paper. */
-    private fun prepare(src: Bitmap): Bitmap {
+    private fun prepare(src: Bitmap, channel: Int): Bitmap {
         val w = src.width; val h = src.height
         val px = IntArray(w * h)
         src.getPixels(px, 0, w, 0, 0, w, h)
         val hist = IntArray(256)
         for (i in px.indices) {
             val c = px[i]
-            val l = ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000
+            val l = when (channel) {
+                CH_RED -> c shr 16 and 255
+                CH_GREEN -> c shr 8 and 255
+                else -> ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000
+            }
             px[i] = l; hist[l]++
         }
         val cut = px.size / 100
@@ -285,35 +289,17 @@ class ScanTextActivity : Activity() {
             val text = try {
                 bmp = loadBitmap(uri) ?: throw IllegalStateException("Couldn't open the picture")
                 runOnUiThread { photo.setPhoto(bmp, emptyList()); photo.visibility = View.VISIBLE }
-                val api = TessBaseAPI()
-                try {
-                    val started = bestDataPath()?.let { api.init(it, "eng") } == true || api.init(fastDataPath(), "eng")
-                    if (!started) throw IllegalStateException("Text recognition couldn't start")
-                    // find the blocks of text on the page instead of reading it as one block
-                    api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
-                    api.setImage(prepare(bmp))
-                    val all = api.utF8Text.orEmpty()
-                    api.resultIterator?.let { it ->
-                        try {
-                            it.begin()
-                            var line = 0
-                            var para = 0
-                            do {
-                                if (it.isAtBeginningOf(TessBaseAPI.PageIteratorLevel.RIL_PARA)) para++
-                                if (it.isAtBeginningOf(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)) line++
-                                val w = it.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_WORD)
-                                val box = it.getBoundingRect(TessBaseAPI.PageIteratorLevel.RIL_WORD)
-                                if (!w.isNullOrBlank() && box != null)
-                                    words += Word(w.trim(), box, line, para, it.confidence(TessBaseAPI.PageIteratorLevel.RIL_WORD))
-                            } while (it.next(TessBaseAPI.PageIteratorLevel.RIL_WORD))
-                        } finally {
-                            it.delete()
-                        }
-                    }
-                    all
-                } finally {
-                    api.recycle()
-                }
+                val model = bestDataPath() ?: fastDataPath()
+                // Read the photo three ways at once: in grey, and using only the red or green light.
+                // White writing on a coloured bubble often only stands out in one of them. Keep the
+                // reading that found the most text it was sure of.
+                val passes = listOf(CH_GRAY, CH_RED, CH_GREEN).map { ch ->
+                    var out: Pass? = null
+                    thread(name = "scan-text-$ch") { out = runCatching { readPass(model, prepare(bmp, ch)) }.getOrNull() } to { out }
+                }.map { (t, get) -> t.join(); get() }.filterNotNull()
+                val best = passes.maxByOrNull { it.score } ?: throw IllegalStateException("Text recognition couldn't start")
+                words += best.words
+                best.text
             } catch (e: Throwable) {
                 runOnUiThread { setMode(Mode.EMPTY); status.text = "Didn't work: ${e.message}" }
                 return@thread
@@ -327,6 +313,42 @@ class ScanTextActivity : Activity() {
                 photo.setPhoto(bmp, usable)
                 setMode(Mode.PHOTO)
             }
+        }
+    }
+
+    private class Pass(val text: String, val words: List<Word>, val score: Int)
+
+    private fun readPass(model: String, image: Bitmap): Pass {
+        val api = TessBaseAPI()
+        try {
+            if (!api.init(model, "eng") && !api.init(fastDataPath(), "eng")) throw IllegalStateException("Text recognition couldn't start")
+            // find the blocks of text on the page instead of reading it as one block
+            api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
+            api.setImage(image)
+            val all = api.utF8Text.orEmpty()
+            val words = mutableListOf<Word>()
+            api.resultIterator?.let { it ->
+                try {
+                    it.begin()
+                    var line = 0
+                    var para = 0
+                    do {
+                        if (it.isAtBeginningOf(TessBaseAPI.PageIteratorLevel.RIL_PARA)) para++
+                        if (it.isAtBeginningOf(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)) line++
+                        val w = it.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_WORD)
+                        val box = it.getBoundingRect(TessBaseAPI.PageIteratorLevel.RIL_WORD)
+                        if (!w.isNullOrBlank() && box != null)
+                            words += Word(w.trim(), box, line, para, it.confidence(TessBaseAPI.PageIteratorLevel.RIL_WORD))
+                    } while (it.next(TessBaseAPI.PageIteratorLevel.RIL_WORD))
+                } finally {
+                    it.delete()
+                }
+            }
+            val score = words.filter { it.confidence >= 70f }.sumOf { w -> w.text.count { it.isLetterOrDigit() } }
+            return Pass(all, words, score)
+        } finally {
+            api.recycle()
+            image.recycle()
         }
     }
 
@@ -466,6 +488,9 @@ class ScanTextActivity : Activity() {
     companion object {
         private const val REQ_CAMERA = 1
         private const val REQ_PICK = 2
+        private const val CH_GRAY = 0
+        private const val CH_RED = 1
+        private const val CH_GREEN = 2
         private const val BEST_URL = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/e12c65a915945e4c28e237a9b52bc4a8f39a0cec/eng.traineddata"
         private const val BEST_SHA256 = "8280aed0782fe27257a68ea10fe7ef324ca0f8d85bd2fd145d1c2b560bcb66ba"
         private const val BEST_SIZE = 15400601L
