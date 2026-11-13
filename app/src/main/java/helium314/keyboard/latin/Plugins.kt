@@ -55,7 +55,7 @@ object Plugins {
 
     /** "Translate (Google Translate)", so an app's button can't be mistaken for the keyboard's own. */
     private fun labelWithApp(action: String, app: String) =
-        if (app.isBlank() || action.equals(app, ignoreCase = true)) action else "$action ($app)"
+        if (app.isBlank() || action.contains(app, ignoreCase = true)) action else "$action ($app)"
 
     /** Apps that offer a text action, excluding this app. */
     fun appActions(ctx: Context): List<AppAction> {

@@ -83,11 +83,22 @@ object McpServers {
 
     fun commandName(tool: String) = tool.lowercase().filter { it in 'a'..'z' || it in '0'..'9' }
 
+    /** A field that takes text: "string", a list of types with "string" in it, or anyOf/oneOf with a string. */
+    private fun isText(p: JSONObject?): Boolean {
+        if (p == null) return false
+        if (p.optString("type") == "string") return true
+        p.optJSONArray("type")?.let { a -> if ((0 until a.length()).any { a.optString(it) == "string" }) return true }
+        for (k in listOf("anyOf", "oneOf")) p.optJSONArray(k)?.let { a ->
+            if ((0 until a.length()).any { isText(a.optJSONObject(it)) }) return true
+        }
+        return false
+    }
+
     private fun requiredStrings(schema: JSONObject?): List<String> {
         val props = schema?.optJSONObject("properties") ?: return emptyList()
         val required = schema.optJSONArray("required") ?: return emptyList()
         return (0 until required.length()).map { required.getString(it) }
-            .filter { props.optJSONObject(it)?.optString("type") == "string" }
+            .filter { isText(props.optJSONObject(it)) }
     }
 
     private fun firstStringArg(schema: JSONObject?): String? {
@@ -95,7 +106,7 @@ object McpServers {
         val required = schema.optJSONArray("required")
         val names = props.keys().asSequence().toList()
         val req = (0 until (required?.length() ?: 0)).map { required!!.getString(it) }
-        return (req + names).firstOrNull { props.optJSONObject(it)?.optString("type") == "string" }
+        return (req + names).firstOrNull { isText(props.optJSONObject(it)) }
     }
 
     /** Turns what was typed after the command into the tool's arguments. */
