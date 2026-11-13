@@ -235,19 +235,50 @@ object KeyboardMenu {
 
     /** Slides the bar buttons apart to show where the dragged one would land. */
     private fun previewBar(toolbar: ViewGroup, key: Any, index: Int) {
-        val others = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.tag != key }
-        val n = others.size
-        val fromBar = (0 until toolbar.childCount).any { toolbar.getChildAt(it).tag == key }
+        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }
+        val others = all.filter { it.tag != key }.toMutableList()
         val total = toolbar.width.toFloat().takeIf { it > 0 } ?: return
         val oldSlots = toolbar.childCount
-        val newSlots = n + 1
+        // a full bar: the last other button will go back to the menu, so show it fading out
+        val pushedOut = if (others.size + 1 > MAX_ON_BAR) others.lastOrNull() else null
+        pushedOut?.let { others.remove(it); it.animate().alpha(0.15f).setDuration(ANIM_MS).start() }
+        all.filter { it !== pushedOut && it.tag != key }.forEach { if (it.alpha < 1f) it.animate().alpha(1f).setDuration(ANIM_MS).start() }
+        val newSlots = others.size + 1
+        val slotW = total / newSlots
         others.forEachIndexed { j, v ->
-            val current = (0 until toolbar.childCount).indexOfFirst { toolbar.getChildAt(it) === v }
+            val current = all.indexOf(v)
             val slot = if (j < index) j else j + 1
-            val tx = (slot + 0.5f) * total / newSlots - (current + 0.5f) * total / oldSlots
+            val tx = (slot + 0.5f) * slotW - (current + 0.5f) * total / oldSlots
             anim(v, tx)
         }
-        if (fromBar) (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.firstOrNull { it.tag == key }?.alpha = 0f
+        all.firstOrNull { it.tag == key }?.alpha = 0f
+        // dashed outline where it will land, sized to the new spacing
+        val d = toolbar.resources.displayMetrics.density
+        val slot = index.coerceIn(0, newSlots - 1)
+        val box = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 14f * d
+            setStroke((2 * d).toInt(), ColorUtils.setAlphaComponent(Settings.getValues().mColors.get(ColorType.KEY_TEXT), 150), 6f * d, 5f * d)
+            val w = minOf(slotW - 6 * d, toolbar.height * 1.2f)
+            val cx = (slot + 0.5f) * slotW
+            setBounds((cx - w / 2).toInt(), (3 * d).toInt(), (cx + w / 2).toInt(), (toolbar.height - 3 * d).toInt())
+        }
+        toolbar.overlay.clear()
+        toolbar.overlay.add(box)
+    }
+
+    /** Like the grid: the bar only makes room once you rest on a spot for a moment. */
+    private var barPendingIndex = -1
+    private var barPending: Runnable? = null
+    private fun previewBarAfterPause(toolbar: ViewGroup, key: Any, index: Int) {
+        if (index == barPendingIndex) return
+        barPendingIndex = index
+        barPending?.let { toolbar.removeCallbacks(it) }
+        barPending = Runnable { barPending = null; previewBar(toolbar, key, index) }.also { toolbar.postDelayed(it, 150) }
+    }
+    private fun clearBarPreview(toolbar: ViewGroup) {
+        barPending?.let { toolbar.removeCallbacks(it) }
+        barPending = null; barPendingIndex = -1
+        toolbar.overlay.clear()
     }
 
     /** Drops on the top bar: add a menu button to the bar, or move a bar button along it. */
@@ -263,15 +294,16 @@ object KeyboardMenu {
                 startJiggle(toolbar)
                 if (from == "bar") self()?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (token != ToolbarKey.VOICE) previewBar(toolbar, token, barIndex(strip, toolbar, event.x, token))
+            android.view.DragEvent.ACTION_DRAG_LOCATION -> if (token != ToolbarKey.VOICE) previewBarAfterPause(toolbar, token, barIndex(strip, toolbar, event.x, token))
             android.view.DragEvent.ACTION_DRAG_EXITED -> {
+                clearBarPreview(toolbar)
                 resetAll(toolbar)
                 if (from == "bar") self()?.alpha = 0.25f
             }
-            android.view.DragEvent.ACTION_DRAG_ENDED -> { resetAll(toolbar); stopJiggle(toolbar) }
+            android.view.DragEvent.ACTION_DRAG_ENDED -> { clearBarPreview(toolbar); resetAll(toolbar); stopJiggle(toolbar) }
             android.view.DragEvent.ACTION_DROP -> {
                 val index = barIndex(strip, toolbar, event.x, token)
-                resetAll(toolbar); stopJiggle(toolbar)
+                clearBarPreview(toolbar); resetAll(toolbar); stopJiggle(toolbar)
                 val prefs = strip.context.prefs()
                 if (token == ToolbarKey.VOICE) {
                     saveBar(prefs, barTokens(toolbar)) // the mic stays pinned at the end
