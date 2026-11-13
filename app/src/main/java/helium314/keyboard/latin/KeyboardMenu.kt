@@ -448,6 +448,7 @@ object KeyboardMenu {
             Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
             Item(MadladTranslator.voiceTarget(context)?.let { "Voice → " + TranslatePanel.name(it) } ?: "Voice translate", plugin = "translate",
                 icon = ownIcon(R.drawable.ic_menu_voice_translate), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
+            Item(LanguagePanel.currentName() ?: "Language", ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
             Item("My info", plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
             Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
