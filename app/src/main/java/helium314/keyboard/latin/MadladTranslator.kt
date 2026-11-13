@@ -130,6 +130,7 @@ object MadladTranslator {
             unload?.cancel(false)
             try {
                 if (!verified(f)) { toast(ctx, "The Khmer model download was damaged, downloading again"); ensureDownload(ctx); return null }
+                val t0 = android.os.SystemClock.uptimeMillis()
                 if (!OfflineTranslator.load(ctx.applicationContext, f.absolutePath, 4)) { Log.w(TAG, "model failed to load"); return null }
                 // one sentence at a time translates best; keep line breaks
                 val out = text.split("\n").joinToString("\n") { line ->
@@ -138,6 +139,7 @@ object MadladTranslator {
                         clean(OfflineTranslator.translate("<2$to> $s", 256)).ifEmpty { s }
                     }
                 }
+                Log.i(TAG, "translated ${text.length} chars in ${android.os.SystemClock.uptimeMillis() - t0} ms")
                 return out
             } catch (e: Throwable) {
                 Log.w(TAG, "translation failed", e)

@@ -62,7 +62,8 @@ class VoiceInputController(
     fun toggle() {
         // ignore a second event from the same tap
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastToggle < 400) return
+        Log.i(TAG, "mic tapped: running=$running pending=${pending.size} sinceLast=${now - lastToggle}ms translate=$translateTo")
+        if (now - lastToggle < 400) { Log.i(TAG, "mic tap ignored (double event)"); return }
         lastToggle = now
         if (running) stop() else start()
     }
@@ -71,6 +72,7 @@ class VoiceInputController(
         if (running) return
         val missingPermission = ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
         if (missingPermission || !VoiceModel.STREAMING_EN.isInstalled(ime)) {
+            Log.i(TAG, "mic not started: permission=${!missingPermission}")
             Toast.makeText(ime, "Set up voice typing first", Toast.LENGTH_SHORT).show()
             ime.startActivity(Intent(ime, VoiceSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
@@ -97,6 +99,7 @@ class VoiceInputController(
 
     /** Stops listening. Text already heard is still finished off and committed. */
     fun stop() {
+        Log.i(TAG, "mic stop: running=$running")
         if (!running) return
         running = false
         click(false)
@@ -106,6 +109,7 @@ class VoiceInputController(
     /** Stops immediately when the text field goes away, keeping what is on screen. */
     fun cancel() {
         val wasActive = isActive
+        if (wasActive) Log.i(TAG, "voice cancelled (field changed or closed)")
         if (running) stop()
         sessionId++
         pending.clear(); current = ""
@@ -150,6 +154,7 @@ class VoiceInputController(
         // start recording before loading the model, so the first words aren't lost (the buffer holds 5 s)
         Thread.sleep(chimes.onLengthMs) // let the start chime finish so it isn't heard as speech
         record.startRecording()
+        Log.i(TAG, "mic recording, loading streaming model")
         val recognizer = try {
             VoiceEngine.onlineRecognizer(ime)
         } catch (e: Throwable) {
