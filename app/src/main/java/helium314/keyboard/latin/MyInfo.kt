@@ -65,10 +65,9 @@ object MyInfo {
         }
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 12f), dp(context, 8f), dp(context, 12f), dp(context, 8f))
+            setPadding(0, dp(context, 8f), 0, 0)
         }
-        root.addView(ScrollView(context).apply { addView(column) },
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         fun pill(s: String, highlight: Boolean = false, onClick: () -> Unit) = TextView(context).apply {
             this.text = s
@@ -82,7 +81,7 @@ object MyInfo {
             }
             setOnClickListener { onClick() }
         }
-        val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+        val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(context, 12f), 0, dp(context, 12f), 0) }
         top.addView(TextView(context).apply {
             this.text = "My info"
             setTextColor(text)
@@ -97,39 +96,40 @@ object MyInfo {
         if (items.isEmpty()) column.addView(TextView(context).apply {
             this.text = "Nothing saved yet. Tap \"+ Add / edit\" and save things like your email, phone number and address."
             setTextColor(text)
-            setPadding(0, dp(context, 12f), 0, 0)
+            setPadding(dp(context, 12f), dp(context, 12f), dp(context, 12f), 0)
         })
+        // small cards, 3 across, swipe for more (like the grid menu)
+        val pager = KeyboardMenu.TilePager(context, dp(context, 8f), dp(context, 4f), dp(context, 58f), columns = 3).apply {
+            dotColor = text
+        }
         items.forEach { item ->
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(context, 14f), dp(context, 10f), dp(context, 14f), dp(context, 10f))
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(context, 10f), dp(context, 6f), dp(context, 10f), dp(context, 6f))
                 background = GradientDrawable().apply { cornerRadius = dp(context, 16f).toFloat(); setColor(tile) }
                 isClickable = true
+                contentDescription = item.text
                 setOnClickListener { KeyboardMenu.hide(); type(context, item.text) }
                 setOnLongClickListener { KeyboardMenu.hide(); ime(context)?.launchSettings(SettingsDestination.TextShortcuts); true }
             }
             card.addView(TextView(context).apply {
                 this.text = item.trigger
                 setTextColor(ColorUtils.setAlphaComponent(text, 170))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
             })
             card.addView(TextView(context).apply {
                 this.text = item.text
                 setTextColor(text)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                maxLines = 3
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            column.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(context, 8f)
-            })
+            pager.addView(card)
         }
-        column.addView(TextView(context).apply {
-            this.text = "Tap one to type it. Each one also works as a text shortcut: type its name and press space."
-            setTextColor(ColorUtils.setAlphaComponent(text, 170))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setPadding(0, dp(context, 12f), 0, 0)
-        })
+        column.addView(pager, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         KeyboardMenu.showOverlay(root)
     }
 

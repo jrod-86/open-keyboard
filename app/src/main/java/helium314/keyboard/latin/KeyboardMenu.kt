@@ -737,7 +737,7 @@ object KeyboardMenu {
      * The grid menu: 4 columns and up to 4 rows a page (fewer if the keyboard is short), swipe left or
      * right for the next page, dots along the bottom. Pages never run under the phone's own buttons.
      */
-    private class TilePager(context: Context, private val pad: Int, private val gap: Int, private val minCell: Int) : ViewGroup(context) {
+    class TilePager(context: Context, private val pad: Int, private val gap: Int, private val minCell: Int, private val columns: Int = COLUMNS) : ViewGroup(context) {
         var dotColor = 0
         var startPage = 0
         /** Where the held tile would land: drawn as a dashed outline, like the home screen. */
@@ -762,8 +762,8 @@ object KeyboardMenu {
             if (h == 0) return
             val availH = h - paddingTop - pad - paddingBottom - dotsH
             rows = (availH / minCell).coerceIn(1, 4)
-            perPage = COLUMNS * rows
-            cellW = (w - 2f * pad) / COLUMNS
+            perPage = columns * rows
+            cellW = (w - 2f * pad) / columns
             cellH = availH.toFloat() / rows
             val cw = MeasureSpec.makeMeasureSpec((cellW - 2 * gap).toInt().coerceAtLeast(0), MeasureSpec.EXACTLY)
             val ch = MeasureSpec.makeMeasureSpec((cellH - 2 * gap).toInt().coerceAtLeast(0), MeasureSpec.EXACTLY)
@@ -773,15 +773,15 @@ object KeyboardMenu {
         /** Top-left corner of tile spot [slot] (counting across pages), in this view's own coordinates. */
         fun slotPosition(slot: Int): Pair<Float, Float> {
             val p = slot / perPage; val s = slot % perPage
-            return (p * width + pad + (s % COLUMNS) * cellW + gap) to (paddingTop + pad + (s / COLUMNS) * cellH + gap)
+            return (p * width + pad + (s % columns) * cellW + gap) to (paddingTop + pad + (s / columns) * cellH + gap)
         }
 
         /** The spot on the current page under [x], [y] (as seen on screen). */
         fun slotAt(x: Float, y: Float): Int {
             if (cellW <= 0f || cellH <= 0f) return 0
-            val col = ((x - pad) / cellW).toInt().coerceIn(0, COLUMNS - 1)
+            val col = ((x - pad) / cellW).toInt().coerceIn(0, columns - 1)
             val row = ((y - paddingTop - pad) / cellH).toInt().coerceIn(0, rows - 1)
-            return row * COLUMNS + col
+            return row * columns + col
         }
 
         override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
