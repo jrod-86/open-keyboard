@@ -80,7 +80,7 @@ object KeyboardMenu {
 
     private fun dp(ctx: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics)
 
-    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val action: () -> Unit)
+    private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, val action: () -> Unit)
 
     // ---- moving buttons between the menu and the top bar ----
 
@@ -330,7 +330,7 @@ object KeyboardMenu {
             },
         ).filter { it.plugin == null || Plugins.isOn(context, it.plugin) } +
             Plugins.enabledAppActions(context).map { app ->
-                Item(app.label, { app.icon?.mutate() }) {
+                Item(app.label, { app.icon?.mutate() }, tint = false) { // the app's own colourful icon
                     hide()
                     var c: Context = context
                     while (c is ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -373,7 +373,7 @@ object KeyboardMenu {
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
-                setColorFilter(textColor)
+                if (item.tint) setColorFilter(textColor)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
             tile.addView(icon, LinearLayout.LayoutParams(dp(context, 26f).toInt(), dp(context, 26f).toInt()))

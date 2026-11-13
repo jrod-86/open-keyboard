@@ -1080,6 +1080,11 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void hideWindow() {
         Log.i(TAG, "hideWindow");
+        // Open Keyboard: Messenger and some others close the keyboard when a sticker arrives.
+        // Gboard stays up, so bring it back if the box still has focus.
+        if (helium314.keyboard.media.MediaSender.justSent() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            mHandler.postDelayed(() -> { if (!isInputViewShown()) requestShowSelf(0); }, 250);
+        }
         if (hasSuggestionStripView() && mSettings.getCurrent().mToolbarMode == ToolbarMode.EXPANDABLE)
             mSuggestionStripView.setToolbarVisibility(false);
         mKeyboardSwitcher.onHideWindow();

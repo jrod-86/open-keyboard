@@ -93,6 +93,11 @@ object Klipy {
 
 /** Sends a sticker or GIF into the app being typed in, the same way Gboard does. */
 object MediaSender {
+    private var sentAt = 0L
+
+    /** Some apps (Messenger) close the keyboard when a sticker arrives; true just after sending one. */
+    @JvmStatic fun justSent() = android.os.SystemClock.uptimeMillis() - sentAt < 2000
+
     private val io = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
 
@@ -145,6 +150,7 @@ object MediaSender {
         }
         val uri = FileProvider.getUriForFile(ime, ime.packageName + ".media", file)
         val info = InputContentInfoCompat(uri, ClipDescription(label, arrayOf(mime)), link)
+        sentAt = android.os.SystemClock.uptimeMillis()
         val ok = InputConnectionCompat.commitContent(ic, editorInfo, info, InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null)
         if (!ok) toast(ime, "This app didn't accept the ${label.lowercase()}")
     }
