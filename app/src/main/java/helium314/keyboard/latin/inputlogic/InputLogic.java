@@ -1264,6 +1264,23 @@ public final class InputLogic {
                 : InputTransaction.SHIFT_UPDATE_NOW;
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
 
+        // Open Keyboard: holding delete just deletes. Words are not re-composed and suggestions are
+        // not looked up on every step (that made the text fight back, especially in web based apps);
+        // after about a second it goes word by word, like Gboard. Suggestions come back on release.
+        final boolean held = event.isKeyRepeat();
+        if (held) {
+            mDeleteHeld = true;
+            if (mWordComposer.isComposingWord()) {
+                mConnection.finishComposingText();
+                mWordComposer.reset();
+            }
+            mLastComposedWord = LastComposedWord.NOT_A_COMPOSED_WORD;
+            if (mDeleteCount > WORD_DELETE_AT) {
+                if ((mDeleteCount - WORD_DELETE_AT) % 3 != 1) return; // a word about every 150 ms
+                deleteWord = true;
+            }
+        }
+
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
             // If we are in the middle of a recorrection, we need to commit the recorrection
             // first so that we can remove the character at the current cursor position.
@@ -1347,7 +1364,7 @@ public final class InputLogic {
             mConnection.setSelection(mConnection.getExpectedSelectionEnd(), mConnection.getExpectedSelectionEnd());
             mConnection.deleteTextBeforeCursor(numCharsDeleted);
             StatsUtils.onBackspaceSelectedText(numCharsDeleted);
-            restartSuggestionsAfterDelete(inputTransaction);
+            if (!held) restartSuggestionsAfterDelete(inputTransaction);
             return;
         }
 
@@ -1366,7 +1383,7 @@ public final class InputLogic {
             // best thing is to leave it to whatever it thinks is best.
             sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL);
             int totalDeletedLength = 1;
-            if (mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+            if (!deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
                 // If this is an accelerated (i.e., double) deletion, then we need to
                 // consider unlearning here because we may have already reached
                 // the previous word, and will lose it after next deletion.
@@ -1398,7 +1415,7 @@ public final class InputLogic {
                 : mConnection.getGraphemeLengthBeforeCursor();
             mConnection.deleteTextBeforeCursor(lengthToDelete);
             int totalDeletedLength = lengthToDelete;
-            if (mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+            if (!deleteWord && mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
                 // If this is an accelerated (i.e., double) deletion, then we need to
                 // consider unlearning here because we may have already reached
                 // the previous word, and will lose it after next deletion.
@@ -1414,11 +1431,28 @@ public final class InputLogic {
             }
             StatsUtils.onBackspacePressed(totalDeletedLength);
         }
+        if (held) return; // suggestions come back when delete is let go
         if (!hasUnlearnedWordBeingDeleted) {
             // Consider unlearning the word being deleted (if we have not done so already).
             unlearnWordBeingDeleted(inputTransaction.getSettingsValues());
         }
         restartSuggestionsAfterDelete(inputTransaction);
+    }
+
+    private static final int WORD_DELETE_AT = 14; // ~1.1 s of holding delete
+    private boolean mDeleteHeld;
+
+    /** Open Keyboard: delete was let go after being held; show suggestions for where the cursor is now. */
+    public void onDeleteReleased(final SettingsValues sv) {
+        if (!mDeleteHeld) return;
+        mDeleteHeld = false;
+        if (mConnection.hasSlowInputConnection()) {
+            mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+        } else if (sv.needsToLookupSuggestions() && sv.mSpacingAndPunctuations.mCurrentLanguageHasSpacesOrWordIterator) {
+            restartSuggestionsOnWordTouchedByCursor(sv);
+        } else {
+            mSuggestionStripViewAccessor.setNeutralSuggestionStrip();
+        }
     }
 
     private void restartSuggestionsAfterDelete(InputTransaction inputTransaction) {
