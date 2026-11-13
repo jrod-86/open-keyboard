@@ -67,8 +67,9 @@ object TranslatePanel {
         "pl", "tr", "el", "sv", "da", "nb", "fi", "cs", "sk", "hu", "ro", "bg", "hr", "sr", "bs", "sl", "lt", "lv", "et",
         "ca", "gl", "eu", "ms", "fa", "he", "ur", "bn", "ta", "te", "kn", "ml", "mr", "gu", "is", "af", "az", "sq",
     )
-    private val fromEnglish = order - setOf("sq")
-    private val intoEnglish = order - setOf("az")
+    // Khmer isn't in Mozilla's catalog; it uses MADLAD-400 (KhmerTranslator)
+    private val fromEnglish = order - setOf("sq") + "km"
+    private val intoEnglish = order - setOf("az") + "km"
 
     private fun name(tag: String) = Locale.forLanguageTag(tag).getDisplayName(Locale.ENGLISH)
         .replace("Norwegian Bokmål", "Norwegian")
@@ -182,7 +183,7 @@ object TranslatePanel {
         column.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(strip) })
         column.addView(langs)
         render()
-        column.addView(label("The first time you use a language it downloads once (about 20–50 MB). After that it works offline, and your text never leaves the phone."))
+        column.addView(label("The first time you use a language it downloads once (about 20–50 MB, or 1.9 GB for Khmer). After that it works offline, and your text never leaves the phone."))
 
         KeyboardMenu.showOverlay(root)
     }
@@ -205,6 +206,15 @@ object TranslatePanel {
         if (source.isBlank()) { toast(context, "Write something first, then translate it"); return }
         remember(context, if (from == "en") to else from)
         toast(context, "Translating…")
+        if (from == "km" || to == "km") {
+            if (!KhmerTranslator.downloaded(context)) { KhmerTranslator.ensureDownload(context); return }
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { KhmerTranslator.translate(context, source, to) }
+                if (result == null) toast(context, "Translation didn't work")
+                else withContext(Dispatchers.Main) { replace(ime, selected.isNotEmpty(), before, after, source, result) }
+            }
+            return
+        }
         scope.launch {
             try {
                 val fox = foxlet(context)

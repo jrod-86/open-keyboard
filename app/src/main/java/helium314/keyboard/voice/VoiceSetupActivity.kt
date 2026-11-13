@@ -252,7 +252,25 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 }
             }
 
-            Text("6. Use it", style = MaterialTheme.typography.titleMedium)
+            Text("6. Type in another language", style = MaterialTheme.typography.titleMedium)
+            var khmer by remember { mutableStateOf(helium314.keyboard.latin.KhmerTranslator.voiceTarget(ctx) != null) }
+            Row(
+                Modifier.fillMaxWidth().selectable(selected = khmer, onClick = {
+                    khmer = helium314.keyboard.latin.KhmerTranslator.toggleVoiceKhmer(ctx)
+                }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Speak English, type Khmer")
+                    Text(
+                        "Each sentence you say is translated on the phone and typed in Khmer. Needs a one-time " +
+                                "1.9 GB download. Also in the keyboard's grid menu as \"Voice → Khmer\".",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = khmer, onCheckedChange = null)
+            }
+            Text("7. Use it", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Tap the mic at the top right of the keyboard and start talking. Tap it again, " +
                         "or stay quiet for 30 seconds, to finish.",

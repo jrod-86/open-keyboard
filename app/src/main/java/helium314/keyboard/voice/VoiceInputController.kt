@@ -49,6 +49,8 @@ class VoiceInputController(
     private var wrote = false
     private var sessionId = 0
     private var region = EnglishRegion.US
+    /** Language to type in when speaking English ("km"), or null to type English. Fixed per session. */
+    @Volatile private var translateTo: String? = null
 
     val isListening get() = running
 
@@ -76,6 +78,15 @@ class VoiceInputController(
         finishKeyboardComposing()
         pending.clear(); current = ""; committed.clear()
         region = VoicePrefs.region(ime)
+        translateTo = helium314.keyboard.latin.KhmerTranslator.voiceTarget(ime)
+        if (translateTo != null) {
+            if (helium314.keyboard.latin.KhmerTranslator.downloaded(ime))
+                toast("Speak English, typing Khmer")
+            else {
+                helium314.keyboard.latin.KhmerTranslator.ensureDownload(ime)
+                translateTo = null
+            }
+        }
         val before = ic()?.getTextBeforeCursor(1, 0)
         needsLeadingSpace = !before.isNullOrEmpty() && !before[0].isWhitespace()
         wrote = false
@@ -225,7 +236,10 @@ class VoiceInputController(
         finalPass.execute {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
-            val text = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
+            val english = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
+            val to = translateTo
+            val text = if (to == null) english
+                else helium314.keyboard.latin.KhmerTranslator.translate(ime, english, to) ?: english
             main.post { if (session == sessionId) commitOldest(text) }
         }
     }

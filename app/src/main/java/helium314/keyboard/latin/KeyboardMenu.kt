@@ -306,6 +306,8 @@ object KeyboardMenu {
             keyItem("GIFs", ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
             keyItem("Voice typing", ToolbarKey.VOICE),
             Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
+            Item(if (KhmerTranslator.voiceTarget(context) == null) "Voice → Khmer" else "Voice → Khmer ✓", plugin = "translate",
+                icon = toolbarIcon(ToolbarKey.VOICE)) { KhmerTranslator.toggleVoiceKhmer(context); hide() },
             Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
