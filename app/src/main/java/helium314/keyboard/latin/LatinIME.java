@@ -1427,6 +1427,12 @@ public class LatinIME extends InputMethodService implements
             mSuggestionStripView.setToolbarVisibility(false);
             return;
         }
+        final View keptWord = AutocorrectMemory.INSTANCE.chip(this, mSuggestionStripView);
+        if (keptWord != null) {
+            mSuggestionStripView.setExternalSuggestionView(keptWord, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
         final View longPaste = LongPaste.INSTANCE.chip(this, mSuggestionStripView);
         if (longPaste != null) {
             mSuggestionStripView.setExternalSuggestionView(longPaste, false);
@@ -1534,6 +1540,12 @@ public class LatinIME extends InputMethodService implements
             final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
             if (compose != null) {
                 mSuggestionStripView.setExternalSuggestionView(compose, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
+            final View keptWord = AutocorrectMemory.INSTANCE.chip(this, mSuggestionStripView);
+            if (keptWord != null) {
+                mSuggestionStripView.setExternalSuggestionView(keptWord, false);
                 mSuggestionStripView.setToolbarVisibility(false);
                 return;
             }

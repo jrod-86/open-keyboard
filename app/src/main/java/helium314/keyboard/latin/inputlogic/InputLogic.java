@@ -111,7 +111,7 @@ public final class InputLogic {
 
     public LastComposedWord mLastComposedWord = LastComposedWord.NOT_A_COMPOSED_WORD;
     // This has package visibility so it can be accessed from InputLogicHandler.
-    /* package */ final WordComposer mWordComposer;
+    public final WordComposer mWordComposer; // Open Keyboard: public for top-bar chips
     public final RichInputConnection mConnection;
     private final RecapitalizeStatus mRecapitalizeStatus = new RecapitalizeStatus();
 

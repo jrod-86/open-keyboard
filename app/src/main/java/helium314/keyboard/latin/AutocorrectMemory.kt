@@ -53,8 +53,13 @@ object AutocorrectMemory {
         keep(ctx, typed, "correction undone with delete")
     }
 
+    /** The word just kept, shown once in the top bar with an Undo. */
+    private var notice: String? = null
+    private var noticeAt = 0L
+
     private fun keep(ctx: Context, word: String, why: String) {
         Log.i(TAG, "keeping \"$word\": $why")
+        notice = word; noticeAt = System.currentTimeMillis()
         prefs(ctx).edit().putBoolean(key(word), true).apply()
         recent.removeAll { key(it.typed) == key(word) }
         Thread {
@@ -64,4 +69,33 @@ object AutocorrectMemory {
     }
 
     fun forgetAll(ctx: Context) = prefs(ctx).edit().clear().apply()
+
+    /** Autocorrect may change this word again. */
+    fun forget(ctx: Context, word: String) {
+        prefs(ctx).edit().remove(key(word)).apply()
+        Thread {
+            runCatching { ctx.contentResolver.delete(UserDictionary.Words.CONTENT_URI, "${UserDictionary.Words.WORD}=?", arrayOf(word)) }
+        }.start()
+    }
+
+    /** "✓ jrod won't be autocorrected again · Undo", for a few seconds after a word is kept. */
+    fun chip(ime: LatinIME, parent: android.view.ViewGroup): android.view.View? {
+        val word = notice ?: return null
+        if (System.currentTimeMillis() - noticeAt > 12_000) { notice = null; return null }
+        if (ime.mInputLogic.mWordComposer.isComposingWord) return null // typing: word suggestions come first
+        val binding = helium314.keyboard.latin.databinding.ClipboardSuggestionBinding.inflate(android.view.LayoutInflater.from(ime), parent, false)
+        val colors = ime.mSettings.current.mColors
+        val label = binding.clipboardSuggestionText
+        label.text = "✓  \"$word\" won't be autocorrected again  ·  Undo"
+        label.setTextColor(colors.get(helium314.keyboard.latin.common.ColorType.KEY_TEXT))
+        colors.setBackground(binding.root, helium314.keyboard.latin.common.ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
+        label.setOnClickListener {
+            forget(ime, word)
+            notice = null
+            android.widget.Toast.makeText(ime, "OK, autocorrect can change \"$word\" again", android.widget.Toast.LENGTH_SHORT).show()
+            ime.setNeutralSuggestionStrip()
+        }
+        binding.clipboardSuggestionClose.setOnClickListener { notice = null; ime.setNeutralSuggestionStrip() }
+        return binding.root
+    }
 }
