@@ -79,6 +79,7 @@ Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring 
     p.model_path = path;
     p.n_threads = threads;
     p.enable_mmap = true;
+    p.backend = "cpu";
     sd_ctx_t* ctx = new_sd_ctx(&p);
     if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
     env->ReleaseStringUTFChars(model, path);
@@ -102,7 +103,8 @@ Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jst
     p.vae_path = v;
     p.n_threads = threads;
     p.enable_mmap = true;
-    if (b && *b) p.backend = b;
+    // always say where to run: left empty, auto-fit would pick the graphics chip on its own
+    p.backend = (b && *b) ? b : "cpu";
     sd_ctx_t* ctx = new_sd_ctx(&p);
     if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
     if (b) env->ReleaseStringUTFChars(backend, b);

@@ -29,6 +29,12 @@ object ImageJob {
     @Volatile var tookMs = 0L; private set
     @Volatile var model: ImageGen.Model = ImageGen.QUICK; private set
 
+    /**
+     * The engine needs far more stack than a normal thread has: setting up the graphics chip overflowed it
+     * ("stack size 4107KB", test 151).
+     */
+    private fun bigThread(name: String, block: () -> Unit) = Thread(null, block, name, 64L * 1024 * 1024).apply { start() }
+
     /** Called on the main thread whenever something changes. */
     var listener: (() -> Unit)? = null
 
@@ -76,7 +82,7 @@ object ImageJob {
         if (p.getBoolean("gpu_probing", false)) p.edit().putBoolean("gpu_probing", false).putBoolean("gpu_unusable", true).commit()
         if (p.getBoolean("gpu_unusable", false)) { gpuFound = ""; main.post { done("") }; return }
         if (ImageGen.cacheDir == null) ImageGen.cacheDir = c.cacheDir
-        thread(name = "image-maker-gpu") {
+        bigThread("image-maker-gpu") {
             p.edit().putBoolean("gpu_probing", true).commit()
             val name = runCatching { ImageGen.gpu() }.getOrDefault("")
             p.edit().putBoolean("gpu_probing", false).commit()
@@ -174,7 +180,7 @@ object ImageJob {
             changed(app)
         }
         changed(app)
-        thread(name = "image-maker") {
+        bigThread("image-maker") {
             val seed = Random.nextLong(0, Int.MAX_VALUE.toLong())
             fun draw(): Bitmap {
                 ImageGen.ensureLoaded(app, m, usingGpu)
