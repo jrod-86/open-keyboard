@@ -29,6 +29,11 @@ import java.io.File
 import kotlin.concurrent.thread
 import kotlin.random.Random
 
+private const val ENHANCE_SYSTEM = "You write prompts for an image generator. Turn the user's idea into one vivid, " +
+    "detailed description of a single picture in 25 to 45 words: the main subject, what it looks like, what it is doing, " +
+    "the setting, lighting and colours. Keep everything the user asked for and don't add text or words to the picture. " +
+    "Reply with only the description, in English, on one line."
+
 /** Image maker: type what you want, the phone draws it (see [ImageGen]), then send it, save it or make it a sticker. */
 class ImageMakerActivity : Activity() {
     private lateinit var prompt: EditText
@@ -45,6 +50,10 @@ class ImageMakerActivity : Activity() {
     private val stepButtons = mutableListOf<TextView>()
     private lateinit var stepRow: View
     private lateinit var engineRow: View
+    private lateinit var speedRow: View
+    private lateinit var enhanceButton: TextView
+    @Volatile private var enhancing = false
+    private val speedButtons = mutableListOf<TextView>()
     private val engineButtons = mutableListOf<TextView>()
     private var gpuName = ""
     private var model = ImageGen.QUICK
@@ -143,6 +152,22 @@ class ImageMakerActivity : Activity() {
         }
         engineRow = eng
         root.addView(eng, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
+
+        // how hard to work: Smooth keeps the phone usable, Fastest takes it all (warned the first time)
+        val spd = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+            background = UiKit.rounded(this@ImageMakerActivity, 20f, cardColor, lineColor)
+        }
+        listOf(false to "🌿 Smooth", true to "🚀 Fastest").forEach { (fast, label) ->
+            val b = TextView(this).apply {
+                text = label; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setPadding(0, dp(8f), 0, dp(8f))
+                setOnClickListener { if (!working) pickSpeed(fast) }
+            }
+            speedButtons.add(b)
+            spd.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        speedRow = spd
+        root.addView(spd, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
         ImageJob.findGpu(this) { name -> gpuName = name; refresh() }
 
         // what to draw, with a dice for ideas
@@ -160,6 +185,12 @@ class ImageMakerActivity : Activity() {
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { start(); true } else false }
         }
         promptBox.addView(prompt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        enhanceButton = TextView(this).apply {
+            text = "🪄"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(8f), dp(6f), dp(4f), dp(6f))
+            contentDescription = "Improve my words"
+            setOnClickListener { enhance() }
+        }
+        promptBox.addView(enhanceButton)
         promptBox.addView(TextView(this).apply {
             text = "🎲"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(10f), dp(6f), dp(12f), dp(6f))
             contentDescription = "Surprise me"
@@ -281,11 +312,78 @@ class ImageMakerActivity : Activity() {
         }
     }
 
+    /**
+     * Prompt enhancer: the keyboard's writing helper (Qwen2.5 1.5B, on the phone) turns a few words into a
+     * detailed picture description, which these models draw much better. Tap 🪄 again to undo.
+     */
+    private var beforeEnhance: String? = null
+    private fun enhance() {
+        if (enhancing || working) return
+        val words = prompt.text.toString().trim()
+        beforeEnhance?.let { old -> if (words == lastEnhanced) { prompt.setText(old); prompt.setSelection(old.length); beforeEnhance = null; status.text = "Back to your words."; return } }
+        if (words.isEmpty()) { status.text = "Type a few words first, then tap 🪄 to make them more detailed."; return }
+        if (!helium314.keyboard.latin.WritingTools.modelReady(this)) {
+            status.text = "🪄 uses the keyboard's Writing help model. Open Writing help from the keyboard menu once to download it (1.1 GB), then come back."
+            return
+        }
+        enhancing = true
+        enhanceButton.alpha = 0.4f
+        status.text = "🪄 Making your words more detailed…"
+        val styleName = styles[style].name
+        thread(name = "image-maker-enhance") {
+            val out = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    helium314.keyboard.latin.WritingTools.withEngine(this@ImageMakerActivity) { engine ->
+                        engine.startFresh()
+                        engine.setSystemPrompt(ENHANCE_SYSTEM)
+                        val sb = StringBuilder()
+                        val style = if (styleName == "None") "" else " The picture style will be: $styleName."
+                        engine.sendUserPrompt("Idea: $words$style", 120).collect { sb.append(it) }
+                        sb.toString()
+                    }.also { helium314.keyboard.latin.WritingTools.unloadNow(this@ImageMakerActivity) }
+                }
+            }.getOrNull()?.let { cleanEnhanced(it) }
+            runOnUiThread {
+                enhancing = false; enhanceButton.alpha = 1f
+                if (out.isNullOrBlank()) { status.text = "🪄 couldn't improve that one, try again."; return@runOnUiThread }
+                beforeEnhance = words; lastEnhanced = out
+                prompt.setText(out); prompt.setSelection(out.length)
+                status.text = "🪄 Done. Edit it if you like, or tap 🪄 again to go back to your words."
+            }
+        }
+    }
+    private var lastEnhanced: String? = null
+
+    private fun cleanEnhanced(raw: String): String {
+        var t = raw.trim().lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+        t = t.removePrefix("Prompt:").removePrefix("Description:").trim().trim('"').trim()
+        return t.take(400)
+    }
+
+    private fun pickSpeed(fast: Boolean) {
+        if (!fast) { ImageJob.setFastest(this, false); refresh(); return }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("🚀 Fastest")
+            .setMessage("Fastest uses almost all of your phone's power (around 90%) to draw the picture.\n\n" +
+                "While it's drawing, don't use other apps, or your phone may freeze up until it's done (about 3 minutes with the graphics chip).\n\n" +
+                "🌿 Smooth takes a little longer but keeps your phone usable.")
+            .setPositiveButton("Use Fastest") { _, _ -> ImageJob.setFastest(this, true); refresh() }
+            .setNegativeButton("Keep Smooth", null)
+            .show()
+    }
+
     private fun refresh() {
         stepRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
         modelValue.text = (if (model === ImageGen.QUICK) "⚡ " else "💎 ") + model.name + "  ▾"
         styleValue.text = styles[style].icon + " " + styles[style].name + "  ▾"
         engineRow.visibility = if (model === ImageGen.BEST && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
+        speedRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
+        val fast = ImageJob.fastest(this)
+        speedButtons.forEachIndexed { i, b ->
+            val on = (i == 1) == fast
+            b.background = if (on) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(purple, blue)).apply { cornerRadius = dp(17f).toFloat() } else null
+            b.setTextColor(if (on) Color.WHITE else prompt.currentTextColor)
+        }
         val gpuOn = ImageJob.gpuOn(this)
         engineButtons.forEachIndexed { i, b ->
             val on = (i == 0) == gpuOn
@@ -333,7 +431,7 @@ class ImageMakerActivity : Activity() {
             val left = job.secondsLeft(this)
             status.text = (if (job.note.isNotEmpty()) job.note + "\n" else "") + (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
                 "${secs / 60}:%02d".format(secs % 60) +
-                if (!quick) "\nYou can switch apps, it keeps going." else ""
+                if (!quick) (if (ImageJob.fastest(this)) "\nFastest: your phone may be hard to use until it's done." else "\nYou can switch apps, it keeps going.") else ""
             stageList.visibility = if (quick) View.GONE else View.VISIBLE
             for (i in ImageJob.STAGES.indices) {
                 val tv = stageList.getChildAt(i) as TextView

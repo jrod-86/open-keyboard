@@ -33,7 +33,11 @@ object ImageJob {
      * The engine needs far more stack than a normal thread has: setting up the graphics chip overflowed it
      * ("stack size 4107KB", test 151).
      */
-    private fun bigThread(name: String, block: () -> Unit) = Thread(null, block, name, 64L * 1024 * 1024).apply { start() }
+    private fun bigThread(name: String, block: () -> Unit) = Thread(null, {
+        // background priority, passed on to the engine's own worker threads, so the phone stays usable while it draws
+        runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) }
+        block()
+    }, name, 64L * 1024 * 1024).apply { start() }
 
     /** Called on the main thread whenever something changes. */
     var listener: (() -> Unit)? = null
@@ -66,6 +70,10 @@ object ImageJob {
 
     /** The user's choice (on by default) unless the graphics chip has already failed on this phone. */
     fun gpuOn(c: Context) = prefs(c).getBoolean("use_gpu", true) && !gpuBroken(c)
+    /** Fastest = full power, phone hard to use; otherwise Smooth (the default). */
+    fun fastest(c: Context) = prefs(c).getBoolean("fastest", false)
+    fun setFastest(c: Context, on: Boolean) = prefs(c).edit().putBoolean("fastest", on).apply()
+
     fun gpuBroken(c: Context) = prefs(c).getBoolean("gpu_broken", false)
     fun setGpu(c: Context, on: Boolean) = prefs(c).edit().putBoolean("use_gpu", on).apply {
         if (on) remove("gpu_broken") // let them try again after a failure
@@ -182,8 +190,11 @@ object ImageJob {
         changed(app)
         bigThread("image-maker") {
             val seed = Random.nextLong(0, Int.MAX_VALUE.toLong())
+            val fast = fastest(app)
+            if (fast) runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT) }
             fun draw(): Bitmap {
                 ImageGen.ensureLoaded(app, m, usingGpu)
+                ImageGen.setSmooth(!fast)
                 enter(1); changed(app)
                 return ImageGen.generate(app, m, prompt, seed, steps, usingGpu)
             }

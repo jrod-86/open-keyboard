@@ -184,3 +184,10 @@ Java_helium314_keyboard_media_ImageGen_nativeGpu(JNIEnv* env, jobject) {
     }
     return env->NewStringUTF("");
 }
+
+extern "C" volatile int ggml_gpu_pause_ms;
+// Smooth (phone stays usable) or Fastest: how long the graphics chip rests between chunks of work.
+extern "C" JNIEXPORT void JNICALL
+Java_helium314_keyboard_media_ImageGen_nativeSetPause(JNIEnv*, jobject, jint ms) {
+    ggml_gpu_pause_ms = ms;
+}

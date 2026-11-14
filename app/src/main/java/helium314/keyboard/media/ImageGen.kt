@@ -205,6 +205,10 @@ object ImageGen {
     private external fun nativeLoad(model: String, threads: Int): Long
     private external fun nativeLoadParts(diffusion: String, llm: String, vae: String, threads: Int, backend: String?): Long
     private external fun nativeGpu(): String
+    private external fun nativeSetPause(ms: Int)
+
+    /** Smooth: the graphics chip rests between chunks so the phone stays usable; otherwise full speed. */
+    fun setSmooth(on: Boolean) { if (libLoaded) runCatching { nativeSetPause(if (on) 6 else 0) } }
     private external fun nativeGenerate(ctx: Long, prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long): ByteArray?
     private external fun nativeCancel(ctx: Long)
     private external fun nativeFree(ctx: Long)

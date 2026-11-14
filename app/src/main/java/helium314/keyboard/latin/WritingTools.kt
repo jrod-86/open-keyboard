@@ -270,6 +270,12 @@ object WritingTools {
     }
 
     /** Frees the memory the model uses once writing help hasn't been used for a while. */
+    /** Frees the model now, e.g. before the Image maker needs the memory for drawing. */
+    suspend fun unloadNow(context: Context) {
+        unloadJob?.cancel()
+        lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() } }
+    }
+
     private fun scheduleUnload(context: Context) {
         unloadJob?.cancel()
         unloadJob = scope.launch {
