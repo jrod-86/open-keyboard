@@ -87,8 +87,66 @@ class FeedbackActivity : ComponentActivity() {
                 Button(enabled = title.isNotBlank() || details.isNotBlank(), onClick = { send(bug, title, details, steps, includePhone) }) {
                     Text("Send")
                 }
+                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                Text("Logs", style = MaterialTheme.typography.titleMedium)
+                Text("Something acting up? Get the keyboard's latest logs (and any crash reports) as one zip file. " +
+                        "Save it to your phone, or share it straight to email, Messenger or Drive. You can attach it to a bug report too.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    androidx.compose.material3.OutlinedButton(onClick = { withLogs { saveLogs.launch(it.name) } }) { Text("Save logs") }
+                    androidx.compose.material3.OutlinedButton(onClick = { withLogs { shareLogs(it) } }) { Text("Share logs") }
+                }
             }
         }
+    }
+
+    private var logZip: java.io.File? = null
+
+    private val saveLogs = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val zip = logZip ?: return@registerForActivityResult
+        if (uri == null) return@registerForActivityResult
+        val ok = runCatching { contentResolver.openOutputStream(uri)!!.use { out -> zip.inputStream().use { it.copyTo(out) } } }.isSuccess
+        android.widget.Toast.makeText(this, if (ok) "Logs saved" else "Couldn't save the logs", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    /** Gathers the logs into a zip in the background, then hands it to [then]. */
+    private fun withLogs(then: (java.io.File) -> Unit) {
+        android.widget.Toast.makeText(this, "Getting the logs…", android.widget.Toast.LENGTH_SHORT).show()
+        Thread {
+            val zip = runCatching { buildLogZip() }.getOrNull()
+            runOnUiThread {
+                if (zip == null) android.widget.Toast.makeText(this, "Couldn't get the logs", android.widget.Toast.LENGTH_SHORT).show()
+                else { logZip = zip; then(zip) }
+            }
+        }.start()
+    }
+
+    private fun buildLogZip(): java.io.File {
+        val dir = java.io.File(cacheDir, "logs").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+        val date = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
+        val zip = java.io.File(dir, "OpenKeyboard_logs_$date.zip")
+        java.util.zip.ZipOutputStream(zip.outputStream()).use { z ->
+            val logcat = runCatching { Runtime.getRuntime().exec("logcat -d -b all *:W").inputStream.use { it.reader().readText() } }.getOrDefault("")
+            val internal = helium314.keyboard.latin.utils.Log.getLog().joinToString("\n")
+            val phone = "Phone: ${Build.MANUFACTURER} ${Build.MODEL}\nAndroid: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n" +
+                "Open Keyboard: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n\n"
+            z.putNextEntry(java.util.zip.ZipEntry("log.txt"))
+            z.write((phone + internal + "\n\n---- system log ----\n" + logcat).toByteArray())
+            z.closeEntry()
+            val crashFiles = (helium314.keyboard.latin.utils.DeviceProtectedUtils.getFilesDir(this)?.listFiles().orEmpty().toList() +
+                getExternalFilesDir(null)?.listFiles().orEmpty().toList()).filter { it.isFile && it.name.startsWith("crash_report") }
+            crashFiles.distinctBy { it.name }.forEach { f ->
+                z.putNextEntry(java.util.zip.ZipEntry("crash_reports/" + f.name)); f.inputStream().use { it.copyTo(z) }; z.closeEntry()
+            }
+        }
+        return zip
+    }
+
+    private fun shareLogs(zip: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.media", zip)
+        val send = Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_SUBJECT, "Open Keyboard logs").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startActivity(Intent.createChooser(send, "Share logs"))
     }
 
     private fun send(bug: Boolean, title: String, details: String, steps: String, includePhone: Boolean) {

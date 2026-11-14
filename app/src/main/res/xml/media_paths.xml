@@ -4,4 +4,5 @@
     <cache-path name="media" path="media/" />
     <files-path name="packs" path="sticker-packs/" />
     <cache-path name="voice" path="voice/" />
+    <cache-path name="logs" path="logs/" />
 </paths>
