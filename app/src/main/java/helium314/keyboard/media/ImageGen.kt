@@ -18,16 +18,16 @@ import java.security.MessageDigest
  */
 object ImageGen {
     class Part(val name: String, val url: String, val sha: String, val size: Long)
-    class Model(val id: String, val label: String, val parts: List<Part>, val about: String) {
+    class Model(val id: String, val label: String, val name: String, val detail: String, val parts: List<Part>, val about: String) {
         val totalSize get() = parts.sumOf { it.size }
     }
 
-    val QUICK = Model("quick", "Quick", listOf(Part("sdxs-512-q8_0.gguf",
+    val QUICK = Model("quick", "Quick", "SDXS-512", "fast, 1 step, 680 MB", listOf(Part("sdxs-512-q8_0.gguf",
         "https://huggingface.co/concedo/sdxs-512-tinySDdistilled-GGUF/resolve/3144d898d61492f8382ffcabec055733fc5b2a0e/sdxs-512-tinySDdistilled_Q8_0.gguf",
         "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L)),
         "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.")
 
-    val BEST = Model("best", "Best quality", listOf(
+    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, a few minutes, 5.6 GB", listOf(
         Part("z_image_turbo-Q3_K.gguf",
             "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q3_K.gguf",
             "4b44bdaa7814f20d7cf144e3939bd93aa32f50660204dd0c2aea5c5376232980", 3143559104L),
