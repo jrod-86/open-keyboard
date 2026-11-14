@@ -32,4 +32,4 @@ driver). With an Adreno chip it puts the picture model on the graphics chip (`di
 the queue every 128), so Stop also ends a step on the graphics chip within a moment. When `ggml_gpu_pause_ms` (set by
 `nativeSetPause`, defined in ggml-cpu.c) is above 0 it is a rest percentage: the loop drains the queue every 2 nodes,
 works in ~25 ms slices and then sleeps that % of the slice (min 8 ms, max 400 ms), so the screen gets the chip.
-The app uses 150 for Smooth, 12 for Balanced and 0 for Fastest.
+Balanced (under 50) keeps the test 155 pacing: drain every 16 nodes and rest 6 ms. The app uses 150 for Smooth, 12 for Balanced and 0 for Fastest.
