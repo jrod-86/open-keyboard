@@ -129,9 +129,29 @@ object MediaSender {
         StickerPacks.used(ime, file)
         // Messenger and friends keep a GIF animated but turn an animated WebP into a still photo
         val alt = File(file.parentFile, "alt/${file.nameWithoutExtension}.gif")
+        val url = if (!alt.isFile && prefersGif(ime)) altUrl(file) else null
         if (alt.isFile && prefersGif(ime)) commit(ime, alt, "image/gif", "Sticker", null)
+        else if (url != null) {
+            // fetch this sticker's GIF copy once, then keep it
+            Thread {
+                val ok = runCatching {
+                    val bytes = Klipy.download(url)
+                    alt.parentFile?.mkdirs()
+                    val part = File(alt.path + ".part"); part.writeBytes(bytes); part.renameTo(alt)
+                }.isSuccess
+                Handler(Looper.getMainLooper()).post {
+                    if (ok && alt.isFile) commit(ime, alt, "image/gif", "Sticker", null)
+                    else commit(ime, file, StickerPacks.mimeOf(file), "Sticker", null)
+                }
+            }.start()
+        }
         else commit(ime, file, StickerPacks.mimeOf(file), "Sticker", null)
     }
+
+    private fun altUrl(file: File): String? = runCatching {
+        File(file.parentFile, ".alt_urls").takeIf { it.isFile }?.readLines()
+            ?.firstOrNull { it.substringBefore('=') == file.nameWithoutExtension }?.substringAfter('=')
+    }.getOrNull()
 
     private val gifApps = setOf("com.facebook.orca", "com.facebook.mlite", "com.facebook.katana", "com.instagram.android",
         "com.instagram.barcelona", "com.snapchat.android", "com.discord")
@@ -264,7 +284,7 @@ object StickerPacks {
 
     fun installedStoreIds(ctx: Context) = packs(ctx).mapNotNull { storeId(it) }.toSet()
 
-    fun importZip(ctx: Context, name: String, stream: java.io.InputStream, storeId: String?): Int {
+    fun importZip(ctx: Context, name: String, stream: java.io.InputStream, storeId: String?, altUrl: String? = null): Int {
         val dir = newPackDir(ctx, name)
         if (storeId != null) File(dir, ".store_id").writeText(storeId)
         var count = 0
@@ -292,6 +312,10 @@ object StickerPacks {
             }
         }
         if (count == 0) dir.deleteRecursively()
+        else if (altUrl != null) {
+            // GIF copies stay online until an app needs one: "<saved name>=<url>" per line
+            File(dir, ".alt_urls").writeText(savedAs.entries.joinToString("\n") { (orig, saved) -> "$saved=$altUrl$orig.gif" })
+        }
         return count
     }
 

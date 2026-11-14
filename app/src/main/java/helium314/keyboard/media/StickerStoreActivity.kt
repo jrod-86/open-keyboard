@@ -63,6 +63,7 @@ import java.io.File
 data class StorePack(
     val id: String, val name: String, val author: String, val license: String, val credit: String,
     val count: Int, val featured: Boolean, val iconUrl: String, val zipUrl: String, val sizeKb: Int,
+    val altUrl: String? = null, // folder of GIF copies, fetched one at a time when an app needs a GIF
 )
 
 /** The catalog lives on the repo's `stickers` branch, so packs can be added without a new app version. */
@@ -78,13 +79,14 @@ object StickerStore {
                 p.getString("id"), p.getString("name"), p.optString("author"), p.optString("license"),
                 p.optString("credit"), p.optInt("count"), p.optBoolean("featured"),
                 BASE + p.getString("icon"), BASE + p.getString("zip"), p.optInt("size") / 1024,
+                p.optString("alt").takeIf { it.isNotEmpty() }?.let { BASE + it },
             )
         }
     }
 
     fun install(ctx: Context, pack: StorePack): Int {
         val bytes = Klipy.download(pack.zipUrl)
-        return StickerPacks.importZip(ctx, pack.name, bytes.inputStream(), pack.id)
+        return StickerPacks.importZip(ctx, pack.name, bytes.inputStream(), pack.id, pack.altUrl)
     }
 }
 
