@@ -1694,13 +1694,14 @@ public class LatinIME extends InputMethodService implements
     /** Opens the settings, optionally straight on one screen (a SettingsDestination). */
     public void launchSettings(final String destination) {
         KeyboardMenu.INSTANCE.hide();
-        AppProfiles.INSTANCE.onOpenSettings(this);
+        final String customApp = AppProfiles.INSTANCE.onOpenSettings(this);
         mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
         requestHideSelf(0);
         closeMainKeyboard();
         Intent intent = new Intent();
         intent.setClass(LatinIME.this, SettingsActivity2.class);
         if (destination != null) intent.putExtra("open_screen", destination);
+        if (customApp != null) intent.putExtra("custom_app", customApp);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);

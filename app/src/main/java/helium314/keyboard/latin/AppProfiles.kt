@@ -92,21 +92,32 @@ object AppProfiles {
     /** The keyboard started typing in [pkg]. */
     /** Returns true when the settings in use changed (so the keyboard redraws). */
     fun onStartInput(ctx: Context, pkg: String?): Boolean {
-        val before = target
         if (pkg == null || pkg == ctx.packageName) active = null // our own screens keep "editing"
-        else { active = if (isCustom(ctx, pkg)) pkg else null; editing = null }
-        return before != target
+        else { active = if (isCustom(ctx, pkg)) pkg else null; editing = null; editingOwner = null }
+        val changed = lastUsed != target
+        lastUsed = target
+        return changed
     }
+    private var lastUsed: String? = null
+    private var editingOwner: Any? = null
 
     /** Settings opened from the keyboard while typing in a custom app change that app's settings. */
-    fun onOpenSettings(ctx: Context) {
-        val pkg = active ?: return
-        editing = pkg
-        val name = appName(ctx, pkg)
-        android.widget.Toast.makeText(ctx, "Changes you make now are for $name only", android.widget.Toast.LENGTH_LONG).show()
+    /** The custom app (if any) that Settings opened from the keyboard should change. */
+    fun onOpenSettings(ctx: Context): String? = active
+
+    /** Settings screen shown: it changes [pkg]'s own settings (null = normal settings). */
+    fun onSettingsShown(ctx: Context, owner: Any, pkg: String?) {
+        val p = pkg?.takeIf { isCustom(ctx, it) }
+        if (p != null && editing != p)
+            android.widget.Toast.makeText(ctx, "Changes you make now are for ${appName(ctx, p)} only", android.widget.Toast.LENGTH_LONG).show()
+        editing = p
+        editingOwner = owner
     }
 
-    fun onSettingsClosed() { editing = null }
+    /** Only the screen that set it can clear it (an old Settings screen can close after the new one opened). */
+    fun onSettingsHidden(owner: Any) {
+        if (editingOwner === owner) { editing = null; editingOwner = null }
+    }
 
     fun appName(ctx: Context, pkg: String): String = runCatching {
         ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)

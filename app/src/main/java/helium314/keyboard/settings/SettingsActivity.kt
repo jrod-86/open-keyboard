@@ -75,6 +75,8 @@ open class SettingsActivity : ComponentActivity(), SharedPreferences.OnSharedPre
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Open Keyboard: opened from the keyboard in a "Custom" app, so changes go to that app only
+        helium314.keyboard.latin.AppProfiles.onSettingsShown(this, this, intent?.getStringExtra("custom_app"))
         val openScreen = if (savedInstanceState == null) intent?.getStringExtra("open_screen") else null
         val ctx: Context = this
         val cvDeferred = lifecycleScope.async(Dispatchers.Default) { ComposeView(context = ctx) }
@@ -172,18 +174,20 @@ open class SettingsActivity : ComponentActivity(), SharedPreferences.OnSharedPre
         enableEdgeToEdge()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isFinishing) helium314.keyboard.latin.AppProfiles.onSettingsClosed()
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 
     override fun onStart() {
         super.onStart()
+        helium314.keyboard.latin.AppProfiles.onSettingsShown(this, this, intent?.getStringExtra("custom_app"))
         prefs.registerOnSharedPreferenceChangeListener(this)
     }
 
     override fun onStop() {
         prefs.unregisterOnSharedPreferenceChangeListener(this)
+        helium314.keyboard.latin.AppProfiles.onSettingsHidden(this)
         super.onStop()
     }
 
