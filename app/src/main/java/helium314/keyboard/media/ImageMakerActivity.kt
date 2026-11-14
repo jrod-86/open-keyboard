@@ -53,38 +53,61 @@ class ImageMakerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val pad = dp(16f)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad * 2, pad, pad) }
-        root.addView(TextView(this).apply { text = "Image maker"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f) })
-        status = TextView(this).apply { text = "Describe a picture. It's drawn on your phone, nothing is sent anywhere."; setPadding(0, pad / 2, 0, pad / 2) }
-        root.addView(status)
+        val accent = Color.rgb(66, 133, 244)
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
         prompt = EditText(this).apply {
-            hint = "e.g. tuxedo cat eating pizza"
+            hint = "Describe a picture, e.g. tuxedo cat eating pizza"
             imeOptions = EditorInfo.IME_ACTION_GO
+            setRawInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
             maxLines = 3
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            setPadding(pad, pad * 3 / 4, pad, pad * 3 / 4)
+            background = GradientDrawable().apply { cornerRadius = dp(14f).toFloat(); setColor(Color.argb(28, 128, 128, 128)); setStroke(dp(1f), Color.argb(90, 128, 128, 128)) }
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { start(); true } else false }
         }
         root.addView(prompt)
-        val pills = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, pad / 2, 0, pad / 2) }
+        val pills = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, pad * 3 / 4, 0, pad * 3 / 4) }
         styles.forEachIndexed { i, (name, _) ->
             val pill = TextView(this).apply {
-                text = name; setPadding(pad, pad / 3, pad, pad / 3); gravity = Gravity.CENTER
+                text = name; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setPadding(pad, pad / 2, pad, pad / 2); gravity = Gravity.CENTER
                 setOnClickListener { style = i; showStyles() }
             }
             stylePills.add(pill)
             pills.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = pad / 2 })
         }
         root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(pills) })
-        showStyles()
-        generate = Button(this).apply { text = "Generate"; isAllCaps = false; setOnClickListener { start() } }
-        root.addView(generate)
+        generate = Button(this).apply {
+            text = "Generate"; isAllCaps = false; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            background = GradientDrawable().apply { cornerRadius = dp(24f).toFloat(); setColor(accent) }
+            setOnClickListener { start() }
+        }
+        root.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48f)))
+        // the picture card: picture (or a hint) with the status line and progress under it
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply { cornerRadius = dp(18f).toFloat(); setColor(Color.argb(22, 128, 128, 128)) }
+        }
+        picture = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; visibility = View.GONE }
+        card.addView(picture, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; visibility = View.GONE }
-        root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        picture = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-        root.addView(picture, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
+        card.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        status = TextView(this).apply {
+            text = "Your picture appears here.\nIt's drawn on your phone, nothing is sent anywhere."
+            gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); alpha = 0.8f
+            setPadding(0, pad / 2, 0, 0)
+        }
+        card.addView(status)
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = pad })
+        actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
         for ((label, act) in listOf<Pair<String, () -> Unit>>("Send" to ::send, "Save" to ::save, "Make sticker" to ::makeSticker)) {
-            actions.addView(Button(this).apply { text = label; isAllCaps = false; setOnClickListener { act() } },
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            actions.addView(Button(this).apply {
+                text = label; isAllCaps = false
+                background = GradientDrawable().apply { cornerRadius = dp(22f).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(1f), accent) }
+                setTextColor(accent)
+                setOnClickListener { act() }
+            }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginStart = pad / 4; marginEnd = pad / 4 })
         }
         root.addView(actions)
         setContentView(root)
@@ -124,7 +147,7 @@ class ImageMakerActivity : Activity() {
                 progress.visibility = View.GONE
                 r.onSuccess {
                     result = it
-                    picture.setImageBitmap(it)
+                    picture.setImageBitmap(it); picture.visibility = View.VISIBLE
                     actions.visibility = View.VISIBLE
                     status.text = "Done in %.0f s. Not quite right? Tap Try again for a different one.".format((System.currentTimeMillis() - t) / 1000f)
                 }.onFailure { status.text = "That didn't work: ${it.message}" }
