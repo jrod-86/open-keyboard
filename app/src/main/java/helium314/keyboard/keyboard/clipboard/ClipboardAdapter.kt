@@ -69,7 +69,7 @@ class ClipboardAdapter(
             contentTextView = view.findViewById<TextView>(R.id.clipboard_entry_text_content).apply {
                 typeface = itemTypeFace
                 setTextColor(itemTextColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f) // Open Keyboard: small cards, same text size as My info
             }
             contentImageView = view.findViewById(R.id.clipboard_entry_image_content)
             clipboardLayoutParams.setItemProperties(view)

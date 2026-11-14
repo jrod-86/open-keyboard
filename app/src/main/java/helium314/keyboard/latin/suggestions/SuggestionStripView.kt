@@ -412,6 +412,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             return
         }
         if (tag is ToolbarKey) {
+            // Open Keyboard: a bar key pressed while the tile menu is open goes straight to what it opens
+            if (helium314.keyboard.latin.KeyboardMenu.isShowing) helium314.keyboard.latin.KeyboardMenu.hide()
             onClickToolbarKey(view) { listener.onCodeInput(it, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false) }
             return
         }
