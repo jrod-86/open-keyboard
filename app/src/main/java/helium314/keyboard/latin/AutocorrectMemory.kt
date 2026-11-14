@@ -78,7 +78,7 @@ object AutocorrectMemory {
         }.start()
     }
 
-    /** "✓ jrod won't be autocorrected again · Undo", for a few seconds after a word is kept. */
+    /** "✓ Keep jrod as you typed it" with a ✕ to say no, for a few seconds after a word is kept. */
     fun chip(ime: LatinIME, parent: android.view.ViewGroup): android.view.View? {
         val word = notice ?: return null
         if (System.currentTimeMillis() - noticeAt > 12_000) { notice = null; return null }
@@ -86,16 +86,17 @@ object AutocorrectMemory {
         val binding = helium314.keyboard.latin.databinding.ClipboardSuggestionBinding.inflate(android.view.LayoutInflater.from(ime), parent, false)
         val colors = ime.mSettings.current.mColors
         val label = binding.clipboardSuggestionText
-        label.text = "✓  \"$word\" won't be autocorrected again  ·  Undo"
+        label.text = "✓  Keep \"$word\" as you typed it from now on"
         label.setTextColor(colors.get(helium314.keyboard.latin.common.ColorType.KEY_TEXT))
         colors.setBackground(binding.root, helium314.keyboard.latin.common.ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
-        label.setOnClickListener {
+        // tick (tap the message) = yes, keep it; cross = no, autocorrect may change it again
+        label.setOnClickListener { notice = null; ime.setNeutralSuggestionStrip() }
+        binding.clipboardSuggestionClose.setOnClickListener {
             forget(ime, word)
             notice = null
             android.widget.Toast.makeText(ime, "OK, autocorrect can change \"$word\" again", android.widget.Toast.LENGTH_SHORT).show()
             ime.setNeutralSuggestionStrip()
         }
-        binding.clipboardSuggestionClose.setOnClickListener { notice = null; ime.setNeutralSuggestionStrip() }
         return binding.root
     }
 }

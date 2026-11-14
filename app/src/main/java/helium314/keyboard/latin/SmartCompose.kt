@@ -106,6 +106,8 @@ object SmartCompose {
         }
     }
 
+    private val commentary = Regex("^(it'?s likely|it is likely|it seems|it looks like|it appears|i think|i'm not sure|sure[,!]|here('s| is)|the word|the text|the sentence|you (seem|might|may|meant)|this (seems|looks|is a)|based on|as an ai|did you mean|i can|i'll|it sounds)", RegexOption.IGNORE_CASE)
+
     /** Turns the model's reply into a few clean words, or null if it's not usable. */
     fun tidy(before: String, out: String): String? {
         var t = out.trim().lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: return null
@@ -119,6 +121,8 @@ object SmartCompose {
             if (t.startsWith("$tail ", ignoreCase = true)) { t = t.substring(tail.length).trim(); break }
         }
         t = t.removePrefix("...").removePrefix("…").trim()
+        // the model sometimes talks about the text instead of continuing it ("It's likely that the word…")
+        if (commentary.containsMatchIn(t) || t.contains('"') || t.contains('“')) return null
         // stop at the end of the sentence, and keep it short
         Regex("[.!?]").find(t)?.let { t = t.substring(0, it.range.first + 1) }
         t = t.split(Regex("\\s+")).take(6).joinToString(" ")
