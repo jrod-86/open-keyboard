@@ -161,7 +161,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         // Open Keyboard: buttons can be dragged between the menu and the bar while the menu is open
         setOnDragListener { _, event ->
             // while moving buttons around, the right-most one sits in the bar like the others
-            if (event.action == android.view.DragEvent.ACTION_DRAG_STARTED) { barDragging = true; syncRightKey() }
+            // only when the right-hand button itself is being moved does it join the others
+            if (event.action == android.view.DragEvent.ACTION_DRAG_STARTED && barEditing) { barDragging = true; syncRightKey() }
             val r = helium314.keyboard.latin.KeyboardMenu.onBarDrag(this, event, toolbar)
             if (event.action == android.view.DragEvent.ACTION_DRAG_ENDED) { barDragging = false; barEditing = false; post { syncRightKey() } }
             r

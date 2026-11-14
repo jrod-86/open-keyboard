@@ -226,21 +226,30 @@ object KeyboardMenu {
         val loc = IntArray(2); strip.getLocationInWindow(loc)
         val wx = x + loc[0]
         var index = 0
+        // over the fixed right-hand button: the dropped one becomes the new right-hand button
+        val tl = IntArray(2); toolbar.getLocationInWindow(tl)
+        val shown = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.visibility == View.VISIBLE }
+        val rightEdge = shown.lastOrNull()?.let { val l = IntArray(2); it.getLocationInWindow(l); l[0] + it.width } ?: (tl[0] + toolbar.width)
+        if (fixedRight(toolbar) != null && wx > rightEdge) return barTokens(toolbar).count { it != key }
         for (i in 0 until toolbar.childCount) {
             val c = toolbar.getChildAt(i)
-            if (c.tag == key) continue
+            if (c.tag == key || c.visibility != View.VISIBLE) continue
             val l = IntArray(2); c.getLocationInWindow(l)
             if (wx > l[0] + c.width / 2) index++
         }
         return index
     }
 
+    /** The right-hand button kept fixed at the far right (hidden in the bar itself), if any. */
+    private fun fixedRight(toolbar: ViewGroup): Any? =
+        (if (toolbar.childCount > 0) toolbar.getChildAt(toolbar.childCount - 1) else null)?.takeIf { it.visibility == View.GONE }?.tag
+
     /** Slides the bar buttons apart to show where the dragged one would land. */
     private fun previewBar(toolbar: ViewGroup, key: Any, index: Int) {
-        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }
+        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.visibility == View.VISIBLE }
         val others = all.filter { it.tag != key }.toMutableList()
         val total = toolbar.width.toFloat().takeIf { it > 0 } ?: return
-        val oldSlots = toolbar.childCount
+        val oldSlots = all.size
         // a full bar: the last other button will go back to the menu, so show it fading out
         val pushedOut = if (others.size + 1 > MAX_ON_BAR) others.lastOrNull() else null
         pushedOut?.let { others.remove(it); it.animate().alpha(0.15f).setDuration(ANIM_MS).start() }
@@ -256,6 +265,7 @@ object KeyboardMenu {
         all.firstOrNull { it.tag == key }?.alpha = 0f
         // dashed outline where it will land, sized to the new spacing
         val d = toolbar.resources.displayMetrics.density
+        if (index >= newSlots) { toolbar.overlay.clear(); return } // going to the fixed right-hand spot
         val slot = index.coerceIn(0, newSlots - 1)
         val box = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = 14f * d
@@ -270,7 +280,7 @@ object KeyboardMenu {
 
     /** A button dragged off the bar: the others spread out to fill its space, like the home screen dock. */
     private fun closeBarGap(toolbar: ViewGroup, key: Any) {
-        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }
+        val all = (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.filter { it.visibility == View.VISIBLE }
         val others = all.filter { it.tag != key }
         val total = toolbar.width.toFloat().takeIf { it > 0 } ?: return
         if (others.isEmpty()) return
@@ -320,10 +330,14 @@ object KeyboardMenu {
                 val index = barIndex(strip, toolbar, event.x, token)
                 clearBarPreview(toolbar); resetAll(toolbar); stopJiggle(toolbar)
                 val prefs = strip.context.prefs()
+                val fixed = fixedRight(toolbar)
                 val tokens = barTokens(toolbar).filter { it != token }.toMutableList()
                 tokens.add(index.coerceIn(0, tokens.size), token)
-                // a full bar pushes its last other button back into the menu
-                while (tokens.size > MAX_ON_BAR) tokens.removeAt(tokens.indexOfLast { it != token })
+                // a full bar pushes its last other button back into the menu (never the fixed right-hand one)
+                while (tokens.size > MAX_ON_BAR) {
+                    val i = tokens.indexOfLast { it != token && it != fixed }.takeIf { it >= 0 } ?: tokens.indexOfLast { it != token }
+                    tokens.removeAt(i)
+                }
                 saveBar(prefs, tokens)
                 onBarChanged?.invoke()
                 refreshMenu(strip.context)
