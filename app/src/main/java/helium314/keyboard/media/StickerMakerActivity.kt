@@ -161,7 +161,10 @@ class StickerMakerActivity : Activity() {
         root.addView(save)
         setContentView(root)
         root.fitAboveKeyboard()
-        if (savedInstanceState == null) choose()
+        if (savedInstanceState == null) {
+            val given = intent?.getStringExtra(EXTRA_IMAGE)?.let { File(it) }
+            if (given != null && given.isFile) process(Uri.fromFile(given)) else choose()
+        }
     }
 
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
@@ -547,6 +550,7 @@ class StickerMakerActivity : Activity() {
         private const val REQ_CAMERA = 1
         private const val REQ_PICK = 2
         const val MAKER_PACK = "My stickers"
+        const val EXTRA_IMAGE = "image_path"
         private const val MODE_NONE = 0
         private const val MODE_PICK = 1
         private const val MODE_ERASE = 2

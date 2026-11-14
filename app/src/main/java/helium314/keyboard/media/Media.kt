@@ -99,6 +99,17 @@ object MediaSender {
     @JvmStatic fun justSent() = android.os.SystemClock.uptimeMillis() - sentAt < 2000
 
     private val io = Executors.newFixedThreadPool(2)
+
+    /** A picture from the Image maker, sent when the keyboard is back in the chat it was opened from. */
+    @Volatile var pendingImage: File? = null
+
+    @JvmStatic fun sendPending(ime: InputMethodService) {
+        val f = pendingImage ?: return
+        val ei = ime.currentInputEditorInfo ?: return
+        if (ei.packageName == ime.packageName) return
+        pendingImage = null
+        main.postDelayed({ if (f.isFile) commit(ime, f, "image/png", "Picture", null) }, 300)
+    }
     private val main = Handler(Looper.getMainLooper())
 
     /** Sends a GIF, or a sticker (animated if the app takes GIFs, otherwise a still PNG with a clear background). */

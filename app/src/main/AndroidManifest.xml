@@ -91,6 +91,14 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:taskAffinity=""
             android:exported="false" />
 
+        <activity android:name="helium314.keyboard.media.ImageMakerActivity"
+            android:label="Image maker"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
+
         <activity android:name="helium314.keyboard.media.StickerMakerActivity"
             android:label="Make a sticker"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
