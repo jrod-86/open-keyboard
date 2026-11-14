@@ -30,6 +30,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:localeConfig="@xml/locales_config"
             tools:remove="android:appComponentFactory"
             tools:targetApi="33">
+        <!-- Image maker: the phone's own OpenCL driver, to draw on the graphics chip when there is one -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
 
         <!-- Services -->
         <service android:name="LatinIME"
@@ -97,6 +99,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:taskAffinity="io.github.jrod86.openkeyboard.imagemaker"
+            android:process=":imagemaker"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />

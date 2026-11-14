@@ -3,10 +3,14 @@
 #include <jni.h>
 #include <android/log.h>
 #include <cstring>
+#include <string>
 #include "stable-diffusion.h"
+#include "ggml.h"
+#include "ggml-backend.h"
 
 extern "C" volatile int ggml_cpu_abort_flag; // patched into ggml-cpu.c, see README
 
+static void ggml_log_cb(enum ggml_log_level level, const char* text, void*);
 static JavaVM* g_vm = nullptr;
 static jclass g_cls = nullptr;
 static jmethodID g_progress = nullptr;
@@ -14,6 +18,7 @@ static jmethodID g_stage = nullptr;
 
 jint JNI_OnLoad(JavaVM* vm, void*) {
     g_vm = vm;
+    ggml_log_set(ggml_log_cb, nullptr);
     JNIEnv* env = nullptr;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
     jclass c = env->FindClass("helium314/keyboard/media/ImageGen");
@@ -59,6 +64,11 @@ static void log_cb(enum sd_log_level_t level, const char* text, void*) {
     if (level >= SD_LOG_INFO) __android_log_print(ANDROID_LOG_INFO, "ImageMaker", "%s", text);
 }
 
+// ggml's own messages (which graphics chip it found, why it dropped one) go to the log too
+static void ggml_log_cb(enum ggml_log_level level, const char* text, void*) {
+    if (level >= GGML_LOG_LEVEL_INFO && level != GGML_LOG_LEVEL_CONT) __android_log_print(ANDROID_LOG_INFO, "ImageMaker", "%s", text);
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring model, jint threads) {
     sd_set_log_callback(log_cb, nullptr);
@@ -77,12 +87,14 @@ Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring 
 
 // Models that come as separate files: the picture model, the text model and the decoder.
 extern "C" JNIEXPORT jlong JNICALL
-Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jstring diffusion, jstring llm, jstring vae, jint threads) {
+Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jstring diffusion, jstring llm, jstring vae, jint threads, jstring backend) {
     sd_set_log_callback(log_cb, nullptr);
     sd_set_progress_callback(progress_cb, nullptr);
     const char* d = env->GetStringUTFChars(diffusion, nullptr);
     const char* l = env->GetStringUTFChars(llm, nullptr);
     const char* v = env->GetStringUTFChars(vae, nullptr);
+    // e.g. "diffusion=GPUOpenCL,te=cpu,vae=cpu" to draw on the graphics chip; null or "" = main processor only
+    const char* b = backend ? env->GetStringUTFChars(backend, nullptr) : nullptr;
     sd_ctx_params_t p;
     sd_ctx_params_init(&p);
     p.diffusion_model_path = d;
@@ -90,8 +102,10 @@ Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jst
     p.vae_path = v;
     p.n_threads = threads;
     p.enable_mmap = true;
+    if (b && *b) p.backend = b;
     sd_ctx_t* ctx = new_sd_ctx(&p);
     if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
+    if (b) env->ReleaseStringUTFChars(backend, b);
     env->ReleaseStringUTFChars(diffusion, d);
     env->ReleaseStringUTFChars(llm, l);
     env->ReleaseStringUTFChars(vae, v);
@@ -153,4 +167,18 @@ Java_helium314_keyboard_media_ImageGen_nativeCancel(JNIEnv*, jobject, jlong hand
 extern "C" JNIEXPORT void JNICALL
 Java_helium314_keyboard_media_ImageGen_nativeFree(JNIEnv*, jobject, jlong handle) {
     if (handle) free_sd_ctx(reinterpret_cast<sd_ctx_t*>(handle));
+}
+
+// Whether this build can draw on the graphics chip, and which one it found ("" if none).
+#include "ggml-backend.h"
+extern "C" JNIEXPORT jstring JNICALL
+Java_helium314_keyboard_media_ImageGen_nativeGpu(JNIEnv* env, jobject) {
+    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_IGPU) {
+            std::string s = std::string(ggml_backend_dev_name(dev)) + "|" + ggml_backend_dev_description(dev);
+            return env->NewStringUTF(s.c_str());
+        }
+    }
+    return env->NewStringUTF("");
 }

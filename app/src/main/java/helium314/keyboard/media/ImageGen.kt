@@ -3,6 +3,7 @@ package helium314.keyboard.media
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import java.io.File
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
@@ -112,32 +113,63 @@ object ImageGen {
         part.renameTo(file(c, p))
     }
 
-    /** True when [m] is already open, so the next picture skips loading it. */
-    fun isOpen(m: Model) = ctx != 0L && loadedModel === m
+    /** True when [m] is already open the way [gpu] asks, so the next picture skips loading it. */
+    fun isOpen(m: Model, gpu: Boolean = false) = ctx != 0L && loadedModel === m && loadedOnGpu == gpu
+
+    private var gpuLib = false
+    /** Set once by the Image maker so the engine can keep its graphics programs. */
+    @Volatile var cacheDir: File? = null
+    private var loadedOnGpu = false
 
     @Synchronized
-    fun ensureLoaded(c: Context, m: Model): Long {
-        if (!libLoaded) {
-            // newer phones (Armv8.6+, e.g. Snapdragon 8 Gen 2/3) get a build using their faster int8 maths
-            val fast = runCatching { File("/proc/cpuinfo").readText().contains(" i8mm") }.getOrDefault(false)
-            if (!fast || runCatching { System.loadLibrary("sdjni_i8mm") }.isFailure) System.loadLibrary("sdjni")
-            android.util.Log.i("ImageMaker", "engine: ${if (fast) "i8mm" else "basic"}, threads ${(Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)}")
-            libLoaded = true
-        }
-        if (loadedModel !== m) close()
+    private fun loadLib() {
+        if (libLoaded) return
+        // newer phones (Armv8.6+, e.g. Snapdragon 8 Gen 2/3) get a build using their faster int8 maths, which can
+        // also draw on an Adreno graphics chip through the phone's own OpenCL driver; it won't load without one
+        val fast = runCatching { File("/proc/cpuinfo").readText().contains(" i8mm") }.getOrDefault(false)
+        // the graphics chip's programs are built the first time (slow) and kept here for next time
+        cacheDir?.let { runCatching { android.system.Os.setenv("GGML_OPENCL_KERNEL_CACHE_DIR", File(it, "opencl").apply { mkdirs() }.path, true) } }
+        gpuLib = fast && runCatching { System.loadLibrary("sdjni_gpu") }.onFailure { Log.i("ImageMaker", "no graphics engine: $it") }.isSuccess
+        if (!gpuLib) System.loadLibrary("sdjni")
+        Log.i("ImageMaker", "engine: ${if (gpuLib) "i8mm+opencl" else "basic"}, threads ${threads()}, graphics chip: ${gpu()}")
+        libLoaded = true
+    }
+
+    private fun threads() = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
+
+    private var gpuName: String? = null
+    /** The graphics chip this phone can draw on ("Adreno (TM) 750"), or "" if none. */
+    @Synchronized
+    fun gpu(): String {
+        gpuName?.let { return it }
+        if (!libLoaded) loadLib()
+        val found = if (gpuLib) runCatching { nativeGpu() }.getOrDefault("") else ""
+        // only Adreno has kernels tuned for it; others would be slower than the main processor
+        return found.substringAfter("|", "").takeIf { found.startsWith("GPUOpenCL") && it.contains("Adreno") }.orEmpty().also { gpuName = it }
+    }
+
+    @Synchronized
+    fun ensureLoaded(c: Context, m: Model, gpu: Boolean = false): Long {
+        if (cacheDir == null) cacheDir = c.cacheDir
+        loadLib()
+        val onGpu = gpu && m === BEST && gpu().isNotEmpty()
+        if (loadedModel !== m || loadedOnGpu != onGpu) close()
         if (ctx == 0L) {
-            val threads = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
-            ctx = if (m === QUICK) nativeLoad(file(c, m.parts[0]).path, threads)
-                else nativeLoadParts(file(c, m.parts[0]).path, file(c, m.parts[1]).path, file(c, m.parts[2]).path, threads)
+            ctx = if (m === QUICK) nativeLoad(file(c, m.parts[0]).path, threads())
+                else nativeLoadParts(file(c, m.parts[0]).path, file(c, m.parts[1]).path, file(c, m.parts[2]).path, threads(),
+                    if (onGpu) "diffusion=GPUOpenCL,te=cpu,vae=cpu" else null)
             if (ctx == 0L) throw IllegalStateException("couldn't open the model")
-            loadedModel = m
+            loadedModel = m; loadedOnGpu = onGpu
         }
         return ctx
     }
 
+    /** Whether the open model draws on the graphics chip. */
+    val onGpu get() = ctx != 0L && loadedOnGpu
+
     /** Makes one 512×512 picture. Slow: call off the main thread. */
-    fun generate(c: Context, m: Model, prompt: String, seed: Long, steps: Int): Bitmap {
-        val h = ensureLoaded(c, m)
+    fun generate(c: Context, m: Model, prompt: String, seed: Long, steps: Int, gpu: Boolean = false): Bitmap {
+        val h = ensureLoaded(c, m, gpu)
         val data = synchronized(this) {
             if (m === QUICK) nativeGenerate(h, prompt, "", 512, 512, 1, 1f, seed)
             else nativeGenerate(h, prompt, "", 512, 512, steps, 1f, seed)
@@ -149,7 +181,17 @@ object ImageGen {
             val o = 8 + i * 3
             (0xFF shl 24) or (data[o].toInt() and 255 shl 16) or (data[o + 1].toInt() and 255 shl 8) or (data[o + 2].toInt() and 255)
         }
+        if (loadedOnGpu && looksBlank(px)) throw BlankPicture()
         return Bitmap.createBitmap(px, w, ht, Bitmap.Config.ARGB_8888)
+    }
+
+    class BlankPicture : IllegalStateException("the picture came out blank")
+
+    /** A broken graphics driver gives all black or one flat colour; a real picture never does. */
+    private fun looksBlank(px: IntArray): Boolean {
+        var min = 255; var max = 0
+        for (i in px.indices step 97) { val g = (px[i] shr 8) and 255; if (g < min) min = g; if (g > max) max = g }
+        return max - min < 8
     }
 
     /** Stops the picture being drawn now; generate() then fails. */
@@ -161,7 +203,8 @@ object ImageGen {
     }
 
     private external fun nativeLoad(model: String, threads: Int): Long
-    private external fun nativeLoadParts(diffusion: String, llm: String, vae: String, threads: Int): Long
+    private external fun nativeLoadParts(diffusion: String, llm: String, vae: String, threads: Int, backend: String?): Long
+    private external fun nativeGpu(): String
     private external fun nativeGenerate(ctx: Long, prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long): ByteArray?
     private external fun nativeCancel(ctx: Long)
     private external fun nativeFree(ctx: Long)

@@ -26,6 +26,11 @@ class App : Application() {
         super.onCreate()
         app = this
         appContext = applicationContext
+        // the Image maker runs in its own process so a graphics driver crash can't take the keyboard down;
+        // it needs none of the keyboard set-up, and running it twice would race on the keyboard's settings files
+        val process = if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName()
+            else runCatching { java.io.File("/proc/self/cmdline").readText().trimEnd('\u0000') }.getOrDefault("")
+        if (process.endsWith(":imagemaker")) return
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
         NativeCrashes.collect(this)

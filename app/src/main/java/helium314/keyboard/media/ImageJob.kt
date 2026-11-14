@@ -52,9 +52,53 @@ object ImageJob {
     @Volatile private var drawStartedAt = 0L
     private val took = LongArray(4)
 
+    /** Whether this picture is being drawn on the graphics chip. */
+    @Volatile var usingGpu = false; private set
+    /** Something worth telling the user about this run, shown above the timer. */
+    @Volatile var note = ""; private set
+    private val timeKey get() = model.id + if (usingGpu) "_gpu" else ""
+
+    /** The user's choice (on by default) unless the graphics chip has already failed on this phone. */
+    fun gpuOn(c: Context) = prefs(c).getBoolean("use_gpu", true) && !gpuBroken(c)
+    fun gpuBroken(c: Context) = prefs(c).getBoolean("gpu_broken", false)
+    fun setGpu(c: Context, on: Boolean) = prefs(c).edit().putBoolean("use_gpu", on).apply {
+        if (on) remove("gpu_broken") // let them try again after a failure
+    }.apply()
+
+    @Volatile private var gpuFound: String? = null
+    /**
+     * Finds the graphics chip off the main thread and tells [done] its name ("" if none can be used).
+     * If looking for it ever crashes the Image maker, it isn't looked for again.
+     */
+    fun findGpu(c: Context, done: (String) -> Unit) {
+        gpuFound?.let { main.post { done(it) }; return }
+        val p = prefs(c)
+        if (p.getBoolean("gpu_probing", false)) p.edit().putBoolean("gpu_probing", false).putBoolean("gpu_unusable", true).commit()
+        if (p.getBoolean("gpu_unusable", false)) { gpuFound = ""; main.post { done("") }; return }
+        if (ImageGen.cacheDir == null) ImageGen.cacheDir = c.cacheDir
+        thread(name = "image-maker-gpu") {
+            p.edit().putBoolean("gpu_probing", true).commit()
+            val name = runCatching { ImageGen.gpu() }.getOrDefault("")
+            p.edit().putBoolean("gpu_probing", false).commit()
+            Log.i("ImageMaker", "graphics chip: '$name'")
+            gpuFound = name
+            main.post { done(name) }
+        }
+    }
+
+    /** True if the Image maker last ended in a crash (rather than being swiped away or closed by the system). */
+    private fun crashedLastTime(c: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return true
+        val am = c.getSystemService(android.app.ActivityManager::class.java) ?: return true
+        val last = runCatching { am.getHistoricalProcessExitReasons(null, 0, 10) }.getOrNull()
+            ?.firstOrNull { it.processName.endsWith(":imagemaker") } ?: return false
+        Log.i("ImageMaker", "last exit: ${last.reason} ${last.description}")
+        return last.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE || last.reason == android.app.ApplicationExitInfo.REASON_CRASH
+    }
+
     private fun prefs(c: Context) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE)
     /** What a stage took last time on this phone, in ms (drawing = per step); 0 if never measured. */
-    private fun learned(c: Context, i: Int) = prefs(c).getLong("t_${model.id}_$i", 0L)
+    private fun learned(c: Context, i: Int) = prefs(c).getLong("t_${timeKey}_$i", 0L)
 
     private fun enter(i: Int) {
         if (i <= stageIndex) return
@@ -95,7 +139,7 @@ object ImageJob {
             if (i in skipped || took[i] <= 0) continue
             val v = if (i == 2) took[i] / maxOf(total, stepsAsked, 1) else took[i]
             val old = learned(c, i)
-            e.putLong("t_${model.id}_$i", if (old == 0L) v else (old + v) / 2)
+            e.putLong("t_${timeKey}_$i", if (old == 0L) v else (old + v) / 2)
         }
         e.apply()
     }
@@ -106,11 +150,20 @@ object ImageJob {
         running = true; result = null; error = null; step = 0; total = 0; model = m
         stepsAsked = if (m === ImageGen.QUICK) 1 else steps
         took.fill(0); stageIndex = -1
-        skipped = if (ImageGen.isOpen(m)) setOf(0) else emptySet()
+        // a graphics driver crash takes the whole Image maker down; if the last graphics run never finished, don't use it again
+        val p = prefs(app)
+        var crashNote = ""
+        if (p.getBoolean("gpu_running", false)) {
+            val crashed = crashedLastTime(app)
+            p.edit().putBoolean("gpu_running", false).putBoolean("gpu_broken", crashed).commit()
+            if (crashed) crashNote = "The graphics chip crashed last time, so this one uses the main processor. You can switch back above."
+        }
+        usingGpu = m === ImageGen.BEST && gpuOn(app) && !gpuFound.isNullOrEmpty()
+        skipped = if (ImageGen.isOpen(m, usingGpu)) setOf(0) else emptySet()
         enter(if (0 in skipped) 1 else 0)
         startedAt = System.currentTimeMillis()
         ImageGen.progressListener = null // counts tensors loaded, not drawing steps
-        stopping = false
+        stopping = false; note = crashNote
         ImageGen.stageListener = { st, done, all ->
             when (st) {
                 "conditioning", "preparing" -> enter(1)
@@ -122,10 +175,26 @@ object ImageJob {
         }
         changed(app)
         thread(name = "image-maker") {
-            val r = runCatching {
-                ImageGen.ensureLoaded(app, m)
+            val seed = Random.nextLong(0, Int.MAX_VALUE.toLong())
+            fun draw(): Bitmap {
+                ImageGen.ensureLoaded(app, m, usingGpu)
                 enter(1); changed(app)
-                ImageGen.generate(app, m, prompt, Random.nextLong(0, Int.MAX_VALUE.toLong()), steps)
+                return ImageGen.generate(app, m, prompt, seed, steps, usingGpu)
+            }
+            if (usingGpu) p.edit().putBoolean("gpu_running", true).commit()
+            var r = runCatching { draw() }
+            if (usingGpu) {
+                p.edit().putBoolean("gpu_running", false).commit()
+                val e = r.exceptionOrNull()
+                if (e != null && !stopping) {
+                    Log.w("ImageMaker", "graphics chip failed, using the main processor: $e")
+                    p.edit().putBoolean("gpu_broken", true).apply()
+                    usingGpu = false
+                    took.fill(0); stageIndex = -1; step = 0; total = 0; skipped = emptySet()
+                    enter(0); note = "The graphics chip didn't work on this phone, so it's using the main processor."; changed(app)
+                    runCatching { ImageGen.close() }
+                    r = runCatching { draw() }
+                }
             }
             val now = System.currentTimeMillis()
             tookMs = now - startedAt

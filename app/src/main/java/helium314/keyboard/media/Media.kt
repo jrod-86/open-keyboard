@@ -100,14 +100,21 @@ object MediaSender {
 
     private val io = Executors.newFixedThreadPool(2)
 
-    /** A picture from the Image maker, sent when the keyboard is back in the chat it was opened from. */
-    @Volatile var pendingImage: File? = null
+    /**
+     * A picture from the Image maker, sent when the keyboard is back in the chat it was opened from.
+     * The Image maker runs in its own process, so it hands the picture over as this file.
+     */
+    fun pendingFile(c: Context) = File(File(c.cacheDir, "media").apply { mkdirs() }, "image_maker_send.png")
 
     @JvmStatic fun sendPending(ime: InputMethodService) {
-        val f = pendingImage ?: return
+        val pending = pendingFile(ime)
+        if (!pending.isFile) return
         val ei = ime.currentInputEditorInfo ?: return
         if (ei.packageName == ime.packageName) return
-        pendingImage = null
+        // forget a picture left over from long ago
+        if (System.currentTimeMillis() - pending.lastModified() > 10 * 60_000) { pending.delete(); return }
+        val f = File(pending.parentFile, "made_picture_${System.currentTimeMillis()}.png")
+        if (!pending.renameTo(f)) return
         main.postDelayed({ if (f.isFile) commit(ime, f, "image/png", "Picture", null) }, 300)
     }
     private val main = Handler(Looper.getMainLooper())

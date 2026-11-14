@@ -44,6 +44,9 @@ class ImageMakerActivity : Activity() {
     private lateinit var styleValue: TextView
     private val stepButtons = mutableListOf<TextView>()
     private lateinit var stepRow: View
+    private lateinit var engineRow: View
+    private val engineButtons = mutableListOf<TextView>()
+    private var gpuName = ""
     private var model = ImageGen.QUICK
     private var steps = 4
     private val prefs by lazy { getSharedPreferences("image_maker", MODE_PRIVATE) }
@@ -124,6 +127,23 @@ class ImageMakerActivity : Activity() {
         }
         stepRow = seg
         root.addView(seg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
+
+        // where to draw: the graphics chip or the main processor, shown once a usable graphics chip is found
+        val eng = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(3f), dp(3f), dp(3f), dp(3f)); visibility = View.GONE
+            background = UiKit.rounded(this@ImageMakerActivity, 20f, cardColor, lineColor)
+        }
+        listOf(true to "🎮 Graphics chip", false to "🧠 Main processor").forEach { (gpu, label) ->
+            val b = TextView(this).apply {
+                text = label; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setPadding(0, dp(8f), 0, dp(8f))
+                setOnClickListener { if (!working) { ImageJob.setGpu(this@ImageMakerActivity, gpu); refresh() } }
+            }
+            engineButtons.add(b)
+            eng.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        engineRow = eng
+        root.addView(eng, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
+        ImageJob.findGpu(this) { name -> gpuName = name; refresh() }
 
         // what to draw, with a dice for ideas
         val promptBox = LinearLayout(this).apply {
@@ -265,6 +285,13 @@ class ImageMakerActivity : Activity() {
         stepRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
         modelValue.text = (if (model === ImageGen.QUICK) "⚡ " else "💎 ") + model.name + "  ▾"
         styleValue.text = styles[style].icon + " " + styles[style].name + "  ▾"
+        engineRow.visibility = if (model === ImageGen.BEST && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
+        val gpuOn = ImageJob.gpuOn(this)
+        engineButtons.forEachIndexed { i, b ->
+            val on = (i == 0) == gpuOn
+            b.background = if (on) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(purple, blue)).apply { cornerRadius = dp(17f).toFloat() } else null
+            b.setTextColor(if (on) Color.WHITE else prompt.currentTextColor)
+        }
         stepButtons.forEachIndexed { i, b ->
             val on = listOf(4, 8)[i] == steps
             b.background = if (on) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(purple, blue)).apply { cornerRadius = dp(17f).toFloat() } else null
@@ -304,13 +331,13 @@ class ImageMakerActivity : Activity() {
             progress.progress = job.overall(this)
             val secs = (System.currentTimeMillis() - job.startedAt) / 1000
             val left = job.secondsLeft(this)
-            status.text = (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
+            status.text = (if (job.note.isNotEmpty()) job.note + "\n" else "") + (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
                 "${secs / 60}:%02d".format(secs % 60) +
                 if (!quick) "\nYou can switch apps, it keeps going." else ""
             stageList.visibility = if (quick) View.GONE else View.VISIBLE
             for (i in ImageJob.STAGES.indices) {
                 val tv = stageList.getChildAt(i) as TextView
-                val name = ImageJob.STAGES[i]
+                val name = ImageJob.STAGES[i] + if (i == 2 && job.usingGpu) " on the graphics chip" else ""
                 val (mark, text) = when {
                     i in job.skipped -> "✓" to "$name (already open)"
                     i < job.stageIndex -> "✓" to name
@@ -390,7 +417,7 @@ class ImageMakerActivity : Activity() {
 
     private fun send() {
         val f = saveTemp() ?: return
-        MediaSender.pendingImage = f
+        if (!f.renameTo(MediaSender.pendingFile(this))) return
         Toast.makeText(this, "Sending when you're back in the chat", Toast.LENGTH_SHORT).show()
         finish()
     }
