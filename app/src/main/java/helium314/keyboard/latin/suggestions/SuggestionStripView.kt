@@ -193,7 +193,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             button.setOnClickListener { b.action() }
             toolbar.addView(button, b.position.coerceIn(0, toolbar.childCount))
         }
+        addRightKey(colors)
         for (pinnedKey in getPinnedToolbarKeys(context.prefs())) {
+            if (toolbar.childCount > 0 && toolbar.getChildAt(toolbar.childCount - 1).tag == pinnedKey) continue // already on the right
             val button = createToolbarKey(context, pinnedKey)
             button.layoutParams = toolbarKeyLayoutParams
             setupKey(button, colors)
@@ -203,6 +205,30 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                 pinnedKeyInToolbar.background = enabledToolKeyBackground
         }
     }
+
+    // Open Keyboard: the bar's right-most button stays at the right edge while suggestions show (Jarrod's rule)
+    private var rightBox: View? = null
+    private fun addRightKey(colors: Colors) {
+        rightBox = null
+        val last = (if (toolbar.childCount > 0) toolbar.getChildAt(toolbar.childCount - 1) else null) as? ImageButton ?: return
+        val copy = ImageButton(context, null, R.attr.suggestionWordStyle)
+        copy.tag = last.tag
+        copy.scaleType = last.scaleType
+        copy.contentDescription = last.contentDescription
+        copy.setImageDrawable(last.drawable)
+        copy.layoutParams = android.widget.FrameLayout.LayoutParams(toolbarKeyLayoutParams.width, toolbarKeyLayoutParams.height)
+        setupKey(copy, colors)
+        if (last.colorFilter == null) copy.clearColorFilter()
+        copy.isVisible = last.isVisible
+        copy.setOnClickListener { last.performClick() }
+        copy.setOnLongClickListener { last.performLongClick() }
+        val box = android.widget.FrameLayout(context)
+        box.addView(copy)
+        pinnedKeys.addView(box, 0)
+        rightBox = box
+        syncRightKey()
+    }
+    private fun syncRightKey() { rightBox?.isVisible = !toolbarContainer.isVisible }
 
     private lateinit var listener: Listener
     private var suggestedWords = SuggestedWords.emptyInstance
@@ -259,6 +285,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         pinnedKeys.isVisible = true // Open Keyboard: keep the mic at the right, like Gboard
         suggestionsStrip.isVisible = !toolbarVisible
         toolbarContainer.isVisible = toolbarVisible
+        syncRightKey()
 
         if (DEBUG_SUGGESTIONS) {
             for (view in debugInfoViews) {
@@ -363,6 +390,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                 suggestionsStrip.isVisible = false
                 toolbarContainer.isVisible = true
                 pinnedKeys.isVisible = true
+                syncRightKey()
                 toolbarExpandKey.scaleX = -1f * direction
             }
         }

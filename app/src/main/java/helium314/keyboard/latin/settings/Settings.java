@@ -220,6 +220,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
 
     // static cache for background images to avoid potentially slow reload on every settings reload
     private final static Drawable[] sCachedBackgroundImages = new Drawable[4];
+    private static String sCachedBackgroundFor = "";
 
     private static final Settings sInstance = new Settings();
 
@@ -503,11 +504,13 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     @Nullable public static Drawable readUserBackgroundImage(final Context context, final boolean night) {
         final boolean landscape = context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         final int index = (night ? 1 : 0) + (landscape ? 2 : 0);
+        final String suffix = helium314.keyboard.latin.AppProfiles.hasOwnTheme(context) ? helium314.keyboard.latin.AppProfiles.backgroundSuffix() : "";
+        if (!suffix.equals(sCachedBackgroundFor)) { clearCachedBackgroundImages(); sCachedBackgroundFor = suffix; }
         if (sCachedBackgroundImages[index] != null) return sCachedBackgroundImages[index];
 
-        File image = getCustomBackgroundFile(context, night, landscape);
+        File image = backgroundFile(context, night, landscape, suffix);
         if (!image.isFile() && landscape)
-            image = getCustomBackgroundFile(context, night, false); // fall back to portrait image for historic reasons
+            image = backgroundFile(context, night, false, suffix); // fall back to portrait image for historic reasons
         if (!image.isFile()) return null;
         try {
             sCachedBackgroundImages[index] = new BitmapDrawable(context.getResources(), BitmapFactory.decodeFile(image.getAbsolutePath()));
@@ -518,7 +521,11 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     }
 
     public static File getCustomBackgroundFile(final Context context, final boolean night, final boolean landscape) {
-        return new File(DeviceProtectedUtils.getFilesDir(context), "custom_background_image" + (landscape ? "_landscape" : "") + (night ? "_night" : ""));
+        return backgroundFile(context, night, landscape, helium314.keyboard.latin.AppProfiles.backgroundSuffix());
+    }
+
+    private static File backgroundFile(final Context context, final boolean night, final boolean landscape, final String suffix) {
+        return new File(DeviceProtectedUtils.getFilesDir(context), "custom_background_image" + (landscape ? "_landscape" : "") + (night ? "_night" : "") + suffix);
     }
 
     public static void clearCachedBackgroundImages() {

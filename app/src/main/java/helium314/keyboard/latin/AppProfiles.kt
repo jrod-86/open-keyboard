@@ -112,12 +112,19 @@ object AppProfiles {
             android.widget.Toast.makeText(ctx, "Changes you make now are for ${appName(ctx, p)} only", android.widget.Toast.LENGTH_LONG).show()
         editing = p
         editingOwner = owner
+        Log.i(TAG, "settings shown, changing ${p ?: "normal"} settings")
     }
 
     /** Only the screen that set it can clear it (an old Settings screen can close after the new one opened). */
     fun onSettingsHidden(owner: Any) {
         if (editingOwner === owner) { editing = null; editingOwner = null }
     }
+
+    /** Background picture file name part: pictures saved while changing a custom app are its own. */
+    @JvmStatic fun backgroundSuffix(): String = target?.let { "_app_" + it.replace('.', '_') } ?: ""
+
+    /** Whether the custom app in use has its own theme (else it shows the normal picture). */
+    @JvmStatic fun hasOwnTheme(ctx: Context): Boolean = target?.let { store(ctx).contains(k(it, Settings.PREF_THEME_COLORS)) } ?: false
 
     fun appName(ctx: Context, pkg: String): String = runCatching {
         ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
@@ -167,7 +174,7 @@ object AppProfiles {
     private class WrapEditor(private val ctx: Context, private val base: SharedPreferences.Editor, private val pkg: String?) : SharedPreferences.Editor {
         private val own: SharedPreferences.Editor? = if (pkg != null) store(ctx).edit() else null
         private fun to(key: String?): Pair<SharedPreferences.Editor, String?> =
-            if (own != null && !isGlobal(key)) own to k(pkg!!, key!!) else base to key
+            if (own != null && !isGlobal(key)) { Log.i(TAG, "$key saved for $pkg only"); own to k(pkg!!, key!!) } else base to key
         override fun putString(key: String?, value: String?) = apply { to(key).let { it.first.putString(it.second, value) } }
         override fun putStringSet(key: String?, values: MutableSet<String>?) = apply { to(key).let { it.first.putStringSet(it.second, values) } }
         override fun putInt(key: String?, value: Int) = apply { to(key).let { it.first.putInt(it.second, value) } }
@@ -308,49 +315,16 @@ object AppProfiles {
                 if (!custom) {
                     setCustom(context, pkg, true)
                     active = pkg
+                    android.widget.Toast.makeText(context, "Custom on: changes you make in $appName stay in $appName only", android.widget.Toast.LENGTH_LONG).show()
                     runCatching { RichInputMethodManager.getInstance().currentSubtype.rawSubtype }.getOrNull()?.let { onLanguageChosen(context, it) }
                 }
                 show(context)
             },
         ))
-        if (!custom) {
-            note("Normal: $appName uses the same settings as every other app.\n\n" +
-                "Pick Custom and anything you change while typing in $appName (size, design, language, autocorrect, sounds… " +
-                "even in Settings opened from the keyboard here) stays in $appName only. Other apps aren't affected.")
-            KeyboardMenu.showOverlay(root)
-            return
-        }
-        note("Custom: every change you make while typing here stays in $appName. " +
-            summary(context, pkg).replaceFirstChar { it.uppercase() } + ".")
-
-        row("Quick changes", listOf(
-            pill("Resize", false) { KeyboardMenu.hide(); KeyboardMenu.openResize(context) },
-            pill("Design", false) { ime.launchSettings(helium314.keyboard.settings.SettingsDestination.Design) },
-            pill("All settings", false) { ime.launchSettings(null) },
-        ))
-
-        fun toggle(label: String, key: String, def: Boolean): TextView {
-            val now = prefs.getBoolean(key, def)
-            return pill((if (now) "✓ " else "✕ ") + label, now) {
-                prefs.edit().putBoolean(key, !now).apply()
-                applyNow(ime); show(context)
-            }
-        }
-        row("Turn on or off in $appName", listOf(
-            toggle("Autocorrect", Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION),
-            toggle("Suggestions", Settings.PREF_SHOW_SUGGESTIONS, Defaults.PREF_SHOW_SUGGESTIONS),
-            toggle("AI guesses", "open_keyboard_plugin_compose", true),
-            toggle("Key sounds", Settings.PREF_SOUND_ON, Defaults.PREF_SOUND_ON),
-            toggle("Vibration", Settings.PREF_VIBRATE_ON, Defaults.PREF_VIBRATE_ON),
-        ))
-
-        val subtypes = SubtypeSettings.getEnabledSubtypes(true)
-        if (subtypes.size > 1) {
-            val current = runCatching { RichInputMethodManager.getInstance().currentSubtype.rawSubtype }.getOrNull()
-            row("Language in $appName", subtypes.map { st ->
-                pill(st.displayName(), st == current) { KeyboardMenu.hide(); ime.switchToSubtype(st) }
-            })
-        }
+        note(if (custom) "Custom is on. Anything you change while typing in $appName (theme, size, language, " +
+                "autocorrect, sounds, even Settings opened from the keyboard here) stays in $appName only. " +
+                "Every other app keeps your normal settings. Tap Normal to go back."
+            else "Normal: $appName uses the same settings as every other app. Tap Custom to give it its own.")
         KeyboardMenu.showOverlay(root)
     }
 }
