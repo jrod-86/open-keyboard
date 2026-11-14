@@ -46,6 +46,11 @@ object ImageGen {
 
     @JvmStatic fun onProgress(step: Int, steps: Int) { progressListener?.invoke(step, steps) }
 
+    /** Told when drawing moves to a new stage (conditioning, sampling, decoding…). */
+    @Volatile var stageListener: ((String, Long, Long) -> Unit)? = null
+
+    @JvmStatic fun onStage(stage: String, done: Long, total: Long) { stageListener?.invoke(stage, done, total) }
+
     private var libLoaded = false
     private var ctx = 0L
     private var loadedModel: Model? = null

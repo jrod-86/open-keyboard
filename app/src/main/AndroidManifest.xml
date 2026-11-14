@@ -14,6 +14,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
@@ -95,7 +96,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:label="Image maker"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
-            android:excludeFromRecents="true"
+            android:taskAffinity="io.github.jrod86.openkeyboard.imagemaker"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 

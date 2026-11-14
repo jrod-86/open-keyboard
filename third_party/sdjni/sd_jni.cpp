@@ -8,6 +8,7 @@
 static JavaVM* g_vm = nullptr;
 static jclass g_cls = nullptr;
 static jmethodID g_progress = nullptr;
+static jmethodID g_stage = nullptr;
 
 jint JNI_OnLoad(JavaVM* vm, void*) {
     g_vm = vm;
@@ -18,6 +19,8 @@ jint JNI_OnLoad(JavaVM* vm, void*) {
         g_cls = reinterpret_cast<jclass>(env->NewGlobalRef(c));
         g_progress = env->GetStaticMethodID(g_cls, "onProgress", "(II)V");
         if (env->ExceptionCheck()) { env->ExceptionClear(); g_progress = nullptr; }
+        g_stage = env->GetStaticMethodID(g_cls, "onStage", "(Ljava/lang/String;JJ)V");
+        if (env->ExceptionCheck()) { env->ExceptionClear(); g_stage = nullptr; }
     }
     return JNI_VERSION_1_6;
 }
@@ -31,6 +34,21 @@ static void progress_cb(int step, int steps, float, void*) {
         attached = true;
     }
     env->CallStaticVoidMethod(g_cls, g_progress, step, steps);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attached) g_vm->DetachCurrentThread();
+}
+
+static void stage_cb(const sd_generation_progress_t* p, void*) {
+    if (!g_vm || !g_stage || !p || !p->stage) return;
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+        attached = true;
+    }
+    jstring st = env->NewStringUTF(p->stage);
+    env->CallStaticVoidMethod(g_cls, g_stage, st, (jlong)p->completed, (jlong)p->total);
+    env->DeleteLocalRef(st);
     if (env->ExceptionCheck()) env->ExceptionClear();
     if (attached) g_vm->DetachCurrentThread();
 }
@@ -50,6 +68,7 @@ Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring 
     p.n_threads = threads;
     p.enable_mmap = true;
     sd_ctx_t* ctx = new_sd_ctx(&p);
+    if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
     env->ReleaseStringUTFChars(model, path);
     return reinterpret_cast<jlong>(ctx);
 }
@@ -70,6 +89,7 @@ Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jst
     p.n_threads = threads;
     p.enable_mmap = true;
     sd_ctx_t* ctx = new_sd_ctx(&p);
+    if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
     env->ReleaseStringUTFChars(diffusion, d);
     env->ReleaseStringUTFChars(llm, l);
     env->ReleaseStringUTFChars(vae, v);

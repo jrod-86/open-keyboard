@@ -150,7 +150,7 @@ class ImageMakerActivity : Activity() {
             text = "✨  Generate"; isAllCaps = false; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             typeface = android.graphics.Typeface.DEFAULT_BOLD; stateListAnimator = null
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(purple, blue)).apply { cornerRadius = dp(26f).toFloat() }
-            setOnClickListener { if (working && drawing) { ImageGen.cancel(); status.text = "Stopping…" } else start() }
+            setOnClickListener { if (drawing) { ImageJob.stop(); show() } else start() }
         }
         root.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52f)).apply { topMargin = pad * 3 / 4 })
 
@@ -266,7 +266,10 @@ class ImageMakerActivity : Activity() {
         }
     }
 
-    @Volatile private var drawing = false
+    private val drawing get() = ImageJob.running
+    private val ticker = object : Runnable {
+        override fun run() { if (ImageJob.running) { show(); generate.postDelayed(this, 1000) } }
+    }
 
     private fun start() {
         if (working) return
@@ -274,37 +277,58 @@ class ImageMakerActivity : Activity() {
         if (words.isEmpty()) { status.text = "Type what you'd like a picture of first."; return }
         val m = model
         if (!ImageGen.downloaded(this, m)) { askDownload(m); return }
-        working = true; drawing = true
-        generate.text = if (m === ImageGen.QUICK) "Drawing…" else "■  Stop"
-        generate.isEnabled = m !== ImageGen.QUICK
-        progress.isIndeterminate = true; progress.visibility = View.VISIBLE
-        status.text = if (m === ImageGen.QUICK) "Drawing…" else "Getting ready… the best quality model takes a few minutes."
-        val full = words + styles[style].suffix
-        val n = steps
-        val t = System.currentTimeMillis()
-        ImageGen.progressListener = { step, total ->
-            runOnUiThread {
-                if (!drawing || total <= 1) return@runOnUiThread
-                progress.isIndeterminate = false; progress.progress = (step * 1000 / total).coerceIn(0, 1000)
-                val secs = (System.currentTimeMillis() - t) / 1000
-                status.text = "Drawing… step $step of $total (${secs}s so far)"
-            }
+        if (m !== ImageGen.QUICK && android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 5) }
+        ImageJob.start(this, m, words + styles[style].suffix, steps)
+        show()
+    }
+
+    /** Shows where the current (or last) picture is up to. */
+    private fun show() {
+        val job = ImageJob
+        working = job.running
+        generate.removeCallbacks(ticker)
+        if (job.running) {
+            val quick = job.model === ImageGen.QUICK
+            generate.text = if (quick) "Drawing…" else "■  Stop"
+            generate.isEnabled = !quick
+            progress.visibility = View.VISIBLE
+            progress.isIndeterminate = job.total == 0
+            if (job.total > 0) progress.progress = (job.step * 1000 / job.total).coerceIn(0, 1000)
+            val secs = (System.currentTimeMillis() - job.startedAt) / 1000
+            val what = if (job.total > 0 && job.stage == "Drawing") "Drawing… step ${job.step} of ${job.total}" else job.stage
+            status.text = "$what  ·  ${secs / 60}:%02d".format(secs % 60) +
+                if (!quick) "\nYou can switch apps, it keeps going." else ""
+            generate.postDelayed(ticker, 1000)
+            return
         }
-        thread(name = "image-maker") {
-            val r = runCatching { ImageGen.generate(this, m, full, Random.nextLong(0, Int.MAX_VALUE.toLong()), n) }
-            runOnUiThread {
-                working = false; drawing = false
-                ImageGen.progressListener = null
-                generate.isEnabled = true; generate.text = "✨  Make another"
-                progress.visibility = View.GONE
-                r.onSuccess {
-                    result = it
-                    picture.setImageBitmap(it); picture.visibility = View.VISIBLE; placeholder.visibility = View.GONE
-                    actions.visibility = View.VISIBLE
-                    status.text = "Done in %.0f s. Not quite right? Tap Try again for a different one.".format((System.currentTimeMillis() - t) / 1000f)
-                }.onFailure { status.text = if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}" }
-            }
+        generate.isEnabled = true
+        progress.visibility = View.GONE
+        val r = job.result
+        if (r != null) {
+            result = r
+            picture.setImageBitmap(r); picture.visibility = View.VISIBLE; placeholder.visibility = View.GONE
+            actions.visibility = View.VISIBLE
+            generate.text = "✨  Make another"
+            val secs = job.tookMs / 1000
+            status.text = "Done in ${if (secs >= 60) "${secs / 60} min ${secs % 60} s" else "$secs s"}. Not quite right? Make another."
+        } else if (job.error != null) {
+            generate.text = "✨  Generate"
+            status.text = job.error
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ImageJob.listener = { show() }
+        show()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ImageJob.listener = null
+        generate.removeCallbacks(ticker)
     }
 
     private fun askDownload(m: ImageGen.Model) {
@@ -370,6 +394,6 @@ class ImageMakerActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         // free the model's memory unless a picture is still being drawn
-        if (!working) thread { ImageGen.close() }
+        if (!ImageJob.running && isFinishing) thread { ImageGen.close() }
     }
 }
