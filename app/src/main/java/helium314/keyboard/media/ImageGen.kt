@@ -23,12 +23,17 @@ object ImageGen {
         val totalSize get() = parts.sumOf { it.size }
     }
 
-    val QUICK = Model("quick", "Quick", "SDXS-512", "fast, 1 step, 680 MB", listOf(Part("sdxs-512-q8_0.gguf",
+    /** The picture safety check (AdamCodd/vit-base-nsfw-detector, Apache-2.0), fetched with either model. See [SafePicture]. */
+    val SAFETY = Part("nsfw-check-vit-q8.onnx",
+        "https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/8587de998f441aac03fdd57a85d2e4cb808c7d64/onnx/model_quantized.onnx",
+        "432763a6899ebc418c55f784b98f90565e5fc694c778d2ffcb0294b12f6a7404", 88500985L)
+
+    val QUICK = Model("quick", "Quick", "SDXS-512", "fast, 1 step, 770 MB", listOf(Part("sdxs-512-q8_0.gguf",
         "https://huggingface.co/concedo/sdxs-512-tinySDdistilled-GGUF/resolve/3144d898d61492f8382ffcabec055733fc5b2a0e/sdxs-512-tinySDdistilled_Q8_0.gguf",
-        "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L)),
+        "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L), SAFETY),
         "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.")
 
-    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.1 GB", listOf(
+    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.2 GB", listOf(
         // Q4_0 rather than Q3_K: newer phones have fast int8 maths for Q4_0, none for Q3_K
         Part("z_image_turbo-Q4_0.gguf",
             "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q4_0.gguf",
@@ -38,7 +43,7 @@ object ImageGen {
             "9c6e0763577125a994a9bea0bbd7a737ac4498b8a6a4e0f788727553af1806c9", 2075618400L),
         Part("ae.safetensors",
             "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/6fc90a3b1b653e935a0d175e260736de25b84df5/split_files/vae/ae.safetensors",
-            "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", 335304388L)),
+            "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", 335304388L), SAFETY),
         "The model is Z-Image Turbo (Apache 2.0 licence, free for any use).")
 
     val MODELS = listOf(QUICK, BEST)
@@ -68,6 +73,7 @@ object ImageGen {
         d.listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
     }
     private fun file(c: Context, p: Part) = File(dir(c), p.name)
+    fun safetyFile(c: Context) = file(c, SAFETY)
 
     fun downloaded(c: Context, m: Model) = m.parts.all { file(c, it).length() == it.size }
 
@@ -207,8 +213,11 @@ object ImageGen {
     private external fun nativeGpu(): String
     private external fun nativeSetPause(ms: Int)
 
-    /** Smooth: the graphics chip rests between chunks so the phone stays usable; otherwise full speed. */
-    fun setSmooth(on: Boolean) { if (libLoaded) runCatching { nativeSetPause(if (on) 6 else 0) } }
+    /**
+     * The graphics chip works in ~25 ms slices and then rests, so the screen and other apps get a turn:
+     * Smooth rests 1.5x as long as it worked, Balanced a little, Fastest not at all.
+     */
+    fun setSpeed(speed: Int) { if (libLoaded) runCatching { nativeSetPause(when (speed) { 0 -> 150; 1 -> 12; else -> 0 }) } }
     private external fun nativeGenerate(ctx: Long, prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long): ByteArray?
     private external fun nativeCancel(ctx: Long)
     private external fun nativeFree(ctx: Long)

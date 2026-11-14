@@ -70,9 +70,10 @@ object ImageJob {
 
     /** The user's choice (on by default) unless the graphics chip has already failed on this phone. */
     fun gpuOn(c: Context) = prefs(c).getBoolean("use_gpu", true) && !gpuBroken(c)
-    /** Fastest = full power, phone hard to use; otherwise Smooth (the default). */
-    fun fastest(c: Context) = prefs(c).getBoolean("fastest", false)
-    fun setFastest(c: Context, on: Boolean) = prefs(c).edit().putBoolean("fastest", on).apply()
+    /** How hard Best works: 0 Smooth (phone stays smooth), 1 Balanced (the default), 2 Fastest (phone hard to use). */
+    fun speed(c: Context) = prefs(c).getInt("speed", 1).coerceIn(0, 2)
+    fun setSpeed(c: Context, v: Int) = prefs(c).edit().putInt("speed", v).apply()
+    fun fastest(c: Context) = speed(c) == 2
 
     fun gpuBroken(c: Context) = prefs(c).getBoolean("gpu_broken", false)
     fun setGpu(c: Context, on: Boolean) = prefs(c).edit().putBoolean("use_gpu", on).apply {
@@ -190,11 +191,11 @@ object ImageJob {
         changed(app)
         bigThread("image-maker") {
             val seed = Random.nextLong(0, Int.MAX_VALUE.toLong())
-            val fast = fastest(app)
-            if (fast) runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT) }
+            val speed = speed(app)
+            if (speed == 2) runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT) }
             fun draw(): Bitmap {
                 ImageGen.ensureLoaded(app, m, usingGpu)
-                ImageGen.setSmooth(!fast)
+                ImageGen.setSpeed(speed)
                 enter(1); changed(app)
                 return ImageGen.generate(app, m, prompt, seed, steps, usingGpu)
             }
@@ -219,14 +220,22 @@ object ImageJob {
             if (r.isSuccess) remember(app)
             Log.i("ImageMaker", "finished in ${tookMs / 1000}s (stages ms: ${took.joinToString()}): ${r.exceptionOrNull()?.toString() ?: "ok"}")
             ImageGen.progressListener = null; ImageGen.stageListener = null
+            // safety check on the finished picture; if it can't run, the picture isn't shown
+            val checked = r.mapCatching { bmp ->
+                if (SafePicture.blocked(ImageGen.safetyFile(app), bmp)) throw HeldBack() else bmp
+            }
+            r = checked
             result = r.getOrNull()
             error = r.exceptionOrNull()?.let {
+                if (it is HeldBack) return@let "The safety check held this picture back. Try different words."
                 if (stopping) "Stopped." else if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}"
             }
             running = false
             changed(app)
         }
     }
+
+    private class HeldBack : Exception("held back")
 
     @Volatile var stopping = false; private set
 
