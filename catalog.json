@@ -2,18 +2,18 @@
  "version": 1,
  "packs": [
   {
-   "id": "test-animated",
-   "name": "Test (animated)",
+   "id": "tuxedo-cat-animated",
+   "name": "Tuxedo Cat",
    "author": "jrod",
-   "license": "Test only",
+   "license": "CC0",
    "source": "https://github.com/jrod-86/open-keyboard",
    "credit": "",
-   "count": 5,
+   "count": 93,
    "featured": true,
-   "icon": "test-animated-icon.png",
-   "zip": "test-animated.zip",
-   "size": 10403089,
-   "version": 2
+   "icon": "tuxedo-cat-animated-icon.png",
+   "zip": "tuxedo-cat-animated.zip",
+   "alt": "tuxedo-cat-animated-alt/",
+   "size": 72053608
   },
   {
    "id": "yellow-emoji-story",
@@ -27,19 +27,6 @@
    "icon": "yellow-emoji-story-icon.png",
    "zip": "yellow-emoji-story.zip",
    "size": 3106585
-  },
-  {
-   "id": "tuxedo-cat",
-   "name": "Tuxedo Cat",
-   "author": "jrod",
-   "license": "CC0",
-   "source": "https://github.com/jrod-86/open-keyboard",
-   "credit": "",
-   "count": 96,
-   "featured": true,
-   "icon": "tuxedo-cat-icon.png",
-   "zip": "tuxedo-cat.zip",
-   "size": 4472681
   }
  ]
 }
