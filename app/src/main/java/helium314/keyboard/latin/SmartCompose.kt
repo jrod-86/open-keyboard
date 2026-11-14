@@ -48,8 +48,7 @@ object SmartCompose {
     }
 
     private fun allowed(ime: LatinIME): Boolean {
-        val perApp = AppProfiles.bool(ime, ime.currentInputEditorInfo?.packageName, AppProfiles.COMPOSE)
-        if (!(perApp ?: Plugins.isOn(ime, "compose")) || !WritingTools.modelReady(ime)) return false
+        if (!Plugins.isOn(ime, "compose") || !WritingTools.modelReady(ime)) return false
         val sv = Settings.getValues()
         if (sv.mIncognitoModeEnabled || !sv.mInputAttributes.mShouldShowSuggestions) return false
         val type = ime.currentInputEditorInfo?.inputType ?: return false

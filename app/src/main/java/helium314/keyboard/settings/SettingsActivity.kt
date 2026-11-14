@@ -172,6 +172,11 @@ open class SettingsActivity : ComponentActivity(), SharedPreferences.OnSharedPre
         enableEdgeToEdge()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) helium314.keyboard.latin.AppProfiles.onSettingsClosed()
+    }
+
     override fun onStart() {
         super.onStart()
         prefs.registerOnSharedPreferenceChangeListener(this)

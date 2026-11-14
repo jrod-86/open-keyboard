@@ -27,105 +27,170 @@ import helium314.keyboard.latin.utils.prefs
 import android.view.inputmethod.InputMethodSubtype
 
 /**
- * Open Keyboard: settings for one app ("This app" tile). They switch in automatically whenever the
- * keyboard opens in that app, and every other app keeps the normal settings.
- * Stored as "<package>|<field>" in prefs file open_keyboard_app_profiles.
+ * Open Keyboard: per-app settings ("This app" tile). Make an app "custom" and every keyboard setting you
+ * change while typing in it (or in Settings opened from the keyboard there) is kept for that app only.
+ * Other apps keep the normal settings. Works by wrapping the app's one SharedPreferences
+ * (DeviceProtectedUtils.getSharedPreferences): reads and writes go to "<package>|<key>" in
+ * open_keyboard_app_profiles while that app is the target.
  */
 object AppProfiles {
     private const val TAG = "AppProfiles"
     private const val PREFS = "open_keyboard_app_profiles"
-    const val HEIGHT = "height"         // float multiplier on the normal keyboard height
-    const val LANGUAGE = "language"     // settings subtype (pref form)
-    const val AUTOCORRECT = "autocorrect"
-    const val SUGGESTIONS = "suggestions"
-    const val COMPOSE = "compose"       // AI next-word guesses
-    const val SOUND = "sound"
-    const val VIBRATE = "vibrate"
+    private const val CUSTOM = "__custom"
+    const val LANGUAGE = "__language"
 
-    private fun store(ctx: Context): SharedPreferences = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private fun k(pkg: String, field: String) = "$pkg|$field"
+    /** App the keyboard is typing in now, if it's custom. */
+    @Volatile private var active: String? = null
+    /** App whose settings are being changed in Settings opened from the keyboard. */
+    @Volatile private var editing: String? = null
+    val target: String? get() = active ?: editing
 
-    fun has(ctx: Context, pkg: String?, field: String) = pkg != null && store(ctx).contains(k(pkg, field))
-    fun bool(ctx: Context, pkg: String?, field: String): Boolean? =
-        if (has(ctx, pkg, field)) store(ctx).getBoolean(k(pkg!!, field), true) else null
-    fun float(ctx: Context, pkg: String?, field: String): Float? =
-        if (has(ctx, pkg, field)) store(ctx).getFloat(k(pkg!!, field), 1f) else null
-    fun string(ctx: Context, pkg: String?, field: String): String? =
-        if (pkg == null) null else store(ctx).getString(k(pkg, field), null)
+    private var storeCache: SharedPreferences? = null
+    private fun store(ctx: Context): SharedPreferences = storeCache ?: run {
+        val c = if (android.os.Build.VERSION.SDK_INT >= 24) ctx.createDeviceProtectedStorageContext() else ctx
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also { storeCache = it }
+    }
+    private fun k(pkg: String, key: String) = "$pkg|$key"
 
-    fun set(ctx: Context, pkg: String, field: String, value: Any?) {
-        store(ctx).edit().apply {
-            when (value) {
-                null -> remove(k(pkg, field))
-                is Boolean -> putBoolean(k(pkg, field), value)
-                is Float -> putFloat(k(pkg, field), value)
-                else -> putString(k(pkg, field), value.toString())
-            }
-        }.apply()
+    // things that are about the keyboard as a whole, not how it behaves in one app
+    private val globalKeys = setOf(Settings.PREF_ENABLED_SUBTYPES, Settings.PREF_SELECTED_SUBTYPE, Settings.PREF_ADDITIONAL_SUBTYPES,
+        Settings.PREF_RECENT_EMOJIS, Settings.PREF_LAST_SHOWN_EMOJI_CATEGORY_ID, Settings.PREF_LAST_SHOWN_EMOJI_CATEGORY_PAGE_ID,
+        Settings.PREF_VERSION_CODE, Settings.PREF_LIBRARY_CHECKSUM, Settings.PREF_PINNED_TOOLBAR_KEYS, Settings.PREF_TOOLBAR_KEYS,
+        Settings.PREF_CLIPBOARD_TOOLBAR_KEYS, Settings.PREF_SAVE_SUBTYPE_PER_APP,
+        "open_keyboard_menu_order", "open_keyboard_bar_items", "open_keyboard_my_designs", "dont_show_missing_dict_dialog")
+    private fun isGlobal(key: String?) = key == null || key in globalKeys || key.startsWith(Settings.PREF_SAVED_APP_SUBTYPE_PREFIX)
+            || key.startsWith("floating_pos") || key.startsWith("gesture_data")
+
+    fun isCustom(ctx: Context, pkg: String?) = pkg != null && store(ctx).getBoolean(k(pkg, CUSTOM), false)
+
+    fun setCustom(ctx: Context, pkg: String, on: Boolean) {
+        if (on) store(ctx).edit().putBoolean(k(pkg, CUSTOM), true).apply()
+        else clear(ctx, pkg)
+        if (active == pkg || (on && active == null)) active = if (on) pkg else null
     }
 
     fun clear(ctx: Context, pkg: String) {
         val s = store(ctx)
         s.edit().apply { s.all.keys.filter { it.startsWith("$pkg|") }.forEach { remove(it) } }.apply()
+        if (active == pkg) active = null
+        if (editing == pkg) editing = null
     }
 
-    /** Apps that have their own settings. */
-    fun apps(ctx: Context): List<String> = store(ctx).all.keys.map { it.substringBefore('|') }.distinct().sorted()
+    /** Custom apps. */
+    fun apps(ctx: Context): List<String> = store(ctx).all.keys.filter { it.endsWith("|$CUSTOM") }.map { it.substringBefore('|') }.sorted()
+
+    fun changedCount(ctx: Context, pkg: String) = store(ctx).all.keys.count { it.startsWith("$pkg|") && !it.endsWith("|__custom") && !it.endsWith("|__language") }
 
     fun summary(ctx: Context, pkg: String): String {
-        val parts = mutableListOf<String>()
-        float(ctx, pkg, HEIGHT)?.let { parts += if (it < 1f) "smaller" else "bigger" }
-        string(ctx, pkg, LANGUAGE)?.let { pref ->
-            SubtypeSettings.getEnabledSubtypes(true).firstOrNull { it.toSettingsSubtype().toPref() == pref }?.let { parts += it.displayName() }
+        val n = changedCount(ctx, pkg)
+        val lang = store(ctx).getString(k(pkg, LANGUAGE), null)?.let { pref ->
+            SubtypeSettings.getEnabledSubtypes(true).firstOrNull { it.toSettingsSubtype().toPref() == pref }?.displayName()
         }
-        bool(ctx, pkg, AUTOCORRECT)?.let { parts += "autocorrect " + if (it) "on" else "off" }
-        bool(ctx, pkg, SUGGESTIONS)?.let { parts += "suggestions " + if (it) "on" else "off" }
-        bool(ctx, pkg, COMPOSE)?.let { parts += "AI guesses " + if (it) "on" else "off" }
-        bool(ctx, pkg, SOUND)?.let { parts += "sound " + if (it) "on" else "off" }
-        bool(ctx, pkg, VIBRATE)?.let { parts += "vibration " + if (it) "on" else "off" }
-        return parts.joinToString(", ")
+        return listOfNotNull(if (n == 0) "no settings changed yet" else "$n setting${if (n == 1) "" else "s"} changed", lang).joinToString(", ")
     }
 
-    /** The normal settings with this app's changes on top. Writes go to the normal settings. */
-    fun overlay(ctx: Context, base: SharedPreferences, pkg: String?): SharedPreferences {
-        if (pkg == null || apps(ctx).none { it == pkg }) return base
-        return Overlay(ctx, base, pkg)
+    /** The keyboard started typing in [pkg]. */
+    /** Returns true when the settings in use changed (so the keyboard redraws). */
+    fun onStartInput(ctx: Context, pkg: String?): Boolean {
+        val before = target
+        if (pkg == null || pkg == ctx.packageName) active = null // our own screens keep "editing"
+        else { active = if (isCustom(ctx, pkg)) pkg else null; editing = null }
+        return before != target
     }
 
-    private class Overlay(private val ctx: Context, private val base: SharedPreferences, private val pkg: String) : SharedPreferences by base {
-        override fun getBoolean(key: String?, defValue: Boolean): Boolean {
-            val field = when (key) {
-                Settings.PREF_AUTO_CORRECTION -> AUTOCORRECT
-                Settings.PREF_SHOW_SUGGESTIONS -> SUGGESTIONS
-                Settings.PREF_SOUND_ON -> SOUND
-                Settings.PREF_VIBRATE_ON -> VIBRATE
-                else -> null
+    /** Settings opened from the keyboard while typing in a custom app change that app's settings. */
+    fun onOpenSettings(ctx: Context) {
+        val pkg = active ?: return
+        editing = pkg
+        val name = appName(ctx, pkg)
+        android.widget.Toast.makeText(ctx, "Changes you make now are for $name only", android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    fun onSettingsClosed() { editing = null }
+
+    fun appName(ctx: Context, pkg: String): String = runCatching {
+        ctx.packageManager.getApplicationLabel(ctx.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+
+    // ---- the wrapper ----
+
+    private var wrapped: SharedPreferences? = null
+
+    fun wrap(ctx: Context, base: SharedPreferences): SharedPreferences =
+        wrapped ?: Wrapper(ctx.applicationContext ?: ctx, base).also { wrapped = it }
+
+    private class Wrapper(private val ctx: Context, private val base: SharedPreferences) : SharedPreferences {
+        private fun t(key: String?): String? = target?.takeIf { !isGlobal(key) }
+        private fun has(key: String?): String? = t(key)?.takeIf { store(ctx).contains(k(it, key!!)) }
+
+        override fun getAll(): MutableMap<String, *> {
+            val all = HashMap<String, Any?>(base.all)
+            val pkg = target ?: return all
+            store(ctx).all.forEach { (key, v) -> if (key.startsWith("$pkg|") && !key.substringAfter('|').startsWith("__")) all[key.substringAfter('|')] = v }
+            return all
+        }
+        override fun getString(key: String?, defValue: String?) = has(key)?.let { store(ctx).getString(k(it, key!!), defValue) } ?: base.getString(key, defValue)
+        override fun getStringSet(key: String?, defValues: MutableSet<String>?) = has(key)?.let { store(ctx).getStringSet(k(it, key!!), defValues) } ?: base.getStringSet(key, defValues)
+        override fun getInt(key: String?, defValue: Int) = has(key)?.let { store(ctx).getInt(k(it, key!!), defValue) } ?: base.getInt(key, defValue)
+        override fun getLong(key: String?, defValue: Long) = has(key)?.let { store(ctx).getLong(k(it, key!!), defValue) } ?: base.getLong(key, defValue)
+        override fun getFloat(key: String?, defValue: Float) = has(key)?.let { store(ctx).getFloat(k(it, key!!), defValue) } ?: base.getFloat(key, defValue)
+        override fun getBoolean(key: String?, defValue: Boolean) = has(key)?.let { store(ctx).getBoolean(k(it, key!!), defValue) } ?: base.getBoolean(key, defValue)
+        override fun contains(key: String?) = has(key) != null || base.contains(key)
+
+        override fun edit(): SharedPreferences.Editor = WrapEditor(ctx, base.edit(), target)
+
+        private val listeners = HashMap<SharedPreferences.OnSharedPreferenceChangeListener, SharedPreferences.OnSharedPreferenceChangeListener>()
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+            base.registerOnSharedPreferenceChangeListener(listener)
+            val forward = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key != null && key.startsWith("${target}|")) listener.onSharedPreferenceChanged(this, key.substringAfter('|'))
             }
-            return field?.let { bool(ctx, pkg, it) } ?: base.getBoolean(key, defValue)
+            listeners[listener] = forward
+            store(ctx).registerOnSharedPreferenceChangeListener(forward)
         }
-        override fun getFloat(key: String?, defValue: Float): Float {
-            val v = base.getFloat(key, defValue)
-            if (key == null || !key.startsWith(Settings.PREF_KEYBOARD_HEIGHT_SCALE_PREFIX)) return v
-            return v * (float(ctx, pkg, HEIGHT) ?: 1f)
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+            base.unregisterOnSharedPreferenceChangeListener(listener)
+            listeners.remove(listener)?.let { store(ctx).unregisterOnSharedPreferenceChangeListener(it) }
         }
     }
 
-    // ---- language: switch to this app's language, and back afterwards ----
+    private class WrapEditor(private val ctx: Context, private val base: SharedPreferences.Editor, private val pkg: String?) : SharedPreferences.Editor {
+        private val own: SharedPreferences.Editor? = if (pkg != null) store(ctx).edit() else null
+        private fun to(key: String?): Pair<SharedPreferences.Editor, String?> =
+            if (own != null && !isGlobal(key)) own to k(pkg!!, key!!) else base to key
+        override fun putString(key: String?, value: String?) = apply { to(key).let { it.first.putString(it.second, value) } }
+        override fun putStringSet(key: String?, values: MutableSet<String>?) = apply { to(key).let { it.first.putStringSet(it.second, values) } }
+        override fun putInt(key: String?, value: Int) = apply { to(key).let { it.first.putInt(it.second, value) } }
+        override fun putLong(key: String?, value: Long) = apply { to(key).let { it.first.putLong(it.second, value) } }
+        override fun putFloat(key: String?, value: Float) = apply { to(key).let { it.first.putFloat(it.second, value) } }
+        override fun putBoolean(key: String?, value: Boolean) = apply { to(key).let { it.first.putBoolean(it.second, value) } }
+        override fun remove(key: String?) = apply { to(key).let { it.first.remove(it.second) } }
+        override fun clear() = apply { base.clear() }
+        override fun commit(): Boolean { own?.commit(); return base.commit() }
+        override fun apply() { own?.apply(); base.apply() }
+    }
+
+    // ---- language: an app's own language, and back afterwards ----
 
     private var languageBefore: InputMethodSubtype? = null
+
+    /** While typing in a custom app, the language you switch to is remembered for it. */
+    fun onLanguageChosen(ctx: Context, subtype: InputMethodSubtype) {
+        val pkg = active ?: return
+        store(ctx).edit().putString(k(pkg, LANGUAGE), subtype.toSettingsSubtype().toPref()).apply()
+    }
 
     /** Called when the keyboard starts in an app; returns a language to switch to, or null. */
     fun languageFor(ctx: Context, pkg: String?): InputMethodSubtype? {
         val current = runCatching { RichInputMethodManager.getInstance().currentSubtype.rawSubtype }.getOrNull()
-        val pref = string(ctx, pkg, LANGUAGE)
+        val pref = if (isCustom(ctx, pkg)) store(ctx).getString(k(pkg!!, LANGUAGE), null) else null
         if (pref != null) {
-            val target = SubtypeSettings.getEnabledSubtypes(true).firstOrNull { it.toSettingsSubtype().toPref() == pref } ?: return null
-            if (target == current) return null
+            val wanted = SubtypeSettings.getEnabledSubtypes(true).firstOrNull { it.toSettingsSubtype().toPref() == pref } ?: return null
+            if (wanted == current) return null
             if (languageBefore == null) languageBefore = current
             Log.i(TAG, "$pkg: switching to its language")
-            return target
+            return wanted
         }
-        // left an app with its own language: back to the one used before
+        if (pkg == ctx.packageName) return null
         val back = languageBefore ?: return null
         languageBefore = null
         return back.takeIf { it != current && SubtypeSettings.getEnabledSubtypes(true).contains(it) }
@@ -150,23 +215,24 @@ object AppProfiles {
         }
     }
 
-    private fun applyNow(ime: LatinIME) {
+    private fun applyNow(ime: LatinIME, redraw: Boolean = false) {
         val sv = Settings.getValues()
         Settings.getInstance().loadSettings(ime, sv.mLocale, sv.mInputAttributes)
-        KeyboardSwitcher.getInstance().reloadKeyboard()
+        if (redraw) { KeyboardMenu.hide(); KeyboardSwitcher.getInstance().setThemeNeedsReload() }
+        else KeyboardSwitcher.getInstance().reloadKeyboard()
     }
 
     fun show(context: Context) {
         val ime = ime(context) ?: return
         val pkg = ime.currentInputEditorInfo?.packageName ?: return
-        val pm = context.packageManager
-        val appName = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
-        val appIcon = runCatching { pm.getApplicationIcon(pkg) }.getOrNull()
+        val appName = appName(context, pkg)
+        val appIcon = runCatching { context.packageManager.getApplicationIcon(pkg) }.getOrNull()
         val colors = Settings.getValues().mColors
         val text = colors.get(ColorType.KEY_TEXT)
         val tile = colors.get(ColorType.FUNCTIONAL_KEY_BACKGROUND)
         val accent = colors.get(ColorType.GESTURE_TRAIL)
-        val prefs = context.prefs()
+        val prefs = context.prefs() // already this app's view when it's custom
+        val custom = isCustom(context, pkg)
 
         val root = Root(context).apply {
             setBackgroundColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
@@ -191,88 +257,88 @@ object AppProfiles {
         fun lp() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             rightMargin = dp(context, 6f); bottomMargin = dp(context, 6f)
         }
-        fun refresh() { show(context) }
-        fun row(title: String, pills: List<TextView>) {
-            column.addView(TextView(context).apply {
-                this.text = title
-                setTextColor(ColorUtils.setAlphaComponent(text, 180))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(dp(context, 12f), dp(context, 6f), dp(context, 12f), dp(context, 3f))
-            })
+        fun note(s: String) = column.addView(TextView(context).apply {
+            this.text = s
+            setTextColor(ColorUtils.setAlphaComponent(text, 170))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dp(context, 12f), dp(context, 4f), dp(context, 12f), dp(context, 4f))
+        })
+        fun row(title: String?, pills: List<TextView>) {
+            title?.let { note(it) }
             val r = LinearLayout(context).apply { setPadding(dp(context, 10f), 0, dp(context, 10f), 0) }
             pills.forEach { r.addView(it, lp()) }
             column.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(r) })
         }
 
-        // header: app icon, name, ✕
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(context, 12f), 0, dp(context, 12f), dp(context, 2f)) }
         appIcon?.let { top.addView(ImageView(context).apply { setImageDrawable(it) },
             LinearLayout.LayoutParams(dp(context, 26f), dp(context, 26f)).apply { rightMargin = dp(context, 8f) }) }
         top.addView(TextView(context).apply {
-            this.text = "Settings for $appName"
+            this.text = appName
             setTextColor(text)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(pill("✕", false) { KeyboardMenu.hide() })
         column.addView(top)
-        column.addView(TextView(context).apply {
-            this.text = "Only used in $appName. Switches in by itself every time you type here."
-            setTextColor(ColorUtils.setAlphaComponent(text, 150))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setPadding(dp(context, 12f), 0, dp(context, 12f), dp(context, 2f))
-        })
 
-        // height
-        val h = float(context, pkg, HEIGHT)
-        row("Keyboard height", listOf(
-            pill("Smaller", h != null && h < 1f) { set(context, pkg, HEIGHT, 0.88f); applyNow(ime); refresh() },
-            pill("Normal", h == null) { set(context, pkg, HEIGHT, null); applyNow(ime); refresh() },
-            pill("Bigger", h != null && h > 1f) { set(context, pkg, HEIGHT, 1.12f); applyNow(ime); refresh() },
+        row(null, listOf(
+            pill((if (!custom) "● " else "") + "Normal", !custom) {
+                if (custom) {
+                    setCustom(context, pkg, false)
+                    active = null
+                    languageFor(context, pkg)?.let { ime.switchToSubtype(it) }
+                    android.widget.Toast.makeText(context, "$appName uses your normal settings again", android.widget.Toast.LENGTH_SHORT).show()
+                    applyNow(ime, redraw = true)
+                    return@pill
+                }
+                show(context)
+            },
+            pill((if (custom) "● " else "") + "Custom for $appName", custom) {
+                if (!custom) {
+                    setCustom(context, pkg, true)
+                    active = pkg
+                    runCatching { RichInputMethodManager.getInstance().currentSubtype.rawSubtype }.getOrNull()?.let { onLanguageChosen(context, it) }
+                }
+                show(context)
+            },
+        ))
+        if (!custom) {
+            note("Normal: $appName uses the same settings as every other app.\n\n" +
+                "Pick Custom and anything you change while typing in $appName (size, design, language, autocorrect, sounds… " +
+                "even in Settings opened from the keyboard here) stays in $appName only. Other apps aren't affected.")
+            KeyboardMenu.showOverlay(root)
+            return
+        }
+        note("Custom: every change you make while typing here stays in $appName. " +
+            summary(context, pkg).replaceFirstChar { it.uppercase() } + ".")
+
+        row("Quick changes", listOf(
+            pill("Resize", false) { KeyboardMenu.hide(); KeyboardMenu.openResize(context) },
+            pill("Design", false) { ime.launchSettings(helium314.keyboard.settings.SettingsDestination.Design) },
+            pill("All settings", false) { ime.launchSettings(null) },
         ))
 
-        // language
-        val langPref = string(context, pkg, LANGUAGE)
-        val subtypes = SubtypeSettings.getEnabledSubtypes(true)
-        if (subtypes.size > 1 || langPref != null) {
-            row("Start in this language", listOf(pill("Normal", langPref == null) {
-                set(context, pkg, LANGUAGE, null); refresh()
-            }) + subtypes.map { st ->
-                val pref = st.toSettingsSubtype().toPref()
-                pill(st.displayName(), pref == langPref) {
-                    set(context, pkg, LANGUAGE, pref)
-                    KeyboardMenu.hide()
-                    languageFor(context, pkg)?.let { ime.switchToSubtype(it) }
-                }
-            })
-        }
-
-        // on/off switches, showing what's in effect here
-        fun toggle(label: String, field: String, normal: Boolean): TextView {
-            val override = bool(context, pkg, field)
-            val now = override ?: normal
-            return pill((if (now) "✓ " else "✕ ") + label + if (override != null) " •" else "", override != null) {
-                // first tap flips it for this app; tapping back to the normal value clears it
-                val next = !now
-                set(context, pkg, field, if (next == normal) null else next)
-                applyNow(ime); refresh()
+        fun toggle(label: String, key: String, def: Boolean): TextView {
+            val now = prefs.getBoolean(key, def)
+            return pill((if (now) "✓ " else "✕ ") + label, now) {
+                prefs.edit().putBoolean(key, !now).apply()
+                applyNow(ime); show(context)
             }
         }
-        row("Turn on or off here (• = different from normal)", listOf(
-            toggle("Autocorrect", AUTOCORRECT, prefs.getBoolean(Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION)),
-            toggle("Suggestions", SUGGESTIONS, prefs.getBoolean(Settings.PREF_SHOW_SUGGESTIONS, Defaults.PREF_SHOW_SUGGESTIONS)),
-            toggle("AI guesses", COMPOSE, Plugins.isOn(context, "compose")),
-            toggle("Key sounds", SOUND, prefs.getBoolean(Settings.PREF_SOUND_ON, Defaults.PREF_SOUND_ON)),
-            toggle("Vibration", VIBRATE, prefs.getBoolean(Settings.PREF_VIBRATE_ON, Defaults.PREF_VIBRATE_ON)),
+        row("Turn on or off in $appName", listOf(
+            toggle("Autocorrect", Settings.PREF_AUTO_CORRECTION, Defaults.PREF_AUTO_CORRECTION),
+            toggle("Suggestions", Settings.PREF_SHOW_SUGGESTIONS, Defaults.PREF_SHOW_SUGGESTIONS),
+            toggle("AI guesses", "open_keyboard_plugin_compose", true),
+            toggle("Key sounds", Settings.PREF_SOUND_ON, Defaults.PREF_SOUND_ON),
+            toggle("Vibration", Settings.PREF_VIBRATE_ON, Defaults.PREF_VIBRATE_ON),
         ))
 
-        if (apps(context).contains(pkg)) {
-            val r = LinearLayout(context).apply { setPadding(dp(context, 10f), dp(context, 8f), dp(context, 10f), 0) }
-            r.addView(pill("Back to normal for $appName", false) {
-                clear(context, pkg)
-                languageFor(context, pkg)?.let { ime.switchToSubtype(it) }
-                applyNow(ime); refresh()
-            }, lp())
-            column.addView(r)
+        val subtypes = SubtypeSettings.getEnabledSubtypes(true)
+        if (subtypes.size > 1) {
+            val current = runCatching { RichInputMethodManager.getInstance().currentSubtype.rawSubtype }.getOrNull()
+            row("Language in $appName", subtypes.map { st ->
+                pill(st.displayName(), st == current) { KeyboardMenu.hide(); ime.switchToSubtype(st) }
+            })
         }
         KeyboardMenu.showOverlay(root)
     }

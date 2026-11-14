@@ -298,8 +298,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
         mSettingsValuesLock.lock();
         mContext = context;
         try {
-            // Open Keyboard: this app's own settings ("This app" tile) on top of the normal ones
-            final SharedPreferences prefs = helium314.keyboard.latin.AppProfiles.INSTANCE.overlay(context, mPrefs, inputAttributes.mTargetApplicationPackageName);
+            final SharedPreferences prefs = mPrefs; // Open Keyboard: per-app "Custom" values come through the wrapper
             Log.i(TAG, "loadSettings");
             mSettingsValues = RunInLocaleKt.runInLocale(context, locale,
                     ctx -> new SettingsValues(ctx, prefs, ctx.getResources(), inputAttributes));

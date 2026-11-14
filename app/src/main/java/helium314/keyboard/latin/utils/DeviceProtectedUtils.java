@@ -17,7 +17,17 @@ public final class DeviceProtectedUtils {
     static final String TAG = DeviceProtectedUtils.class.getSimpleName();
     private static SharedPreferences prefs;
 
+    private static SharedPreferences wrappedPrefs;
+    // Open Keyboard: everyone gets the wrapper, so "Custom" apps see and change their own copy (see AppProfiles)
     public static SharedPreferences getSharedPreferences(final Context context) {
+        if (wrappedPrefs != null) return wrappedPrefs;
+        final SharedPreferences raw = getRawSharedPreferences(context);
+        if (raw.getAll() == null) return raw; // compose previews
+        wrappedPrefs = helium314.keyboard.latin.AppProfiles.INSTANCE.wrap(context, raw);
+        return wrappedPrefs;
+    }
+
+    private static SharedPreferences getRawSharedPreferences(final Context context) {
         if (prefs != null)
             return prefs;
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {

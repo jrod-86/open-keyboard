@@ -613,6 +613,8 @@ object KeyboardMenu {
             findIndexOfDefaultSetting(landscape, FoldableUtils.isFolded), 2)
     }
 
+    fun openResize(context: Context) = showResize(context)
+
     private fun showResize(context: Context) {
         val wrapper = KeyboardSwitcher.getInstance().wrapperView ?: return
         hide()

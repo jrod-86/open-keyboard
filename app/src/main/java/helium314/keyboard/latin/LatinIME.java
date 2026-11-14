@@ -789,11 +789,15 @@ public class LatinIME extends InputMethodService implements
 
     /** alias to onCurrentInputMethodSubtypeChanged with a better name, as it's also used for internal switching */
     public void switchToSubtype(InputMethodSubtype subtype) {
+        AppProfiles.INSTANCE.onLanguageChosen(this, subtype);
         onCurrentInputMethodSubtypeChanged(subtype);
     }
 
     private void onStartInputInternal(EditorInfo editorInfo, boolean restarting) {
         super.onStartInput(editorInfo, restarting);
+        // Open Keyboard: a "Custom" app uses its own settings
+        if (AppProfiles.INSTANCE.onStartInput(this, editorInfo == null ? null : editorInfo.packageName))
+            mKeyboardSwitcher.setThemeNeedsReload();
 
         RichInputMethodSubtype subtypeForApp = editorInfo == null
             ? null
@@ -1690,6 +1694,7 @@ public class LatinIME extends InputMethodService implements
     /** Opens the settings, optionally straight on one screen (a SettingsDestination). */
     public void launchSettings(final String destination) {
         KeyboardMenu.INSTANCE.hide();
+        AppProfiles.INSTANCE.onOpenSettings(this);
         mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
         requestHideSelf(0);
         closeMainKeyboard();
