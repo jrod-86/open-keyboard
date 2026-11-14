@@ -478,7 +478,7 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_sticker), idOverride = "sticker maker") {
+            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), idOverride = "sticker maker") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.StickerMakerActivity::class.java)
