@@ -471,6 +471,13 @@ object KeyboardMenu {
             Item(tr("This app", R.string.ok_tile_this_app), ownIcon(R.drawable.ic_menu_this_app)) { AppProfiles.show(context) },
             Item(tr("Language", R.string.ok_tile_language), ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
             Item(tr("Fancy text", R.string.ok_tile_fancy_text), ownIcon(R.drawable.ic_menu_fancy_text), idOverride = "fancy") { FancyText.show(context) },
+            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_sticker), idOverride = "sticker maker") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, helium314.keyboard.media.StickerMakerActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            },
             Item(tr("My info", R.string.ok_tile_my_info), plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
             Item(tr("Writing help", R.string.ok_tile_writing_help), plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
             Item(tr("Scan text", R.string.ok_tile_scan_text), plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {

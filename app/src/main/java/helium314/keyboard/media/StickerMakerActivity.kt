@@ -29,6 +29,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
+import android.graphics.PorterDuffXfermode
+import android.view.MotionEvent
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
@@ -47,6 +50,8 @@ import kotlin.math.roundToInt
 /**
  * Sticker maker: pick or take a photo, the background is cut out on the phone (U²-Net small model,
  * Apache-2.0), add some text, and save it to one of your own sticker packs.
+ * "Tap to pick" uses MobileSAM (Apache-2.0, downloaded on first use) to keep just what you tap,
+ * and Erase / Restore brushes touch up the edges by finger.
  */
 class StickerMakerActivity : Activity() {
     private lateinit var preview: ImageView
@@ -58,6 +63,20 @@ class StickerMakerActivity : Activity() {
     private lateinit var save: Button
     private var photo: Bitmap? = null
     private var cut: Bitmap? = null
+    /** The photo at full size with the background made clear: what the tools edit. */
+    private var masked: Bitmap? = null
+    private lateinit var faded: ImageView
+    private lateinit var toolRow: LinearLayout
+    private lateinit var undoBtn: Button
+    private val toolBtns = mutableMapOf<Int, Button>()
+    private var mode = MODE_NONE
+    private val undo = ArrayDeque<Bitmap>()
+    private val taps = mutableListOf<FloatArray>()
+    private var sam: Sam? = null
+    private var samFor: Bitmap? = null
+    private var samEmbedding: FloatArray? = null
+    @Volatile private var busy = false
+    private var lastX = 0f; private var lastY = 0f
     private var photoFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,9 +92,26 @@ class StickerMakerActivity : Activity() {
         root.addView(pick)
         progress = ProgressBar(this).apply { isIndeterminate = true; visibility = View.GONE }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        preview = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; background = checkerboard() }
-        root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        cutOut = CheckBox(this).apply { text = "Remove the background"; isChecked = true; setOnCheckedChangeListener { _, _ -> render() } }
+        val frame = FrameLayout(this).apply { background = checkerboard() }
+        faded = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; alpha = 0.35f; visibility = View.GONE }
+        preview = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setOnTouchListener { _, e -> onPreviewTouch(e) } }
+        frame.addView(faded, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.addView(preview, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
+        for ((m, label) in listOf(MODE_PICK to "Tap to pick", MODE_ERASE to "Erase", MODE_RESTORE to "Restore")) {
+            val b = Button(this).apply { text = label; isAllCaps = false; setOnClickListener { setMode(if (mode == m) MODE_NONE else m) } }
+            toolBtns[m] = b
+            toolRow.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        undoBtn = Button(this).apply { text = "Undo"; isAllCaps = false; isEnabled = false; setOnClickListener { undoLast() } }
+        toolRow.addView(undoBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
+        root.addView(toolRow)
+        cutOut = CheckBox(this).apply { text = "Remove the background"; isChecked = true; setOnCheckedChangeListener { _, on ->
+            if (!on) setMode(MODE_NONE)
+            toolRow.visibility = if (on && photo != null) View.VISIBLE else View.GONE
+            render()
+        } }
         root.addView(cutOut)
         caption = EditText(this).apply {
             hint = "Add text (optional)"
@@ -145,8 +181,12 @@ class StickerMakerActivity : Activity() {
             runOnUiThread {
                 progress.visibility = View.GONE
                 result.onSuccess { (p, c) ->
-                    photo = p; cut = c
-                    status.text = if (c == null) "Couldn't find anything to cut out, so the whole photo is used." else "Looks good? Add text if you like, then save."
+                    photo = p; masked = c; cut = c?.let { crop(it) }
+                    undo.clear(); taps.clear(); samEmbedding = null; samFor = null
+                    setMode(MODE_NONE)
+                    toolRow.visibility = if (cutOut.isChecked) View.VISIBLE else View.GONE
+                    status.text = if (cut == null) "Couldn't find anything to cut out. Use Tap to pick and tap what you want."
+                        else "Looks good? Add text and save. Not quite right? Use Tap to pick, Erase or Restore."
                     render()
                     save.isEnabled = true
                 }.onFailure { status.text = "Didn't work: ${it.message}" }
@@ -220,10 +260,150 @@ class StickerMakerActivity : Activity() {
             if (a > 0) { val x = i % w; val y = i / w; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
         }
         if (x1 < 0 || (x1 - x0) * (y1 - y0) < w * h / 100) return null
-        val full = Bitmap.createBitmap(photoPx, w, h, Bitmap.Config.ARGB_8888)
+        return Bitmap.createBitmap(photoPx, w, h, Bitmap.Config.ARGB_8888).copy(Bitmap.Config.ARGB_8888, true)
+    }
+
+    /** Crops a cut-out to what's left visible, with a small margin. Null if nothing is left. */
+    private fun crop(full: Bitmap): Bitmap? {
+        val w = full.width; val h = full.height
+        val px = IntArray(w * h); full.getPixels(px, 0, w, 0, 0, w, h)
+        var x0 = w; var y0 = h; var x1 = -1; var y1 = -1
+        for (i in 0 until w * h) if (px[i] ushr 24 > 8) {
+            val x = i % w; val y = i / w; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+        }
+        if (x1 < 0 || (x1 - x0 + 1) * (y1 - y0 + 1) < 64) return null
         val margin = (max(x1 - x0, y1 - y0) * 0.01f).toInt()
         val l = max(0, x0 - margin); val t = max(0, y0 - margin)
         return Bitmap.createBitmap(full, l, t, min(w, x1 + margin + 1) - l, min(h, y1 + margin + 1) - t)
+    }
+
+    // ---- touch-up tools ----
+
+    private fun setMode(m: Int) {
+        if (m != MODE_NONE && photo == null) return
+        if (m != MODE_NONE && masked == null) masked = Bitmap.createBitmap(photo!!.width, photo!!.height, Bitmap.Config.ARGB_8888)
+        val leaving = mode != MODE_NONE && m == MODE_NONE
+        mode = m
+        toolBtns.forEach { (k, b) -> b.alpha = if (mode == MODE_NONE || k == mode) 1f else 0.55f; b.text = toolLabel(k) }
+        if (leaving) cut = masked?.let { crop(it) }
+        when (mode) {
+            MODE_PICK -> { status.text = "Tap what you want to keep. Tap more spots to add more of it."; ensureSam() }
+            MODE_ERASE -> status.text = "Rub out anything you don't want with your finger."
+            MODE_RESTORE -> status.text = "Paint back parts that got cut off by mistake."
+            else -> if (leaving) status.text = if (cut == null) "Nothing is left to use. Tap Undo or Tap to pick." else "Looks good? Add text if you like, then save."
+        }
+        render()
+    }
+
+    private fun toolLabel(k: Int) = when (k) {
+        MODE_PICK -> if (mode == k) "Done" else "Tap to pick"
+        MODE_ERASE -> if (mode == k) "Done" else "Erase"
+        else -> if (mode == k) "Done" else "Restore"
+    }
+
+    private fun pushUndo() {
+        masked?.let { undo.addLast(it.copy(Bitmap.Config.ARGB_8888, true)) }
+        while (undo.size > 12) undo.removeFirst()
+        undoBtn.isEnabled = true
+    }
+
+    private fun undoLast() {
+        val prev = undo.removeLastOrNull() ?: return
+        masked = prev
+        if (taps.isNotEmpty() && mode == MODE_PICK) taps.removeAt(taps.size - 1)
+        undoBtn.isEnabled = undo.isNotEmpty()
+        if (mode == MODE_NONE) cut = crop(prev)
+        render()
+    }
+
+    /** Where a touch lands on the photo, in the photo's own pixels, or null if outside. */
+    private fun toPhoto(e: MotionEvent): FloatArray? {
+        val inv = Matrix()
+        if (!preview.imageMatrix.invert(inv)) return null
+        val pt = floatArrayOf(e.x - preview.paddingLeft, e.y - preview.paddingTop)
+        inv.mapPoints(pt)
+        return pt
+    }
+
+    private fun onPreviewTouch(e: MotionEvent): Boolean {
+        if (mode == MODE_NONE || busy) return false
+        val bmp = masked ?: return false
+        val pt = toPhoto(e) ?: return true
+        if (mode == MODE_PICK) {
+            if (e.action == MotionEvent.ACTION_UP && pt[0] in 0f..bmp.width.toFloat() && pt[1] in 0f..bmp.height.toFloat()) pick(pt)
+            return true
+        }
+        val r = max(bmp.width, bmp.height) * 0.035f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 2 * r; strokeCap = Paint.Cap.ROUND
+            if (mode == MODE_ERASE) xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            else { shader = BitmapShader(photo!!, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP); xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
+        }
+        val c = Canvas(bmp)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { pushUndo(); lastX = pt[0]; lastY = pt[1]; c.drawPoint(pt[0], pt[1], paint) }
+            MotionEvent.ACTION_MOVE -> { c.drawLine(lastX, lastY, pt[0], pt[1], paint); lastX = pt[0]; lastY = pt[1] }
+        }
+        preview.invalidate()
+        return true
+    }
+
+    private fun ensureSam() {
+        val p = photo ?: return
+        if (sam != null && samFor === p && samEmbedding != null) return
+        busy = true
+        progress.visibility = View.VISIBLE
+        thread(name = "sticker-sam") {
+            val r = runCatching {
+                val dir = File(filesDir, "sticker_sam")
+                if (!Sam.downloaded(dir)) {
+                    runOnUiThread { status.text = "Getting the tap-to-pick helper (11 MB, one time only)…" }
+                    Sam.download(dir)
+                }
+                runOnUiThread { status.text = "Getting ready…" }
+                val s = sam ?: Sam(dir).also { sam = it }
+                samEmbedding = s.embed(p); samFor = p
+            }
+            runOnUiThread {
+                busy = false
+                progress.visibility = View.GONE
+                if (mode != MODE_PICK) return@runOnUiThread
+                status.text = r.fold({ "Tap what you want to keep. Tap more spots to add more of it." },
+                    { "Couldn't get tap-to-pick ready. Check your internet and try again." })
+                if (r.isFailure) setMode(MODE_NONE)
+            }
+        }
+    }
+
+    private fun pick(pt: FloatArray) {
+        val p = photo ?: return
+        val s = sam ?: return
+        val emb = samEmbedding ?: return
+        busy = true
+        progress.visibility = View.VISIBLE
+        taps.add(pt)
+        val points = taps.toList()
+        thread(name = "sticker-pick") {
+            val r = runCatching { s.mask(emb, p, points) }
+            runOnUiThread {
+                busy = false
+                progress.visibility = View.GONE
+                r.onSuccess { m ->
+                    pushUndo()
+                    val w = p.width; val h = p.height
+                    val px = IntArray(w * h); p.getPixels(px, 0, w, 0, 0, w, h)
+                    for (i in 0 until w * h) px[i] = if (m[i]) px[i] or (0xFF shl 24) else 0
+                    masked = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).copy(Bitmap.Config.ARGB_8888, true)
+                    status.text = "Got it. Tap more spots to add, or tap Done."
+                    render()
+                }.onFailure { taps.removeAt(taps.size - 1); status.text = "That didn't work, try tapping again." }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { sam?.close() }
     }
 
     /** The sticker as it will be saved: fills a canvas of at most 512 px, white outline, optional text. */
@@ -265,10 +445,17 @@ class StickerMakerActivity : Activity() {
     }
 
     private fun render() {
+        if (mode != MODE_NONE && masked != null) {
+            faded.setImageBitmap(photo); faded.visibility = View.VISIBLE
+            preview.setImageBitmap(masked)
+            return
+        }
+        faded.visibility = View.GONE
         preview.setImageBitmap(compose())
     }
 
     private fun saveSticker() {
+        if (mode != MODE_NONE) setMode(MODE_NONE)
         val bmp = compose() ?: return
         val name = packName.text.toString().ifBlank { MAKER_PACK }
         val ok = runCatching { StickerPacks.addMade(this, name, bmp) }.isSuccess
@@ -280,5 +467,9 @@ class StickerMakerActivity : Activity() {
         private const val REQ_CAMERA = 1
         private const val REQ_PICK = 2
         const val MAKER_PACK = "My stickers"
+        private const val MODE_NONE = 0
+        private const val MODE_PICK = 1
+        private const val MODE_ERASE = 2
+        private const val MODE_RESTORE = 3
     }
 }
