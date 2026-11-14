@@ -115,6 +115,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val toolbar: ViewGroup = findViewById(R.id.toolbar)
     private val toolbarContainer: View = findViewById(R.id.toolbar_container)
     private val pinnedKeys: ViewGroup = findViewById(R.id.pinned_keys)
+    private var rightBox: View? = null
+    private var barEditing = false
+    private var barDragging = false
     private val suggestionsStrip: ViewGroup = findViewById(R.id.suggestions_strip)
     private val toolbarExpandKey = findViewById<ImageButton>(R.id.suggestions_strip_toolbar_key)
     private val incognitoIcon = KeyboardIconsSet.instance.getNewDrawable(ToolbarKey.INCOGNITO.name, context)
@@ -156,7 +159,13 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         // toolbar keys setup (no need to hide them any more when locked, because then suggestion strip is gone anyway
         rebuildToolbarKeys()
         // Open Keyboard: buttons can be dragged between the menu and the bar while the menu is open
-        setOnDragListener { _, event -> helium314.keyboard.latin.KeyboardMenu.onBarDrag(this, event, toolbar) }
+        setOnDragListener { _, event ->
+            // while moving buttons around, the right-most one sits in the bar like the others
+            if (event.action == android.view.DragEvent.ACTION_DRAG_STARTED) { barDragging = true; syncRightKey() }
+            val r = helium314.keyboard.latin.KeyboardMenu.onBarDrag(this, event, toolbar)
+            if (event.action == android.view.DragEvent.ACTION_DRAG_ENDED) { barDragging = false; barEditing = false; post { syncRightKey() } }
+            r
+        }
         // set min with of the toolbar so the weight of the toolbar keys actually does something.
         // Open Keyboard: keep it matched whenever the space changes (e.g. the mic appears or goes
         // on the right), otherwise the buttons overflow and a scroll bar shows
@@ -207,7 +216,6 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     }
 
     // Open Keyboard: the bar's right-most button stays at the right edge while suggestions show (Jarrod's rule)
-    private var rightBox: View? = null
     private fun addRightKey(colors: Colors) {
         rightBox = null
         val last = (if (toolbar.childCount > 0) toolbar.getChildAt(toolbar.childCount - 1) else null) as? ImageButton ?: return
@@ -221,14 +229,29 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         if (last.colorFilter == null) copy.clearColorFilter()
         copy.isVisible = last.isVisible
         copy.setOnClickListener { last.performClick() }
-        copy.setOnLongClickListener { last.performLongClick() }
+        copy.setOnLongClickListener {
+            barEditing = true; syncRightKey()
+            last.post {
+                if (!last.performLongClick()) { barEditing = false; syncRightKey() }
+                else postDelayed({ if (!barDragging) { barEditing = false; syncRightKey() } }, 1500)
+            }
+            true
+        }
         val box = LinearLayout(context)
         box.addView(copy)
         pinnedKeys.addView(box, 0)
         rightBox = box
         syncRightKey()
     }
-    private fun syncRightKey() { rightBox?.isVisible = !toolbarContainer.isVisible }
+    /** The right-most button always sits at the far right; the others spread out evenly to its left. */
+    private fun syncRightKey() {
+        val box = rightBox ?: return
+        val last = (box as? ViewGroup)?.getChildAt(0)?.tag?.let { tag ->
+            (0 until toolbar.childCount).map { toolbar.getChildAt(it) }.lastOrNull { it.tag == tag } } ?: return
+        val editing = barEditing || barDragging
+        box.isVisible = !editing
+        last.visibility = if (editing) VISIBLE else GONE
+    }
 
     private lateinit var listener: Listener
     private var suggestedWords = SuggestedWords.emptyInstance
@@ -640,6 +663,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         val show = Settings.getValues().mShowsVoiceInputKey
         toolbar.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
         pinnedKeys.findViewWithTag<View>(ToolbarKey.VOICE)?.isVisible = show
+        syncRightKey()
     }
 
     /** Highlights the mic keys while voice typing is listening. */
