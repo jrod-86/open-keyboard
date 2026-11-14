@@ -324,8 +324,8 @@ class ImageMakerActivity : Activity() {
         generate.removeCallbacks(ticker)
         if (job.running) {
             val quick = job.model === ImageGen.QUICK
-            generate.text = if (quick) "Drawing…" else if (job.stopping) "Stopping…" else "■  Stop"
-            generate.isEnabled = !quick && !job.stopping
+            generate.text = if (job.stopping) "Stopping…" else "■  Stop"
+            generate.isEnabled = !job.stopping
             progress.visibility = View.VISIBLE
             progress.isIndeterminate = job.stageIndex < 0
             progress.progress = job.overall(this)

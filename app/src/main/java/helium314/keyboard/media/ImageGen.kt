@@ -131,8 +131,8 @@ object ImageGen {
         cacheDir?.let { runCatching { android.system.Os.setenv("GGML_OPENCL_KERNEL_CACHE_DIR", File(it, "opencl").apply { mkdirs() }.path, true) } }
         gpuLib = fast && runCatching { System.loadLibrary("sdjni_gpu") }.onFailure { Log.i("ImageMaker", "no graphics engine: $it") }.isSuccess
         if (!gpuLib) System.loadLibrary("sdjni")
-        Log.i("ImageMaker", "engine: ${if (gpuLib) "i8mm+opencl" else "basic"}, threads ${threads()}, graphics chip: ${gpu()}")
         libLoaded = true
+        Log.i("ImageMaker", "engine: ${if (gpuLib) "i8mm+opencl" else "basic"}, threads ${threads()}")
     }
 
     private fun threads() = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
