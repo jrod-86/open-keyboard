@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +63,7 @@ fun BackupRestorePreference(setting: Setting) {
     var lockedRestore by rememberSaveable { mutableStateOf<String?>(null) }
     val restoreLauncher = restoreLauncher(onLocked = { lockedRestore = it.toString() }) { error = it }
     Preference(name = setting.title, onClick = { showDialog = true })
+    WeeklyBackupPreference()
     if (askBackupPassword) PasswordDialog(
         title = "Lock your backup",
         text = "Pick a password. The backup is locked with it, and you'll need it to restore. Nobody else can open the file, " +
@@ -108,24 +110,6 @@ fun BackupRestorePreference(setting: Setting) {
 private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
     val ctx = LocalContext.current
     return filePicker { uri ->
-        // zip all files matching the backup patterns
-        // essentially this is the typed words information, and user-added dictionaries
-        val filesDir = ctx.filesDir ?: return@filePicker
-        val filesPath = filesDir.path + File.separator
-        val files = mutableListOf<File>()
-        filesDir.walk().forEach { file ->
-            val path = file.path.replace(filesPath, "")
-            if (file.isFile && backupFilePatterns.any { path.matches(it) })
-                files.add(file)
-        }
-        val protectedFilesDir = DeviceProtectedUtils.getFilesDir(ctx)
-        val protectedFilesPath = protectedFilesDir.path + File.separator
-        val protectedFiles = mutableListOf<File>()
-        protectedFilesDir.walk().forEach { file ->
-            val path = file.path.replace(protectedFilesPath, "")
-            if (file.isFile && backupFilePatterns.any { path.matches(it) })
-                protectedFiles.add(file)
-        }
         val wait = CountDownLatch(1)
         val password = pendingPassword
         pendingPassword = null
@@ -134,43 +118,7 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
             try {
                 val target = if (password != null) plainFile.outputStream() else ctx.getActivity()?.contentResolver?.openOutputStream(uri)
                 target?.use { os ->
-                    // write files to zip
-                    val zipStream = ZipOutputStream(os)
-                    files.forEach {
-                        val fileStream = FileInputStream(it).buffered()
-                        zipStream.putNextEntry(ZipEntry(it.path.replace(filesPath, "")))
-                        fileStream.copyTo(zipStream, 1024)
-                        fileStream.close()
-                        zipStream.closeEntry()
-                    }
-                    protectedFiles.forEach {
-                        val fileStream = FileInputStream(it).buffered()
-                        zipStream.putNextEntry(ZipEntry(it.path.replace(protectedFilesDir.path, "unprotected")))
-                        fileStream.copyTo(zipStream, 1024)
-                        fileStream.close()
-                        zipStream.closeEntry()
-                    }
-                    val dbFile = ctx.getDatabasePath(Database.NAME)
-                    if (dbFile.exists()) {
-                        val fileStream = FileInputStream(dbFile).buffered()
-                        zipStream.putNextEntry(ZipEntry(Database.NAME))
-                        fileStream.copyTo(zipStream, 1024)
-                        fileStream.close()
-                        zipStream.closeEntry()
-                    }
-                    zipStream.putNextEntry(ZipEntry(PREFS_FILE_NAME))
-                    settingsToJsonStream(ctx.prefs().all, zipStream)
-                    zipStream.closeEntry()
-                    zipStream.putNextEntry(ZipEntry(PROTECTED_PREFS_FILE_NAME))
-                    settingsToJsonStream(ctx.protectedPrefs().all, zipStream)
-                    zipStream.closeEntry()
-                    // Open Keyboard: our other settings files (per-app settings, stickers, translate, voice…)
-                    BackupCrypto.extraPrefs(ctx).forEach { (name, sp) ->
-                        zipStream.putNextEntry(ZipEntry(name))
-                        settingsToJsonStream(sp.all, zipStream)
-                        zipStream.closeEntry()
-                    }
-                    zipStream.close()
+                    writeBackupZip(ctx, os)
                 }
                 if (password != null) {
                     ctx.getActivity()?.contentResolver?.openOutputStream(uri)?.use { BackupCrypto.encrypt(plainFile, it, password) }
@@ -439,5 +387,105 @@ private fun PasswordDialog(
             if (onSkip != null) androidx.compose.material3.TextButton(onClick = onSkip) { Text("No password") }
             else androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
         },
+    )
+}
+
+/** Open Keyboard: the backup zip itself, used by the Backup button and the weekly automatic backup. */
+internal fun writeBackupZip(ctx: android.content.Context, os: OutputStream) {
+    // zip all files matching the backup patterns
+    val filesDir = ctx.filesDir ?: return
+    val filesPath = filesDir.path + File.separator
+    val files = filesDir.walk().filter { it.isFile && backupFilePatterns.any { p -> it.path.replace(filesPath, "").matches(p) } }.toList()
+    val protectedFilesDir = DeviceProtectedUtils.getFilesDir(ctx)
+    val protectedFilesPath = protectedFilesDir.path + File.separator
+    val protectedFiles = protectedFilesDir.walk().filter { it.isFile && backupFilePatterns.any { p -> it.path.replace(protectedFilesPath, "").matches(p) } }.toList()
+    // write files to zip
+    val zipStream = ZipOutputStream(os)
+    files.forEach {
+        val fileStream = FileInputStream(it).buffered()
+        zipStream.putNextEntry(ZipEntry(it.path.replace(filesPath, "")))
+        fileStream.copyTo(zipStream, 1024)
+        fileStream.close()
+        zipStream.closeEntry()
+    }
+    protectedFiles.forEach {
+        val fileStream = FileInputStream(it).buffered()
+        zipStream.putNextEntry(ZipEntry(it.path.replace(protectedFilesDir.path, "unprotected")))
+        fileStream.copyTo(zipStream, 1024)
+        fileStream.close()
+        zipStream.closeEntry()
+    }
+    val dbFile = ctx.getDatabasePath(Database.NAME)
+    if (dbFile.exists()) {
+        val fileStream = FileInputStream(dbFile).buffered()
+        zipStream.putNextEntry(ZipEntry(Database.NAME))
+        fileStream.copyTo(zipStream, 1024)
+        fileStream.close()
+        zipStream.closeEntry()
+    }
+    zipStream.putNextEntry(ZipEntry(PREFS_FILE_NAME))
+    settingsToJsonStream(ctx.prefs().all, zipStream)
+    zipStream.closeEntry()
+    zipStream.putNextEntry(ZipEntry(PROTECTED_PREFS_FILE_NAME))
+    settingsToJsonStream(ctx.protectedPrefs().all, zipStream)
+    zipStream.closeEntry()
+    // Open Keyboard: our other settings files (per-app settings, stickers, translate, voice…)
+    BackupCrypto.extraPrefs(ctx).forEach { (name, sp) ->
+        zipStream.putNextEntry(ZipEntry(name))
+        settingsToJsonStream(sp.all, zipStream)
+        zipStream.closeEntry()
+    }
+    zipStream.close()
+}
+
+@Composable
+private fun WeeklyBackupPreference() {
+    val ctx = LocalContext.current
+    var tick by rememberSaveable { mutableStateOf(0) }
+    var pickedFile by rememberSaveable { mutableStateOf<String?>(null) }
+    var manage by rememberSaveable { mutableStateOf(false) }
+    val on = remember(tick) { AutoBackup.isOn(ctx) }
+    val picker = filePicker { uri -> pickedFile = uri.toString() }
+    val desc = remember(tick) {
+        if (!on) "Off. Turn on to save a locked backup about once a week, for example to Google Drive."
+        else {
+            val last = AutoBackup.lastBackup(ctx)
+            val whenText = if (last <= 0) "not yet" else java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(last))
+            "On: " + (AutoBackup.fileName(ctx) ?: "your backup file") + ". Last backup: " + whenText +
+                (AutoBackup.lastError(ctx)?.let { ". Last try failed: $it" } ?: "")
+        }
+    }
+    Preference(name = "Weekly automatic backup", description = desc, onClick = {
+        if (on) manage = true
+        else {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "OpenKeyboard_weekly_backup.okbackup")
+            picker.launch(intent)
+        }
+    })
+    pickedFile?.let { uriText ->
+        PasswordDialog(title = "Lock your weekly backup",
+            text = "Pick a password for the weekly backup. You'll need it to restore. It stays on this phone only, so the keyboard can make backups without asking.",
+            confirm = true, onSkip = null, onDismiss = { pickedFile = null }) { pw ->
+            pickedFile = null
+            val uri = android.net.Uri.parse(uriText)
+            val name = runCatching { ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull()
+            AutoBackup.turnOn(ctx, uri, name, pw)
+            Toast.makeText(ctx, "Weekly backup on. Making the first one now…", Toast.LENGTH_SHORT).show()
+            tick++
+        }
+    }
+    if (manage) ConfirmationDialog(
+        onDismissRequest = { manage = false },
+        title = { Text("Weekly automatic backup") },
+        content = { Text(desc) },
+        confirmButtonText = "Back up now",
+        onConfirmed = {
+            manage = false
+            AutoBackup.runNow(ctx) { ok -> Toast.makeText(ctx, if (ok) "Backup saved" else "Backup failed", Toast.LENGTH_SHORT).show(); tick++ }
+        },
+        neutralButtonText = "Turn off",
+        onNeutral = { manage = false; AutoBackup.turnOff(ctx); tick++ },
     )
 }

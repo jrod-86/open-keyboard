@@ -797,6 +797,7 @@ public class LatinIME extends InputMethodService implements
         super.onStartInput(editorInfo, restarting);
         // Open Keyboard: a "Custom" app uses its own settings
         FancyText.INSTANCE.onStartInput(editorInfo == null ? null : editorInfo.packageName);
+        helium314.keyboard.settings.preferences.AutoBackup.INSTANCE.maybeRun(this); // Open Keyboard: weekly backup, if it's due
         if (AppProfiles.INSTANCE.onStartInput(this, editorInfo == null ? null : editorInfo.packageName))
             mKeyboardSwitcher.setThemeNeedsReload();
 

@@ -115,7 +115,7 @@ object BackupCrypto {
     fun extraPrefs(ctx: Context): List<Pair<String, SharedPreferences>> {
         val main = setOf(ctx.packageName + "_preferences", "${ctx.packageName}_preferences")
         val dp = ctx.createDeviceProtectedStorageContext()
-        return prefsNames(ctx.filesDir).filter { it !in main && !it.startsWith("WebView") }.map { "extra_prefs/$it.json" to ctx.getSharedPreferences(it, Context.MODE_PRIVATE) } +
+        return prefsNames(ctx.filesDir).filter { it !in main && !it.startsWith("WebView") && it != AutoBackup.PREFS }.map { "extra_prefs/$it.json" to ctx.getSharedPreferences(it, Context.MODE_PRIVATE) } +
             prefsNames(dp.filesDir).filter { it !in main && !it.startsWith(ctx.packageName) }.map { "extra_prefs_dp/$it.json" to dp.getSharedPreferences(it, Context.MODE_PRIVATE) }
     }
 
