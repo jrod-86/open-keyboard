@@ -73,6 +73,8 @@ class ClipboardAdapter(
             }
             contentImageView = view.findViewById(R.id.clipboard_entry_image_content)
             clipboardLayoutParams.setItemProperties(view)
+            // Open Keyboard: rounded cards like My info
+            (view.background?.mutate() as? android.graphics.drawable.GradientDrawable)?.cornerRadius = 16 * view.resources.displayMetrics.density
             val colors = Settings.getValues().mColors
             colors.setColor(pinnedIconView, ColorType.CLIPBOARD_PIN)
         }

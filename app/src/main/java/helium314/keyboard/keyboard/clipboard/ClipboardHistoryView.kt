@@ -91,8 +91,11 @@ class ClipboardHistoryView @JvmOverloads constructor(
         }
         placeholderView = findViewById(R.id.clipboard_empty_view)
         clipboardRecyclerView = findViewById<ClipboardHistoryRecyclerView>(R.id.clipboard_list).apply {
-            val colCount = resources.getInteger(R.integer.config_clipboard_keyboard_col_count)
-            layoutManager = StaggeredGridLayoutManager(colCount, StaggeredGridLayoutManager.VERTICAL)
+            // Open Keyboard: small cards, 3 across, swipe for more (like My info)
+            val dp = resources.displayMetrics.density
+            layoutManager = PagedGridLayoutManager(3, (58 * dp).toInt(), (6 * dp).toInt(), (14 * dp).toInt()).apply {
+                dotColor = colors.get(helium314.keyboard.latin.common.ColorType.KEY_TEXT)
+            }
             @Suppress("deprecation") // "no cache" should be fine according to warning in https://developer.android.com/reference/android/view/ViewGroup#setPersistentDrawingCache(int)
             persistentDrawingCache = PERSISTENT_NO_CACHE
             clipboardLayoutParams.setListProperties(this)
