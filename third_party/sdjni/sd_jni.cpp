@@ -5,6 +5,8 @@
 #include <cstring>
 #include "stable-diffusion.h"
 
+extern "C" volatile int ggml_cpu_abort_flag; // patched into ggml-cpu.c, see README
+
 static JavaVM* g_vm = nullptr;
 static jclass g_cls = nullptr;
 static jmethodID g_progress = nullptr;
@@ -101,6 +103,7 @@ Java_helium314_keyboard_media_ImageGen_nativeGenerate(JNIEnv* env, jobject, jlon
                                                       jint width, jint height, jint steps, jfloat cfg, jlong seed) {
     auto* ctx = reinterpret_cast<sd_ctx_t*>(handle);
     if (!ctx) return nullptr;
+    ggml_cpu_abort_flag = 0;
     const char* pr = env->GetStringUTFChars(prompt, nullptr);
     const char* ng = env->GetStringUTFChars(negative, nullptr);
     sd_img_gen_params_t g;
@@ -143,6 +146,7 @@ Java_helium314_keyboard_media_ImageGen_nativeGenerate(JNIEnv* env, jobject, jlon
 
 extern "C" JNIEXPORT void JNICALL
 Java_helium314_keyboard_media_ImageGen_nativeCancel(JNIEnv*, jobject, jlong handle) {
+    ggml_cpu_abort_flag = 1; // stops the step being worked on now, not just before the next one
     if (handle) sd_cancel_generation(reinterpret_cast<sd_ctx_t*>(handle), SD_CANCEL_ALL);
 }
 

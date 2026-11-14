@@ -13,7 +13,7 @@ import java.security.MessageDigest
  * Draws pictures from words on the phone with stable-diffusion.cpp (MIT). Two models, each downloaded once,
  * pinned to a commit and SHA-256 checked:
  * - Quick: SDXS-512 (IDKiro et al., based on DreamShaper / SD 1.5, CreativeML OpenRAIL++-M: use limits apply), one step.
- * - Best quality: Z-Image Turbo (Tongyi-MAI, Apache-2.0) Q3_K GGUF by leejet, with Qwen3-4B-Instruct-2507
+ * - Best quality: Z-Image Turbo (Tongyi-MAI, Apache-2.0) Q4_0 GGUF by leejet, with Qwen3-4B-Instruct-2507
  *   (Apache-2.0) Q3_K_M GGUF by unsloth as its text model and the FLUX.1 decoder (Apache-2.0), 4 or 8 steps.
  */
 object ImageGen {
@@ -27,10 +27,11 @@ object ImageGen {
         "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L)),
         "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.")
 
-    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, a few minutes, 5.6 GB", listOf(
-        Part("z_image_turbo-Q3_K.gguf",
-            "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q3_K.gguf",
-            "4b44bdaa7814f20d7cf144e3939bd93aa32f50660204dd0c2aea5c5376232980", 3143559104L),
+    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.1 GB", listOf(
+        // Q4_0 rather than Q3_K: newer phones have fast int8 maths for Q4_0, none for Q3_K
+        Part("z_image_turbo-Q4_0.gguf",
+            "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q4_0.gguf",
+            "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5", 3683370944L),
         Part("Qwen3-4B-Instruct-2507-Q3_K_M.gguf",
             "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q3_K_M.gguf",
             "9c6e0763577125a994a9bea0bbd7a737ac4498b8a6a4e0f788727553af1806c9", 2075618400L),
@@ -55,7 +56,16 @@ object ImageGen {
     private var ctx = 0L
     private var loadedModel: Model? = null
 
-    private fun dir(c: Context) = File(c.filesDir, "image_maker").apply { mkdirs() }
+    private fun dir(c: Context) = File(c.filesDir, "image_maker").apply { mkdirs() }.also { tidy(it) }
+
+    private var tidied = false
+    /** Deletes model files no model uses any more (e.g. the old Q3_K Z-Image), they're gigabytes. */
+    private fun tidy(d: File) {
+        if (tidied) return
+        tidied = true
+        val keep = MODELS.flatMap { m -> m.parts.flatMap { listOf(it.name, it.name + ".part") } }.toSet()
+        d.listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
+    }
     private fun file(c: Context, p: Part) = File(dir(c), p.name)
 
     fun downloaded(c: Context, m: Model) = m.parts.all { file(c, it).length() == it.size }
@@ -107,7 +117,13 @@ object ImageGen {
 
     @Synchronized
     fun ensureLoaded(c: Context, m: Model): Long {
-        if (!libLoaded) { System.loadLibrary("sdjni"); libLoaded = true }
+        if (!libLoaded) {
+            // newer phones (Armv8.6+, e.g. Snapdragon 8 Gen 2/3) get a build using their faster int8 maths
+            val fast = runCatching { File("/proc/cpuinfo").readText().contains(" i8mm") }.getOrDefault(false)
+            if (!fast || runCatching { System.loadLibrary("sdjni_i8mm") }.isFailure) System.loadLibrary("sdjni")
+            android.util.Log.i("ImageMaker", "engine: ${if (fast) "i8mm" else "basic"}, threads ${(Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)}")
+            libLoaded = true
+        }
         if (loadedModel !== m) close()
         if (ctx == 0L) {
             val threads = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)

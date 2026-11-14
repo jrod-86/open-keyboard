@@ -151,7 +151,7 @@ class ImageMakerActivity : Activity() {
             text = "✨  Generate"; isAllCaps = false; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             typeface = android.graphics.Typeface.DEFAULT_BOLD; stateListAnimator = null
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(purple, blue)).apply { cornerRadius = dp(26f).toFloat() }
-            setOnClickListener { if (drawing) { ImageJob.stop(); show() } else start() }
+            setOnClickListener { if (drawing) { ImageJob.stop(this@ImageMakerActivity); show() } else start() }
         }
         root.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52f)).apply { topMargin = pad * 3 / 4 })
 
@@ -297,8 +297,8 @@ class ImageMakerActivity : Activity() {
         generate.removeCallbacks(ticker)
         if (job.running) {
             val quick = job.model === ImageGen.QUICK
-            generate.text = if (quick) "Drawing…" else "■  Stop"
-            generate.isEnabled = !quick
+            generate.text = if (quick) "Drawing…" else if (job.stopping) "Stopping…" else "■  Stop"
+            generate.isEnabled = !quick && !job.stopping
             progress.visibility = View.VISIBLE
             progress.isIndeterminate = job.stageIndex < 0
             progress.progress = job.overall(this)

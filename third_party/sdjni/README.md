@@ -12,3 +12,10 @@ only the CLIP tokenizer is built in (SD 1.x models), which keeps the library abo
     llvm-strip -o app/src/main/jniLibs/arm64-v8a/libsdjni.so build/libsdjni.so
 
 Model: SDXS-512 Q8_0 GGUF (CreativeML OpenRAIL++-M), downloaded by the app on first use (see media/ImageGen.kt).
+
+Patch to ggml (in the stable-diffusion.cpp checkout): `ggml/src/ggml-cpu/ggml-cpu.c` gets a global
+`volatile int ggml_cpu_abort_flag` that the graph loop checks next to `cplan->abort_callback`, so Stop ends a long
+drawing step part way through instead of waiting for it to finish.
+
+A second copy, `libsdjni_i8mm.so`, is built the same way with `armv8.6-a+dotprod+i8mm+fp16` in place of
+`armv8.2-a+dotprod+fp16`; the app loads it when /proc/cpuinfo lists i8mm.

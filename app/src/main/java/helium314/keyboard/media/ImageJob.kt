@@ -108,7 +108,8 @@ object ImageJob {
         skipped = if (ImageGen.isOpen(m)) setOf(0) else emptySet()
         enter(if (0 in skipped) 1 else 0)
         startedAt = System.currentTimeMillis()
-        ImageGen.progressListener = { s, t -> if (t > 1) { enter(2); step = s; total = t; changed(app) } }
+        ImageGen.progressListener = null // counts tensors loaded, not drawing steps
+        stopping = false
         ImageGen.stageListener = { st, done, all ->
             when (st) {
                 "conditioning", "preparing" -> enter(1)
@@ -132,13 +133,17 @@ object ImageJob {
             Log.i("ImageMaker", "finished in ${tookMs / 1000}s (stages ms: ${took.joinToString()}): ${r.exceptionOrNull()?.toString() ?: "ok"}")
             ImageGen.progressListener = null; ImageGen.stageListener = null
             result = r.getOrNull()
-            error = r.exceptionOrNull()?.let { if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}" }
+            error = r.exceptionOrNull()?.let {
+                if (stopping) "Stopped." else if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}"
+            }
             running = false
             changed(app)
         }
     }
 
-    fun stop() { if (running) { stage = "Stopping…"; ImageGen.cancel() } }
+    @Volatile var stopping = false; private set
+
+    fun stop(ctx: Context) { if (running && !stopping) { stopping = true; ImageGen.cancel(); changed(ctx.applicationContext) } }
 
     /** Forget a finished picture once it's been shown or used. */
     fun clear() { if (!running) { result = null; error = null } }
