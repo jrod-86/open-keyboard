@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">鍵盤語言</string>
     <string name="ok_tile_add_language">+ 新增語言</string>
     <string name="ok_tile_add_edit">+ 新增 / 編輯</string>
+    <string name="ok_tile_this_app">此應用程式</string>
 </resources>

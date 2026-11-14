@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">キーボードの言語</string>
     <string name="ok_tile_add_language">+ 言語を追加</string>
     <string name="ok_tile_add_edit">+ 追加 / 編集</string>
+    <string name="ok_tile_this_app">このアプリ</string>
 </resources>

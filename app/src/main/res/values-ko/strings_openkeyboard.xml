@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">키보드 언어</string>
     <string name="ok_tile_add_language">+ 언어 추가</string>
     <string name="ok_tile_add_edit">+ 추가 / 편집</string>
+    <string name="ok_tile_this_app">이 앱</string>
 </resources>

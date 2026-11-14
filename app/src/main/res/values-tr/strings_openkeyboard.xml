@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">Klavye dili</string>
     <string name="ok_tile_add_language">+ Dil ekle</string>
     <string name="ok_tile_add_edit">+ Ekle / düzenle</string>
+    <string name="ok_tile_this_app">Bu uygulama</string>
 </resources>

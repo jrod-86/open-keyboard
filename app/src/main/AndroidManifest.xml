@@ -119,6 +119,11 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/media_paths" />
         </provider>
 
+        <activity android:name="helium314.keyboard.latin.AppProfilesActivity"
+            android:label="Per-app settings"
+            android:theme="@style/platformActivityTheme"
+            android:exported="false" />
+
         <activity android:name="helium314.keyboard.latin.FeedbackActivity"
             android:label="Bug report"
             android:theme="@style/platformActivityTheme"

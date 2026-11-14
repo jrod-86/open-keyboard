@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">ភាសាក្ដារចុច</string>
     <string name="ok_tile_add_language">+ បន្ថែមភាសា</string>
     <string name="ok_tile_add_edit">+ បន្ថែម / កែ</string>
+    <string name="ok_tile_this_app">កម្មវិធីនេះ</string>
 </resources>

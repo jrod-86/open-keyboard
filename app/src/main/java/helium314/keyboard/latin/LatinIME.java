@@ -802,7 +802,12 @@ public class LatinIME extends InputMethodService implements
         InputMethodSubtype subtypeForLocales = mSubtypeState.getSubtypeForLocales(mRichImm, hintLocales, subtypeForApp);
         if (DebugFlags.DEBUG_ENABLED)
             Log.d(TAG, "onStartInputInternal: hint locales " + hintLocales + ", found matching subtype: " + (subtypeForLocales != null));
-        if (subtypeForLocales != null) {
+        // Open Keyboard: an app's own language ("This app" tile) wins
+        final InputMethodSubtype profileLanguage = editorInfo == null ? null
+                : AppProfiles.INSTANCE.languageFor(this, editorInfo.packageName);
+        if (profileLanguage != null) {
+            mHandler.postSwitchLanguage(profileLanguage);
+        } else if (subtypeForLocales != null) {
             // found a better subtype using hint locales and saved-per-app subtype, that we should switch to.
             mHandler.postSwitchLanguage(subtypeForLocales);
         }

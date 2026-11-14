@@ -29,4 +29,5 @@
     <string name="ok_tile_keyboard_language">Bahasa keyboard</string>
     <string name="ok_tile_add_language">+ Tambah bahasa</string>
     <string name="ok_tile_add_edit">+ Tambah / edit</string>
+    <string name="ok_tile_this_app">Aplikasi ini</string>
 </resources>

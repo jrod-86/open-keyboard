@@ -136,6 +136,12 @@ fun MainSettingsScreen(
                         icon = R.drawable.ic_settings_correction
                     ) { NextScreenIcon() }
                     GroupItem(
+                        name = "Per-app settings",
+                        description = "Different height, language, autocorrect or sounds in each app",
+                        onClick = { ctx.startActivity(android.content.Intent(ctx, helium314.keyboard.latin.AppProfilesActivity::class.java)) },
+                        icon = R.drawable.ic_menu_this_app
+                    ) { NextScreenIcon() }
+                    GroupItem(
                         name = "Plugins",
                         description = "Switch features on or off, and use your other apps from the keyboard",
                         onClick = onClickPlugins,
