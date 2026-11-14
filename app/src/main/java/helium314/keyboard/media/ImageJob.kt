@@ -163,6 +163,10 @@ object ImageJob {
         if (running) return
         val app = ctx.applicationContext
         running = true; result = null; error = null; step = 0; total = 0; model = m
+        // a foreground service tells Android this is work the person is waiting for, so it isn't
+        // cleared to free memory when they switch apps (test 156: killed in the background at step 3 of 4)
+        if (m !== ImageGen.QUICK) runCatching { app.startForegroundService(Intent(app, ImageJobService::class.java)) }
+            .onFailure { Log.w("ImageMaker", "no foreground service: $it") }
         stepsAsked = if (m === ImageGen.QUICK) 1 else steps
         took.fill(0); stageIndex = -1
         // a graphics driver crash takes the whole Image maker down; if the last graphics run never finished, don't use it again
@@ -232,6 +236,7 @@ object ImageJob {
             }
             running = false
             changed(app)
+            ImageJobService.finish()
         }
     }
 
@@ -262,9 +267,16 @@ object ImageJob {
         lastNote = now
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= 33 && ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Image maker", NotificationManager.IMPORTANCE_LOW))
         // only worth a notification for the slow model
         if (model === ImageGen.QUICK) { nm.cancel(NOTE_ID); return }
+        nm.notify(NOTE_ID, buildNote(ctx))
+    }
+
+    const val NOTE_ID_PUBLIC = NOTE_ID
+
+    fun buildNote(ctx: Context): android.app.Notification {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26) nm?.createNotificationChannel(NotificationChannel(CHANNEL, "Image maker", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, ImageMakerActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         @Suppress("DEPRECATION")
@@ -282,6 +294,38 @@ object ImageJob {
                 .setContentText(if (result != null) "Tap to see it" else (error ?: "Stopped"))
             result?.let { b.setLargeIcon(it) }
         }
-        nm.notify(NOTE_ID, b.build())
+        return b.build()
+    }
+}
+
+/** Keeps the Image maker's process alive while a Best picture draws (see [ImageJob.start]). */
+class ImageJobService : android.app.Service() {
+    override fun onBind(intent: Intent?) = null
+
+    override fun onCreate() { super.onCreate(); current = this }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val note = ImageJob.buildNote(this)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 34)
+                startForeground(ImageJob.NOTE_ID_PUBLIC, note, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(ImageJob.NOTE_ID_PUBLIC, note)
+        }.onFailure { Log.w("ImageMaker", "startForeground failed: $it"); stopSelf() }
+        // the picture may already be done (Quick-fast or stopped) by the time the service starts
+        if (!ImageJob.running) finishNow()
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() { if (current === this) current = null; super.onDestroy() }
+
+    private fun finishNow() {
+        // keep the "ready" notification showing after the service goes
+        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_DETACH) else @Suppress("DEPRECATION") stopForeground(false)
+        stopSelf()
+    }
+
+    companion object {
+        @Volatile private var current: ImageJobService? = null
+        fun finish() { Handler(Looper.getMainLooper()).post { current?.finishNow() } }
     }
 }

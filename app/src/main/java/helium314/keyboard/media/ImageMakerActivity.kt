@@ -33,23 +33,21 @@ import kotlin.random.Random
 // natural sentences, in the order subject, setting, camera, lighting, style. No "no ..." phrases: it has no negative prompt.
 private const val ENHANCE_BEST = "You write prompts for an image generator that draws best from long, detailed descriptions " +
     "written as natural sentences, not lists of tags. Turn the user's idea into one rich description of a single picture, " +
-    "120 to 180 words, in this order: first the main subject with specific details (age, build, face, hair, expression, " +
+    "70 to 100 words, in this order: first the main subject with specific details (age, build, face, hair, expression, " +
     "clothing, colours and materials); then what they are doing and their pose; then the setting and background with a few " +
     "concrete objects; then the lighting, time of day and weather; then the camera: shot type, angle, lens and depth of field; " +
     "last the style and mood. Keep everything the user asked for. Wherever the user didn't say, choose fitting, specific " +
-    "details yourself. Describe only what should be in the picture, never what should not. Only put writing in the picture " +
+    "details yourself. Be concise: every phrase must add something you can see, with no filler such as \"beautiful\", " +
+    "\"stunning\" or \"the image shows\". Describe only what should be in the picture, never what should not. Only put writing in the picture " +
     "if the user asked for it, with the exact words in quotes. " +
     "Keep it family-friendly: never describe nudity, sexual content or gore; if the idea asks for any of that, reply only BLOCKED. " +
     "Reply with only the description, in English, as one paragraph.\n\n" +
     "Example idea: a woman next to a sports car\n" +
-    "Example description: A confident woman in her early thirties with shoulder-length wavy auburn hair, light freckles and " +
-    "a warm half smile stands beside a glossy cherry-red sports car. She wears a fitted cream trench coat over a black " +
-    "turtleneck, slim dark jeans and brown leather ankle boots, one hand resting lightly on the car's curved front wing. The " +
-    "car has sleek low lines, chrome-rimmed wheels and a faint reflection of the sky in its polished paint. They are parked " +
-    "on a quiet cobblestone street lined with old stone buildings, flower boxes and a small corner cafe with striped awnings. " +
-    "Golden late-afternoon sunlight comes from the side, casting long soft shadows and a warm glow on her face. Medium " +
-    "full-length shot at eye level, 50mm lens, shallow depth of field with the background gently blurred. Realistic photo, " +
-    "rich natural colours, relaxed and stylish mood."
+    "Example description: A confident woman in her early thirties with wavy auburn hair and a warm smile, wearing a cream " +
+    "trench coat and dark jeans, leans against a glossy cherry-red sports car with chrome wheels. They are parked on a quiet " +
+    "cobblestone street lined with old stone buildings and a small corner cafe. Golden late-afternoon sunlight casts long " +
+    "soft shadows. Medium full-length shot at eye level, 50mm lens, background gently blurred. Realistic photo, rich natural " +
+    "colours, relaxed and stylish mood."
 
 // Quick (SDXS, a small Stable Diffusion model with a CLIP text reader): only the first ~75 words-pieces count,
 // so a short description with the most important things first, in comma-separated phrases.
@@ -377,7 +375,7 @@ class ImageMakerActivity : Activity() {
         enhanceButton.alpha = 0.4f
         val styleName = styles[style].name
         val best = model === ImageGen.BEST
-        status.text = if (best) "🪄 Writing a long, detailed description (about half a minute)…" else "🪄 Making your words more detailed…"
+        status.text = if (best) "🪄 Writing a detailed description…" else "🪄 Making your words more detailed…"
         thread(name = "image-maker-enhance") {
             val out = runCatching {
                 kotlinx.coroutines.runBlocking {
@@ -386,7 +384,7 @@ class ImageMakerActivity : Activity() {
                         engine.setSystemPrompt(if (best) ENHANCE_BEST else ENHANCE_QUICK)
                         val sb = StringBuilder()
                         val style = if (styleName == "None") "" else " The picture style will be: $styleName."
-                        engine.sendUserPrompt("Idea: $words$style", if (best) 360 else 110).collect { sb.append(it) }
+                        engine.sendUserPrompt("Idea: $words$style", if (best) 220 else 110).collect { sb.append(it) }
                         sb.toString()
                     }.also { helium314.keyboard.latin.WritingTools.unloadNow(this@ImageMakerActivity) }
                 }
@@ -540,7 +538,9 @@ class ImageMakerActivity : Activity() {
     }
 
     private fun askDownload(m: ImageGen.Model) {
-        val size = if (m.totalSize > 1_000_000_000L) "%.1f GB".format(m.totalSize / 1e9) else "%d MB".format(m.totalSize / 1_000_000)
+        // only what's still missing (e.g. just the safety check after an update), not the whole model again
+        val need = m.parts.filter { ImageGen.file(this, it).length() != it.size }.sumOf { it.size }.takeIf { it > 0 } ?: m.totalSize
+        val size = if (need > 1_000_000_000L) "%.1f GB".format(need / 1e9) else "%d MB".format(need / 1_000_000)
         AlertDialog.Builder(this)
             .setTitle("Download \"${m.label}\"?")
             .setMessage("It's a one-time download of about $size, so Wi-Fi is best. After that it works without internet.\n\n" + m.about +

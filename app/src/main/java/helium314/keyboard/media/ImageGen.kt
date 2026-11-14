@@ -72,7 +72,7 @@ object ImageGen {
         val keep = MODELS.flatMap { m -> m.parts.flatMap { listOf(it.name, it.name + ".part") } }.toSet()
         d.listFiles()?.filter { it.isFile && it.name !in keep }?.forEach { it.delete() }
     }
-    private fun file(c: Context, p: Part) = File(dir(c), p.name)
+    fun file(c: Context, p: Part) = File(dir(c), p.name)
     fun safetyFile(c: Context) = file(c, SAFETY)
 
     fun downloaded(c: Context, m: Model) = m.parts.all { file(c, it).length() == it.size }
