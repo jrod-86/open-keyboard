@@ -184,11 +184,15 @@ object MediaPanel {
 
         if (pack != null) {
             val ime = ime(context)
-            StickerPacks.byUse(context, pack).forEach { file ->
+            val ordered = StickerPacks.byUse(context, pack)
+            if (ime != null) MediaSender.prefetchAlts(ime, ordered)
+            ordered.forEach { file ->
                 val view = ImageView(context).apply {
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     val p = dp(context, 4f); setPadding(p, p, p, p)
-                    setOnClickListener {
+                    setOnClickListener { v ->
+                        // a quick dip so the tap shows straight away
+                        v.animate().cancel(); v.alpha = 0.4f; v.animate().alpha(1f).setDuration(250).start()
                         if (ime != null) MediaSender.sendPackSticker(ime, file)
                         // stay open to send another, like Gboard
                     }

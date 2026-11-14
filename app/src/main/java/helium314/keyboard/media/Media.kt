@@ -137,7 +137,7 @@ object MediaSender {
                 val ok = runCatching {
                     val bytes = Klipy.download(url)
                     alt.parentFile?.mkdirs()
-                    val part = File(alt.path + ".part"); part.writeBytes(bytes); part.renameTo(alt)
+                    val part = File(alt.path + ".part" + Thread.currentThread().id); part.writeBytes(bytes); part.renameTo(alt)
                 }.isSuccess
                 Handler(Looper.getMainLooper()).post {
                     if (ok && alt.isFile) commit(ime, alt, "image/gif", "Sticker", null)
@@ -146,6 +146,29 @@ object MediaSender {
             }.start()
         }
         else commit(ime, file, StickerPacks.mimeOf(file), "Sticker", null)
+    }
+
+    private val prefetcher = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val prefetching = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** In apps that get GIFs (Messenger…), fetch a pack's GIF copies in the background, most used first, so taps send at once. */
+    fun prefetchAlts(ime: InputMethodService, files: List<File>) {
+        if (!prefersGif(ime)) return
+        files.forEach { file ->
+            val alt = File(file.parentFile, "alt/${file.nameWithoutExtension}.gif")
+            if (alt.isFile || !prefetching.add(alt.path)) return@forEach
+            val url = altUrl(file) ?: run { prefetching.remove(alt.path); return@forEach }
+            prefetcher.execute {
+                runCatching {
+                    if (!alt.isFile) {
+                        val bytes = Klipy.download(url)
+                        alt.parentFile?.mkdirs()
+                        val part = File(alt.path + ".pre"); part.writeBytes(bytes); part.renameTo(alt)
+                    }
+                }
+                prefetching.remove(alt.path)
+            }
+        }
     }
 
     private fun altUrl(file: File): String? = runCatching {
