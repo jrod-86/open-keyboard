@@ -1267,7 +1267,9 @@ public final class InputLogic {
         // Open Keyboard: holding delete just deletes. Words are not re-composed and suggestions are
         // not looked up on every step (that made the text fight back, especially in web based apps);
         // it starts slow, goes word by word after 2.5 s, fast after 4 s, by lines after 8 s. Suggestions come back on release.
-        final boolean held = event.isKeyRepeat();
+        // the first delete of a press also comes marked as a repeat, so a new hold starts after each release
+        final boolean held = event.isKeyRepeat() && !mDeleteNewPress;
+        mDeleteNewPress = false;
         if (held) {
             mDeleteHeld = true;
             if (mWordComposer.isComposingWord()) {
@@ -1474,11 +1476,13 @@ public final class InputLogic {
         return true;
     }
     private long mDeleteStartTime;
+    private boolean mDeleteNewPress = true;
     private int mDeleteStep;
     private boolean mDeleteHeld;
 
     /** Open Keyboard: delete was let go after being held; show suggestions for where the cursor is now. */
     public void onDeleteReleased(final SettingsValues sv) {
+        mDeleteNewPress = true;
         if (!mDeleteHeld) return;
         mDeleteHeld = false;
         if (mConnection.hasSlowInputConnection()) {
