@@ -52,9 +52,12 @@ class ImageMakerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val pad = dp(16f)
         val accent = Color.rgb(66, 133, 244)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
+        root.addView(UiKit.title(this, "Image maker"))
+        root.addView(UiKit.hint(this, "Describe it, pick a style, and your phone draws it."))
         prompt = EditText(this).apply {
             hint = "Describe a picture, e.g. tuxedo cat eating pizza"
             imeOptions = EditorInfo.IME_ACTION_GO
@@ -111,7 +114,7 @@ class ImageMakerActivity : Activity() {
         }
         root.addView(actions)
         setContentView(root)
-        root.fitAboveKeyboard()
+        root.fitAboveKeyboard(includeTop = true)
         prompt.requestFocus()
     }
 

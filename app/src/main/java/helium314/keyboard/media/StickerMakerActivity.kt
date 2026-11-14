@@ -91,18 +91,26 @@ class StickerMakerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val pad = dp(16f)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad * 2, pad, pad) }
-        root.addView(TextView(this).apply { text = "Make a sticker"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f) })
-        status = TextView(this).apply { text = "Take a photo or choose one. The background is removed for you."; setPadding(0, pad / 2, 0, pad / 2) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
+        root.addView(UiKit.title(this, "Sticker maker"))
+        status = UiKit.hint(this, "Take a photo or choose one. The background is removed for you.")
         root.addView(status)
-        val pick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        pick.addView(Button(this).apply { text = "Take photo"; setOnClickListener { takePhoto() } }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        pick.addView(Button(this).apply { text = "Choose picture"; setOnClickListener { choose() } }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val pick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, pad * 3 / 4) }
+        pick.addView(UiKit.outline(this, "Take photo") { takePhoto() }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginEnd = pad / 4 })
+        pick.addView(UiKit.outline(this, "Choose picture") { choose() }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginStart = pad / 4 })
         root.addView(pick)
-        progress = ProgressBar(this).apply { isIndeterminate = true; visibility = View.GONE }
-        root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        val frame = FrameLayout(this).apply { background = checkerboard() }
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true; visibility = View.GONE }
+        root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val frame = FrameLayout(this).apply {
+            background = checkerboard()
+            foreground = UiKit.rounded(this@StickerMakerActivity, 18f, Color.TRANSPARENT, Color.argb(90, 128, 128, 128))
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setRoundRect(0, 0, view.width, view.height, dp(18f).toFloat())
+            }
+            clipToOutline = true
+        }
         faded = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; alpha = 0.35f; visibility = View.GONE }
         preview = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         box = FrameLayout(this).apply { pivotX = 0f; pivotY = 0f }
@@ -115,7 +123,7 @@ class StickerMakerActivity : Activity() {
         frame.setOnTouchListener { _, e -> onPreviewTouch(e) }
         root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         brushPx = dp(14f).toFloat()
-        sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE }
+        sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
         sizeRow.addView(TextView(this).apply { text = "Size"; setPadding(0, 0, pad / 2, 0) })
         sizeRow.addView(SeekBar(this).apply {
             max = 100; progress = 25
@@ -130,14 +138,14 @@ class StickerMakerActivity : Activity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         sizeRow.addView(TextView(this).apply { text = "Pinch to zoom"; alpha = 0.7f; setPadding(pad / 2, 0, 0, 0) })
         root.addView(sizeRow)
-        toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
+        toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
         for ((m, label) in listOf(MODE_PICK to "Tap to pick", MODE_ERASE to "Erase", MODE_RESTORE to "Restore")) {
-            val b = Button(this).apply { text = label; isAllCaps = false; setOnClickListener { setMode(if (mode == m) MODE_NONE else m) } }
+            val b = UiKit.outline(this, label) { setMode(if (mode == m) MODE_NONE else m) }
             toolBtns[m] = b
-            toolRow.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            toolRow.addView(b, LinearLayout.LayoutParams(0, dp(42f), 1f).apply { marginEnd = pad / 4 })
         }
-        undoBtn = Button(this).apply { text = "Undo"; isAllCaps = false; isEnabled = false; setOnClickListener { undoLast() } }
-        toolRow.addView(undoBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
+        undoBtn = UiKit.outline(this, "Undo") { undoLast() }.apply { isEnabled = false; alpha = 0.4f }
+        toolRow.addView(undoBtn, LinearLayout.LayoutParams(0, dp(42f), 0.8f))
         root.addView(toolRow)
         cutOut = CheckBox(this).apply { text = "Remove the background"; isChecked = true; setOnCheckedChangeListener { _, on ->
             if (!on) setMode(MODE_NONE)
@@ -145,8 +153,7 @@ class StickerMakerActivity : Activity() {
             render()
         } }
         root.addView(cutOut)
-        caption = EditText(this).apply {
-            hint = "Add text (optional)"
+        caption = UiKit.field(this, "Add text (optional)").apply {
             isSingleLine = true
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -155,17 +162,22 @@ class StickerMakerActivity : Activity() {
             })
         }
         root.addView(caption)
-        packName = EditText(this).apply { hint = "Pack name"; setText(MAKER_PACK); isSingleLine = true }
-        root.addView(packName)
-        save = Button(this).apply { text = "Save sticker"; isEnabled = false; setOnClickListener { saveSticker() } }
-        root.addView(save)
+        val packRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, pad / 2, 0, pad * 3 / 4) }
+        packRow.addView(TextView(this).apply { text = "Save to pack"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); alpha = 0.8f; setPadding(0, 0, pad * 3 / 4, 0) })
+        packName = UiKit.field(this, "Pack name").apply { setText(MAKER_PACK); isSingleLine = true }
+        packRow.addView(packName, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(packRow)
+        save = UiKit.primary(this, "Save sticker") { saveSticker() }.apply { isEnabled = false; alpha = 0.5f }
+        root.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48f)))
         setContentView(root)
-        root.fitAboveKeyboard()
+        root.fitAboveKeyboard(includeTop = true)
         if (savedInstanceState == null) {
             val given = intent?.getStringExtra(EXTRA_IMAGE)?.let { File(it) }
             if (given != null && given.isFile) process(Uri.fromFile(given)) else choose()
         }
     }
+
+    private fun setUndo(on: Boolean) { undoBtn.isEnabled = on; undoBtn.alpha = if (on) 1f else 0.4f }
 
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
@@ -206,7 +218,7 @@ class StickerMakerActivity : Activity() {
 
     private fun process(uri: Uri) {
         progress.visibility = View.VISIBLE
-        save.isEnabled = false
+        save.isEnabled = false; save.alpha = 0.5f
         status.text = "Cutting it out…"
         thread(name = "sticker-maker") {
             val result = runCatching {
@@ -223,7 +235,7 @@ class StickerMakerActivity : Activity() {
                     status.text = if (cut == null) "Couldn't find anything to cut out. Use Tap to pick and tap what you want."
                         else "Looks good? Add text and save. Not quite right? Use Tap to pick, Erase or Restore."
                     render()
-                    save.isEnabled = true
+                    save.isEnabled = true; save.alpha = 1f
                 }.onFailure { status.text = "Didn't work: ${it.message}" }
             }
         }
@@ -341,14 +353,14 @@ class StickerMakerActivity : Activity() {
     private fun pushUndo() {
         masked?.let { undo.addLast(it.copy(Bitmap.Config.ARGB_8888, true)) }
         while (undo.size > 12) undo.removeFirst()
-        undoBtn.isEnabled = true
+        setUndo(true)
     }
 
     private fun undoLast() {
         val prev = undo.removeLastOrNull() ?: return
         masked = prev
         if (taps.isNotEmpty() && mode == MODE_PICK) taps.removeAt(taps.size - 1)
-        undoBtn.isEnabled = undo.isNotEmpty()
+        setUndo(undo.isNotEmpty())
         if (mode == MODE_NONE) cut = crop(prev)
         render()
     }
@@ -379,7 +391,7 @@ class StickerMakerActivity : Activity() {
             val fx = (x0 + x1) / 2; val fy = (y0 + y1) / 2
             val d = kotlin.math.hypot(x1 - x0, y1 - y0).coerceAtLeast(1f)
             if (!pinching) {
-                if (stroking) { undo.removeLastOrNull()?.let { masked = it; preview.setImageBitmap(it) }; undoBtn.isEnabled = undo.isNotEmpty(); stroking = false }
+                if (stroking) { undo.removeLastOrNull()?.let { masked = it; preview.setImageBitmap(it) }; setUndo(undo.isNotEmpty()); stroking = false }
                 pinching = true; pinchDist = d; pinchZoom = zoom
                 pinchLx = (fx - panX) / zoom; pinchLy = (fy - panY) / zoom
                 ring.hide()

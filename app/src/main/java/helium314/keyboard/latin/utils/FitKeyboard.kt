@@ -9,17 +9,18 @@ import android.view.WindowInsets
  * Open Keyboard: newer Android draws apps edge to edge and ignores "adjustResize", so our own
  * simple screens shrink themselves above the keyboard and system bars here.
  */
-fun View.fitAboveKeyboard() {
+fun View.fitAboveKeyboard(includeTop: Boolean = false) {
     val base = intArrayOf(paddingLeft, paddingTop, paddingRight, paddingBottom)
     setOnApplyWindowInsetsListener { v, insets ->
-        val (_, bottom) = if (Build.VERSION.SDK_INT >= 30) {
+        val (top, bottom) = if (Build.VERSION.SDK_INT >= 30) {
             val bars = insets.getInsets(WindowInsets.Type.systemBars())
             val ime = insets.getInsets(WindowInsets.Type.ime())
-            0 to maxOf(bars.bottom, ime.bottom)
+            bars.top to maxOf(bars.bottom, ime.bottom)
         } else {
-            @Suppress("DEPRECATION") 0 to insets.systemWindowInsetBottom
+            @Suppress("DEPRECATION") insets.systemWindowInsetTop to insets.systemWindowInsetBottom
         }
-        v.setPadding(base[0], base[1], base[2], base[3] + bottom) // the title bar already keeps the top clear
+        // screens without a title bar keep clear of the status bar themselves
+        v.setPadding(base[0], base[1] + if (includeTop) top else 0, base[2], base[3] + bottom)
         insets
     }
     requestApplyInsets()
