@@ -29,6 +29,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.FrameLayout
 import android.graphics.PorterDuffXfermode
 import android.view.MotionEvent
@@ -77,6 +78,15 @@ class StickerMakerActivity : Activity() {
     private var samEmbedding: FloatArray? = null
     @Volatile private var busy = false
     private var lastX = 0f; private var lastY = 0f
+    private lateinit var box: FrameLayout
+    private lateinit var ring: RingView
+    private lateinit var sizeRow: LinearLayout
+    /** Brush radius on screen, in pixels; zooming in makes it finer on the photo. */
+    private var brushPx = 0f
+    private var zoom = 1f; private var panX = 0f; private var panY = 0f
+    private var pinching = false
+    private var stroking = false
+    private var pinchDist = 0f; private var pinchZoom = 1f; private var pinchLx = 0f; private var pinchLy = 0f
     private var photoFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -94,10 +104,32 @@ class StickerMakerActivity : Activity() {
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
         val frame = FrameLayout(this).apply { background = checkerboard() }
         faded = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; alpha = 0.35f; visibility = View.GONE }
-        preview = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setOnTouchListener { _, e -> onPreviewTouch(e) } }
-        frame.addView(faded, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        frame.addView(preview, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        preview = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+        box = FrameLayout(this).apply { pivotX = 0f; pivotY = 0f }
+        box.addView(faded, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        box.addView(preview, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.addView(box, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        ring = RingView(this)
+        frame.addView(ring, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.clipChildren = true
+        frame.setOnTouchListener { _, e -> onPreviewTouch(e) }
         root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        brushPx = dp(14f).toFloat()
+        sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE }
+        sizeRow.addView(TextView(this).apply { text = "Size"; setPadding(0, 0, pad / 2, 0) })
+        sizeRow.addView(SeekBar(this).apply {
+            max = 100; progress = 25
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
+                    brushPx = dp(3f + v * 0.45f).toFloat()
+                    ring.show(frame.width / 2f, frame.height / 2f, brushPx)
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) { ring.hideSoon() }
+            })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        sizeRow.addView(TextView(this).apply { text = "Pinch to zoom"; alpha = 0.7f; setPadding(pad / 2, 0, 0, 0) })
+        root.addView(sizeRow)
         toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE }
         for ((m, label) in listOf(MODE_PICK to "Tap to pick", MODE_ERASE to "Erase", MODE_RESTORE to "Restore")) {
             val b = Button(this).apply { text = label; isAllCaps = false; setOnClickListener { setMode(if (mode == m) MODE_NONE else m) } }
@@ -284,6 +316,8 @@ class StickerMakerActivity : Activity() {
         if (m != MODE_NONE && masked == null) masked = Bitmap.createBitmap(photo!!.width, photo!!.height, Bitmap.Config.ARGB_8888)
         val leaving = mode != MODE_NONE && m == MODE_NONE
         mode = m
+        sizeRow.visibility = if (mode == MODE_ERASE || mode == MODE_RESTORE) View.VISIBLE else View.GONE
+        if (mode == MODE_NONE) setZoom(1f, 0f, 0f)
         toolBtns.forEach { (k, b) -> b.alpha = if (mode == MODE_NONE || k == mode) 1f else 0.55f; b.text = toolLabel(k) }
         if (leaving) cut = masked?.let { crop(it) }
         when (mode) {
@@ -316,24 +350,55 @@ class StickerMakerActivity : Activity() {
         render()
     }
 
-    /** Where a touch lands on the photo, in the photo's own pixels, or null if outside. */
-    private fun toPhoto(e: MotionEvent): FloatArray? {
+    /** Where a point on screen (in the frame) lands on the photo, in the photo's own pixels. */
+    private fun toPhoto(x: Float, y: Float): FloatArray? {
         val inv = Matrix()
         if (!preview.imageMatrix.invert(inv)) return null
-        val pt = floatArrayOf(e.x - preview.paddingLeft, e.y - preview.paddingTop)
+        val pt = floatArrayOf((x - panX) / zoom - preview.paddingLeft, (y - panY) / zoom - preview.paddingTop)
         inv.mapPoints(pt)
         return pt
+    }
+
+    private fun setZoom(z: Float, px: Float, py: Float) {
+        zoom = z
+        val w = box.width.toFloat(); val h = box.height.toFloat()
+        // keep the picture covering the view: no panning off into empty space
+        panX = px.coerceIn(w - w * z, 0f); panY = py.coerceIn(h - h * z, 0f)
+        box.scaleX = z; box.scaleY = z; box.translationX = panX; box.translationY = panY
     }
 
     private fun onPreviewTouch(e: MotionEvent): Boolean {
         if (mode == MODE_NONE || busy) return false
         val bmp = masked ?: return false
-        val pt = toPhoto(e) ?: return true
+        // two fingers: pinch to zoom and drag to move around; a stroke started by the first finger is undone
+        if (e.pointerCount >= 2) {
+            val x0 = e.getX(0); val y0 = e.getY(0); val x1 = e.getX(1); val y1 = e.getY(1)
+            val fx = (x0 + x1) / 2; val fy = (y0 + y1) / 2
+            val d = kotlin.math.hypot(x1 - x0, y1 - y0).coerceAtLeast(1f)
+            if (!pinching) {
+                if (stroking) { undo.removeLastOrNull()?.let { masked = it; preview.setImageBitmap(it) }; undoBtn.isEnabled = undo.isNotEmpty(); stroking = false }
+                pinching = true; pinchDist = d; pinchZoom = zoom
+                pinchLx = (fx - panX) / zoom; pinchLy = (fy - panY) / zoom
+                ring.hide()
+            } else {
+                val z = (pinchZoom * d / pinchDist).coerceIn(1f, 10f)
+                setZoom(z, fx - z * pinchLx, fy - z * pinchLy)
+            }
+            return true
+        }
+        if (pinching) {
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) pinching = false
+            return true
+        }
+        val pt = toPhoto(e.x, e.y) ?: return true
         if (mode == MODE_PICK) {
             if (e.action == MotionEvent.ACTION_UP && pt[0] in 0f..bmp.width.toFloat() && pt[1] in 0f..bmp.height.toFloat()) pick(pt)
             return true
         }
-        val r = max(bmp.width, bmp.height) * 0.035f
+        val imgScale = FloatArray(9).also { preview.imageMatrix.getValues(it) }[Matrix.MSCALE_X].coerceAtLeast(1e-3f)
+        val r = brushPx / (zoom * imgScale)
+        if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) { stroking = false; ring.hideSoon(); return true }
+        ring.show(e.x, e.y, brushPx)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeWidth = 2 * r; strokeCap = Paint.Cap.ROUND
             if (mode == MODE_ERASE) xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
@@ -341,8 +406,8 @@ class StickerMakerActivity : Activity() {
         }
         val c = Canvas(bmp)
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { pushUndo(); lastX = pt[0]; lastY = pt[1]; c.drawPoint(pt[0], pt[1], paint) }
-            MotionEvent.ACTION_MOVE -> { c.drawLine(lastX, lastY, pt[0], pt[1], paint); lastX = pt[0]; lastY = pt[1] }
+            MotionEvent.ACTION_DOWN -> { pushUndo(); stroking = true; lastX = pt[0]; lastY = pt[1]; c.drawPoint(pt[0], pt[1], paint) }
+            MotionEvent.ACTION_MOVE -> if (stroking) { c.drawLine(lastX, lastY, pt[0], pt[1], paint); lastX = pt[0]; lastY = pt[1] }
         }
         preview.invalidate()
         return true
@@ -398,6 +463,21 @@ class StickerMakerActivity : Activity() {
                     render()
                 }.onFailure { taps.removeAt(taps.size - 1); status.text = "That didn't work, try tapping again." }
             }
+        }
+    }
+
+    /** Shows the brush size as a ring where the finger is. */
+    private class RingView(ctx: android.content.Context) : View(ctx) {
+        private var cx = 0f; private var cy = 0f; private var r = 0f; private var on = false
+        private val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 4f; color = Color.argb(160, 0, 0, 0) }
+        private val light = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.WHITE }
+        private val hider = Runnable { on = false; invalidate() }
+        fun show(x: Float, y: Float, radius: Float) { removeCallbacks(hider); cx = x; cy = y; r = radius; on = true; invalidate() }
+        fun hide() { removeCallbacks(hider); on = false; invalidate() }
+        fun hideSoon() { removeCallbacks(hider); postDelayed(hider, 500) }
+        override fun onDraw(canvas: Canvas) {
+            if (!on) return
+            canvas.drawCircle(cx, cy, r, dark); canvas.drawCircle(cx, cy, r, light)
         }
     }
 
