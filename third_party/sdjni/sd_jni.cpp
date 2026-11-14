@@ -5,6 +5,36 @@
 #include <cstring>
 #include "stable-diffusion.h"
 
+static JavaVM* g_vm = nullptr;
+static jclass g_cls = nullptr;
+static jmethodID g_progress = nullptr;
+
+jint JNI_OnLoad(JavaVM* vm, void*) {
+    g_vm = vm;
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
+    jclass c = env->FindClass("helium314/keyboard/media/ImageGen");
+    if (c) {
+        g_cls = reinterpret_cast<jclass>(env->NewGlobalRef(c));
+        g_progress = env->GetStaticMethodID(g_cls, "onProgress", "(II)V");
+        if (env->ExceptionCheck()) { env->ExceptionClear(); g_progress = nullptr; }
+    }
+    return JNI_VERSION_1_6;
+}
+
+static void progress_cb(int step, int steps, float, void*) {
+    if (!g_vm || !g_progress) return;
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+        attached = true;
+    }
+    env->CallStaticVoidMethod(g_cls, g_progress, step, steps);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attached) g_vm->DetachCurrentThread();
+}
+
 static void log_cb(enum sd_log_level_t level, const char* text, void*) {
     if (level >= SD_LOG_INFO) __android_log_print(ANDROID_LOG_INFO, "ImageMaker", "%s", text);
 }
@@ -12,6 +42,7 @@ static void log_cb(enum sd_log_level_t level, const char* text, void*) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring model, jint threads) {
     sd_set_log_callback(log_cb, nullptr);
+    sd_set_progress_callback(progress_cb, nullptr);
     const char* path = env->GetStringUTFChars(model, nullptr);
     sd_ctx_params_t p;
     sd_ctx_params_init(&p);
@@ -20,6 +51,28 @@ Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring 
     p.enable_mmap = true;
     sd_ctx_t* ctx = new_sd_ctx(&p);
     env->ReleaseStringUTFChars(model, path);
+    return reinterpret_cast<jlong>(ctx);
+}
+
+// Models that come as separate files: the picture model, the text model and the decoder.
+extern "C" JNIEXPORT jlong JNICALL
+Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jstring diffusion, jstring llm, jstring vae, jint threads) {
+    sd_set_log_callback(log_cb, nullptr);
+    sd_set_progress_callback(progress_cb, nullptr);
+    const char* d = env->GetStringUTFChars(diffusion, nullptr);
+    const char* l = env->GetStringUTFChars(llm, nullptr);
+    const char* v = env->GetStringUTFChars(vae, nullptr);
+    sd_ctx_params_t p;
+    sd_ctx_params_init(&p);
+    p.diffusion_model_path = d;
+    p.llm_path = l;
+    p.vae_path = v;
+    p.n_threads = threads;
+    p.enable_mmap = true;
+    sd_ctx_t* ctx = new_sd_ctx(&p);
+    env->ReleaseStringUTFChars(diffusion, d);
+    env->ReleaseStringUTFChars(llm, l);
+    env->ReleaseStringUTFChars(vae, v);
     return reinterpret_cast<jlong>(ctx);
 }
 

@@ -39,6 +39,12 @@ class ImageMakerActivity : Activity() {
     private lateinit var actions: LinearLayout
     private val stylePills = mutableListOf<TextView>()
     private var style = 0
+    private val modelPills = mutableListOf<TextView>()
+    private val stepPills = mutableListOf<TextView>()
+    private lateinit var stepRow: View
+    private var model = ImageGen.QUICK
+    private var steps = 4
+    private val prefs by lazy { getSharedPreferences("image_maker", MODE_PRIVATE) }
     private var result: Bitmap? = null
     @Volatile private var working = false
 
@@ -69,13 +75,27 @@ class ImageMakerActivity : Activity() {
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { start(); true } else false }
         }
         root.addView(prompt)
+        model = ImageGen.MODELS.firstOrNull { it.id == prefs.getString("model", "quick") } ?: ImageGen.QUICK
+        steps = prefs.getInt("steps", 4)
+        val modelRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, pad * 3 / 4, 0, 0) }
+        ImageGen.MODELS.forEach { m ->
+            val pill = pill(m.label) { model = m; prefs.edit().putString("model", m.id).apply(); showStyles() }
+            modelPills.add(pill)
+            modelRow.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = pad / 2 })
+        }
+        val steps4 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        listOf(4, 8).forEach { n ->
+            val pill = pill("$n steps") { steps = n; prefs.edit().putInt("steps", n).apply(); showStyles() }
+            stepPills.add(pill)
+            steps4.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = pad / 2 })
+        }
+        stepRow = steps4
+        modelRow.addView(View(this), LinearLayout.LayoutParams(dp(4f), 1))
+        modelRow.addView(steps4)
+        root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(modelRow) })
         val pills = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, pad * 3 / 4, 0, pad * 3 / 4) }
         styles.forEachIndexed { i, (name, _) ->
-            val pill = TextView(this).apply {
-                text = name; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                setPadding(pad, pad / 2, pad, pad / 2); gravity = Gravity.CENTER
-                setOnClickListener { style = i; showStyles() }
-            }
+            val pill = pill(name) { style = i; showStyles() }
             stylePills.add(pill)
             pills.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = pad / 2 })
         }
@@ -83,7 +103,7 @@ class ImageMakerActivity : Activity() {
         generate = Button(this).apply {
             text = "Generate"; isAllCaps = false; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             background = GradientDrawable().apply { cornerRadius = dp(24f).toFloat(); setColor(accent) }
-            setOnClickListener { start() }
+            setOnClickListener { if (working && drawing) { ImageGen.cancel(); status.text = "Stopping…" } else start() }
         }
         root.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48f)))
         // the picture card: picture (or a hint) with the status line and progress under it
@@ -113,6 +133,7 @@ class ImageMakerActivity : Activity() {
             }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginStart = pad / 4; marginEnd = pad / 4 })
         }
         root.addView(actions)
+        showStyles()
         setContentView(root)
         root.fitAboveKeyboard(includeTop = true)
         prompt.requestFocus()
@@ -120,32 +141,56 @@ class ImageMakerActivity : Activity() {
 
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
+    private fun pill(label: String, onClick: () -> Unit) = TextView(this).apply {
+        val pad = dp(14f)
+        text = label; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        setPadding(pad, pad / 2, pad, pad / 2); gravity = Gravity.CENTER
+        setOnClickListener { if (!working) onClick() }
+    }
+
     private fun showStyles() {
-        stylePills.forEachIndexed { i, p ->
-            val on = i == style
+        stepRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
+        val all = stylePills.mapIndexed { i, p -> p to (i == style) } +
+            modelPills.mapIndexed { i, p -> p to (ImageGen.MODELS[i] === model) } +
+            stepPills.mapIndexed { i, p -> p to (listOf(4, 8)[i] == steps) }
+        all.forEach { (p, on) ->
             p.background = GradientDrawable().apply {
                 cornerRadius = dp(18f).toFloat()
                 if (on) setColor(Color.rgb(66, 133, 244)) else { setColor(Color.TRANSPARENT); setStroke(dp(1f), Color.GRAY) }
             }
-            p.setTextColor(if (on) Color.WHITE else status.currentTextColor)
+            p.setTextColor(if (on) Color.WHITE else prompt.currentTextColor)
         }
     }
+
+    @Volatile private var drawing = false
 
     private fun start() {
         if (working) return
         val words = prompt.text.toString().trim()
         if (words.isEmpty()) { status.text = "Type what you'd like a picture of first."; return }
-        if (!ImageGen.downloaded(this)) { askDownload(); return }
-        working = true
-        generate.isEnabled = false
+        val m = model
+        if (!ImageGen.downloaded(this, m)) { askDownload(m); return }
+        working = true; drawing = true
+        generate.text = if (m === ImageGen.QUICK) "Drawing…" else "Stop"
+        generate.isEnabled = m !== ImageGen.QUICK
         progress.isIndeterminate = true; progress.visibility = View.VISIBLE
-        status.text = "Drawing…"
+        status.text = if (m === ImageGen.QUICK) "Drawing…" else "Getting ready… the best quality model takes a few minutes."
         val full = words + styles[style].second
-        thread(name = "image-maker") {
-            val t = System.currentTimeMillis()
-            val r = runCatching { ImageGen.generate(this, full, Random.nextLong(0, Int.MAX_VALUE.toLong())) }
+        val n = steps
+        val t = System.currentTimeMillis()
+        ImageGen.progressListener = { step, total ->
             runOnUiThread {
-                working = false
+                if (!drawing || total <= 1) return@runOnUiThread
+                progress.isIndeterminate = false; progress.progress = (step * 1000 / total).coerceIn(0, 1000)
+                val secs = (System.currentTimeMillis() - t) / 1000
+                status.text = "Drawing… step $step of $total (${secs}s so far)"
+            }
+        }
+        thread(name = "image-maker") {
+            val r = runCatching { ImageGen.generate(this, m, full, Random.nextLong(0, Int.MAX_VALUE.toLong()), n) }
+            runOnUiThread {
+                working = false; drawing = false
+                ImageGen.progressListener = null
                 generate.isEnabled = true; generate.text = "Try again"
                 progress.visibility = View.GONE
                 r.onSuccess {
@@ -153,29 +198,29 @@ class ImageMakerActivity : Activity() {
                     picture.setImageBitmap(it); picture.visibility = View.VISIBLE
                     actions.visibility = View.VISIBLE
                     status.text = "Done in %.0f s. Not quite right? Tap Try again for a different one.".format((System.currentTimeMillis() - t) / 1000f)
-                }.onFailure { status.text = "That didn't work: ${it.message}" }
+                }.onFailure { status.text = if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}" }
             }
         }
     }
 
-    private fun askDownload() {
+    private fun askDownload(m: ImageGen.Model) {
+        val size = if (m.totalSize > 1_000_000_000L) "%.1f GB".format(m.totalSize / 1e9) else "%d MB".format(m.totalSize / 1_000_000)
         AlertDialog.Builder(this)
-            .setTitle("Download the picture maker?")
-            .setMessage("It's a one-time download of about 680 MB, so Wi-Fi is best. After that it works without internet.\n\n" +
-                "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake " +
-                "pictures of real people meant to deceive.")
-            .setPositiveButton("Download") { _, _ -> download() }
+            .setTitle("Download \"${m.label}\"?")
+            .setMessage("It's a one-time download of about $size, so Wi-Fi is best. After that it works without internet.\n\n" + m.about +
+                if (m === ImageGen.BEST) "\n\nIt needs plenty of free memory and takes a few minutes per picture." else "")
+            .setPositiveButton("Download") { _, _ -> download(m) }
             .setNegativeButton("Not now", null)
             .show()
     }
 
-    private fun download() {
+    private fun download(m: ImageGen.Model) {
         working = true
         generate.isEnabled = false
         progress.isIndeterminate = false; progress.progress = 0; progress.visibility = View.VISIBLE
         status.text = "Downloading… keep this screen open."
         thread(name = "image-maker-download") {
-            val r = runCatching { ImageGen.download(this) { f -> runOnUiThread { progress.progress = (f * 1000).toInt(); status.text = "Downloading… %d%%".format((f * 100).toInt()) } } }
+            val r = runCatching { ImageGen.download(this, m) { f -> runOnUiThread { progress.progress = (f * 1000).toInt(); status.text = "Downloading… %d%%".format((f * 100).toInt()) } } }
             runOnUiThread {
                 working = false
                 generate.isEnabled = true
