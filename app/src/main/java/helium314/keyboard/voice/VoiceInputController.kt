@@ -133,6 +133,19 @@ class VoiceInputController(
         listening(false)
     }
 
+    /** True once this session has put text in the box (so an empty box afterwards means the app sent it). */
+    val hasWritten get() = wrote
+
+    /** The app took the message (its send button emptied the box): turn the mic off and drop the rest. */
+    fun onAppSent() {
+        if (!isActive) return
+        Log.i(TAG, "voice stopped: app sent the message")
+        if (running) stop()
+        sessionId++
+        pending.clear(); current = ""; wrote = false; needsLeadingSpace = false
+        resync()
+    }
+
     /** Stops immediately when the text field goes away, keeping what is on screen. */
     fun cancel() {
         val wasActive = isActive

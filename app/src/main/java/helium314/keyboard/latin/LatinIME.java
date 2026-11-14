@@ -724,6 +724,13 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onStartInput(final EditorInfo editorInfo, final boolean restarting) {
+        // Open Keyboard: some apps reset their text box after sending (instead of just emptying it);
+        // the message is gone, so voice typing stops too
+        if (mVoiceInput != null && mVoiceInput.isActive() && mVoiceInput.getHasWritten()) {
+            final InputConnection ic = getCurrentInputConnection();
+            if (ic != null && TextUtils.isEmpty(ic.getTextBeforeCursor(1, 0)) && TextUtils.isEmpty(ic.getTextAfterCursor(1, 0)))
+                mVoiceInput.onAppSent();
+        }
         mHandler.onStartInput(editorInfo, restarting);
     }
 
@@ -1025,10 +1032,11 @@ public class LatinIME extends InputMethodService implements
             // Open Keyboard: the app emptied the field (e.g. its send button) while voice text was
             // still being finished. Drop the rest instead of writing it into the empty box.
             final InputConnection voiceIc = getCurrentInputConnection();
-            final boolean fieldCleared = newSelStart == 0 && newSelEnd == 0 && composingSpanStart == -1
-                    && voiceIc != null && TextUtils.isEmpty(voiceIc.getTextAfterCursor(1, 0));
+            final boolean fieldCleared = newSelStart == 0 && newSelEnd == 0 && mVoiceInput.getHasWritten()
+                    && voiceIc != null && TextUtils.isEmpty(voiceIc.getTextAfterCursor(1, 0))
+                    && TextUtils.isEmpty(voiceIc.getTextBeforeCursor(1, 0));
             if (!fieldCleared) return;
-            mVoiceInput.cancel();
+            mVoiceInput.onAppSent();
         }
         if (isInputViewShown()) SmartCompose.INSTANCE.onTextChanged(this);
         SettingsValues settingsValues = mSettings.getCurrent();
