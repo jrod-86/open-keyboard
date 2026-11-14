@@ -19,6 +19,7 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.GradientDrawable
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
@@ -94,18 +95,17 @@ class StickerMakerActivity : Activity() {
         actionBar?.hide()
         val pad = dp(16f)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
-        root.addView(UiKit.title(this, "Sticker maker"))
+        root.addView(UiKit.shinyTitle(this, "✂️ Sticker maker"))
         status = UiKit.hint(this, "Take a photo or choose one. The background is removed for you.")
         root.addView(status)
         val pick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, pad * 3 / 4) }
-        pick.addView(UiKit.outline(this, "Take photo") { takePhoto() }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginEnd = pad / 4 })
-        pick.addView(UiKit.outline(this, "Choose picture") { choose() }, LinearLayout.LayoutParams(0, dp(44f), 1f).apply { marginStart = pad / 4 })
+        pick.addView(UiKit.chip(this, "📷  Take photo") { takePhoto() }, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { marginEnd = pad / 4 })
+        pick.addView(UiKit.chip(this, "🖼️  Choose picture") { choose() }, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { marginStart = pad / 4 })
         root.addView(pick)
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true; visibility = View.GONE }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val frame = FrameLayout(this).apply {
             background = checkerboard()
-            foreground = UiKit.rounded(this@StickerMakerActivity, 18f, Color.TRANSPARENT, Color.argb(90, 128, 128, 128))
             outlineProvider = object : android.view.ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setRoundRect(0, 0, view.width, view.height, dp(18f).toFloat())
             }
@@ -121,12 +121,19 @@ class StickerMakerActivity : Activity() {
         frame.addView(ring, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         frame.clipChildren = true
         frame.setOnTouchListener { _, e -> onPreviewTouch(e) }
-        root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        // a thin purple-to-blue frame around the preview
+        val border = FrameLayout(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(UiKit.PURPLE, UiKit.ACCENT)).apply { cornerRadius = dp(19.5f).toFloat() }
+            val b = dp(1.5f); setPadding(b, b, b, b)
+        }
+        border.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(border, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         brushPx = dp(14f).toFloat()
         sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
         sizeRow.addView(TextView(this).apply { text = "Size"; setPadding(0, 0, pad / 2, 0) })
         sizeRow.addView(SeekBar(this).apply {
             max = 100; progress = 25
+            progressTintList = android.content.res.ColorStateList.valueOf(UiKit.PURPLE); thumbTintList = progressTintList
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, v: Int, fromUser: Boolean) {
                     brushPx = dp(3f + v * 0.45f).toFloat()
@@ -139,15 +146,15 @@ class StickerMakerActivity : Activity() {
         sizeRow.addView(TextView(this).apply { text = "Pinch to zoom"; alpha = 0.7f; setPadding(pad / 2, 0, 0, 0) })
         root.addView(sizeRow)
         toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
-        for ((m, label) in listOf(MODE_PICK to "Tap to pick", MODE_ERASE to "Erase", MODE_RESTORE to "Restore")) {
-            val b = UiKit.outline(this, label) { setMode(if (mode == m) MODE_NONE else m) }
+        for (m in listOf(MODE_PICK, MODE_ERASE, MODE_RESTORE)) {
+            val b = UiKit.chip(this, toolLabel(m)) { setMode(if (mode == m) MODE_NONE else m) }
             toolBtns[m] = b
             toolRow.addView(b, LinearLayout.LayoutParams(0, dp(42f), 1f).apply { marginEnd = pad / 4 })
         }
-        undoBtn = UiKit.outline(this, "Undo") { undoLast() }.apply { isEnabled = false; alpha = 0.4f }
+        undoBtn = UiKit.chip(this, "↩️ Undo") { undoLast() }.apply { isEnabled = false; alpha = 0.4f }
         toolRow.addView(undoBtn, LinearLayout.LayoutParams(0, dp(42f), 0.8f))
         root.addView(toolRow)
-        cutOut = CheckBox(this).apply { text = "Remove the background"; isChecked = true; setOnCheckedChangeListener { _, on ->
+        cutOut = CheckBox(this).apply { text = "Remove the background"; isChecked = true; buttonTintList = android.content.res.ColorStateList.valueOf(UiKit.PURPLE); setOnCheckedChangeListener { _, on ->
             if (!on) setMode(MODE_NONE)
             toolRow.visibility = if (on && photo != null) View.VISIBLE else View.GONE
             render()
@@ -167,7 +174,7 @@ class StickerMakerActivity : Activity() {
         packName = UiKit.field(this, "Pack name").apply { setText(MAKER_PACK); isSingleLine = true }
         packRow.addView(packName, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(packRow)
-        save = UiKit.primary(this, "Save sticker") { saveSticker() }.apply { isEnabled = false; alpha = 0.5f }
+        save = UiKit.glow(this, "✨  Save sticker") { saveSticker() }.apply { isEnabled = false; alpha = 0.5f }
         root.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48f)))
         setContentView(root)
         root.fitAboveKeyboard(includeTop = true)
@@ -333,7 +340,7 @@ class StickerMakerActivity : Activity() {
         mode = m
         sizeRow.visibility = if (mode == MODE_ERASE || mode == MODE_RESTORE) View.VISIBLE else View.GONE
         if (mode == MODE_NONE) setZoom(1f, 0f, 0f)
-        toolBtns.forEach { (k, b) -> b.alpha = if (mode == MODE_NONE || k == mode) 1f else 0.55f; b.text = toolLabel(k) }
+        toolBtns.forEach { (k, b) -> b.alpha = if (mode == MODE_NONE || k == mode) 1f else 0.55f; b.text = toolLabel(k); UiKit.setChosen(b, k == mode, caption.currentTextColor) }
         if (leaving) cut = masked?.let { crop(it) }
         when (mode) {
             MODE_PICK -> { status.text = "Tap what you want to keep. Tap more spots to add more of it."; ensureSam() }
@@ -344,10 +351,10 @@ class StickerMakerActivity : Activity() {
         render()
     }
 
-    private fun toolLabel(k: Int) = when (k) {
-        MODE_PICK -> if (mode == k) "Done" else "Tap to pick"
-        MODE_ERASE -> if (mode == k) "Done" else "Erase"
-        else -> if (mode == k) "Done" else "Restore"
+    private fun toolLabel(k: Int) = if (mode == k) "✓ Done" else when (k) {
+        MODE_PICK -> "👆 Pick"
+        MODE_ERASE -> "🧽 Erase"
+        else -> "🖌️ Restore"
     }
 
     private fun pushUndo() {
