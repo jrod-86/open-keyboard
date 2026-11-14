@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">テーマ</string>
+    <string name="ok_tile_resize">サイズ変更</string>
+    <string name="ok_tile_stickers">ステッカー</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">音声入力</string>
+    <string name="ok_tile_translate">翻訳</string>
+    <string name="ok_tile_voice_translate">音声翻訳</string>
+    <string name="ok_tile_language">言語</string>
+    <string name="ok_tile_my_info">マイ情報</string>
+    <string name="ok_tile_writing_help">文章アシスト</string>
+    <string name="ok_tile_scan_text">テキストをスキャン</string>
+    <string name="ok_tile_one_handed">片手モード</string>
+    <string name="ok_tile_floating">フローティング</string>
+    <string name="ok_tile_text_editing">テキスト編集</string>
+    <string name="ok_tile_clipboard">クリップボード</string>
+    <string name="ok_tile_emoji">絵文字</string>
+    <string name="ok_tile_undo">元に戻す</string>
+    <string name="ok_tile_redo">やり直し</string>
+    <string name="ok_tile_numbers">数字</string>
+    <string name="ok_tile_split">分割</string>
+    <string name="ok_tile_incognito">シークレット</string>
+    <string name="ok_tile_settings">設定</string>
+    <string name="ok_tile_bug_report">不具合を報告</string>
+    <string name="ok_tile_switch_keyboard">キーボード切替</string>
+    <string name="ok_tile_keyboard_language">キーボードの言語</string>
+    <string name="ok_tile_add_language">+ 言語を追加</string>
+    <string name="ok_tile_add_edit">+ 追加 / 編集</string>
+</resources>

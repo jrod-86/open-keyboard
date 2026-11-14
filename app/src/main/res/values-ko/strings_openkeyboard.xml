@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">테마</string>
+    <string name="ok_tile_resize">크기 조절</string>
+    <string name="ok_tile_stickers">스티커</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">음성 입력</string>
+    <string name="ok_tile_translate">번역</string>
+    <string name="ok_tile_voice_translate">음성 번역</string>
+    <string name="ok_tile_language">언어</string>
+    <string name="ok_tile_my_info">내 정보</string>
+    <string name="ok_tile_writing_help">글쓰기 도우미</string>
+    <string name="ok_tile_scan_text">텍스트 스캔</string>
+    <string name="ok_tile_one_handed">한 손 모드</string>
+    <string name="ok_tile_floating">플로팅</string>
+    <string name="ok_tile_text_editing">텍스트 편집</string>
+    <string name="ok_tile_clipboard">클립보드</string>
+    <string name="ok_tile_emoji">이모지</string>
+    <string name="ok_tile_undo">실행 취소</string>
+    <string name="ok_tile_redo">다시 실행</string>
+    <string name="ok_tile_numbers">숫자</string>
+    <string name="ok_tile_split">분할</string>
+    <string name="ok_tile_incognito">시크릿</string>
+    <string name="ok_tile_settings">설정</string>
+    <string name="ok_tile_bug_report">버그 신고</string>
+    <string name="ok_tile_switch_keyboard">키보드 전환</string>
+    <string name="ok_tile_keyboard_language">키보드 언어</string>
+    <string name="ok_tile_add_language">+ 언어 추가</string>
+    <string name="ok_tile_add_edit">+ 추가 / 편집</string>
+</resources>

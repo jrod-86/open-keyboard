@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">Тема</string>
+    <string name="ok_tile_resize">Размер</string>
+    <string name="ok_tile_stickers">Стикеры</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">Голосовой ввод</string>
+    <string name="ok_tile_translate">Перевод</string>
+    <string name="ok_tile_voice_translate">Голосовой перевод</string>
+    <string name="ok_tile_language">Язык</string>
+    <string name="ok_tile_my_info">Мои данные</string>
+    <string name="ok_tile_writing_help">Помощь в письме</string>
+    <string name="ok_tile_scan_text">Сканировать текст</string>
+    <string name="ok_tile_one_handed">Одной рукой</string>
+    <string name="ok_tile_floating">Плавающая</string>
+    <string name="ok_tile_text_editing">Редактирование</string>
+    <string name="ok_tile_clipboard">Буфер обмена</string>
+    <string name="ok_tile_emoji">Эмодзи</string>
+    <string name="ok_tile_undo">Отменить</string>
+    <string name="ok_tile_redo">Повторить</string>
+    <string name="ok_tile_numbers">Цифры</string>
+    <string name="ok_tile_split">Разделить</string>
+    <string name="ok_tile_incognito">Инкогнито</string>
+    <string name="ok_tile_settings">Настройки</string>
+    <string name="ok_tile_bug_report">Сообщить об ошибке</string>
+    <string name="ok_tile_switch_keyboard">Сменить клавиатуру</string>
+    <string name="ok_tile_keyboard_language">Язык клавиатуры</string>
+    <string name="ok_tile_add_language">+ Добавить язык</string>
+    <string name="ok_tile_add_edit">+ Добавить / изменить</string>
+</resources>

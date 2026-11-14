@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">Giao diện</string>
+    <string name="ok_tile_resize">Đổi cỡ</string>
+    <string name="ok_tile_stickers">Nhãn dán</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">Nhập bằng giọng nói</string>
+    <string name="ok_tile_translate">Dịch</string>
+    <string name="ok_tile_voice_translate">Dịch giọng nói</string>
+    <string name="ok_tile_language">Ngôn ngữ</string>
+    <string name="ok_tile_my_info">Thông tin của tôi</string>
+    <string name="ok_tile_writing_help">Hỗ trợ viết</string>
+    <string name="ok_tile_scan_text">Quét văn bản</string>
+    <string name="ok_tile_one_handed">Một tay</string>
+    <string name="ok_tile_floating">Nổi</string>
+    <string name="ok_tile_text_editing">Sửa văn bản</string>
+    <string name="ok_tile_clipboard">Bộ nhớ tạm</string>
+    <string name="ok_tile_emoji">Emoji</string>
+    <string name="ok_tile_undo">Hoàn tác</string>
+    <string name="ok_tile_redo">Làm lại</string>
+    <string name="ok_tile_numbers">Số</string>
+    <string name="ok_tile_split">Tách</string>
+    <string name="ok_tile_incognito">Ẩn danh</string>
+    <string name="ok_tile_settings">Cài đặt</string>
+    <string name="ok_tile_bug_report">Báo lỗi</string>
+    <string name="ok_tile_switch_keyboard">Đổi bàn phím</string>
+    <string name="ok_tile_keyboard_language">Ngôn ngữ bàn phím</string>
+    <string name="ok_tile_add_language">+ Thêm ngôn ngữ</string>
+    <string name="ok_tile_add_edit">+ Thêm / sửa</string>
+</resources>

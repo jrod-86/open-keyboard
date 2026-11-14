@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">主題</string>
+    <string name="ok_tile_resize">調整大小</string>
+    <string name="ok_tile_stickers">貼圖</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">語音輸入</string>
+    <string name="ok_tile_translate">翻譯</string>
+    <string name="ok_tile_voice_translate">語音翻譯</string>
+    <string name="ok_tile_language">語言</string>
+    <string name="ok_tile_my_info">我的資訊</string>
+    <string name="ok_tile_writing_help">寫作助理</string>
+    <string name="ok_tile_scan_text">掃描文字</string>
+    <string name="ok_tile_one_handed">單手</string>
+    <string name="ok_tile_floating">浮動</string>
+    <string name="ok_tile_text_editing">文字編輯</string>
+    <string name="ok_tile_clipboard">剪貼簿</string>
+    <string name="ok_tile_emoji">表情符號</string>
+    <string name="ok_tile_undo">復原</string>
+    <string name="ok_tile_redo">重做</string>
+    <string name="ok_tile_numbers">數字</string>
+    <string name="ok_tile_split">分割</string>
+    <string name="ok_tile_incognito">無痕</string>
+    <string name="ok_tile_settings">設定</string>
+    <string name="ok_tile_bug_report">回報問題</string>
+    <string name="ok_tile_switch_keyboard">切換鍵盤</string>
+    <string name="ok_tile_keyboard_language">鍵盤語言</string>
+    <string name="ok_tile_add_language">+ 新增語言</string>
+    <string name="ok_tile_add_edit">+ 新增 / 編輯</string>
+</resources>

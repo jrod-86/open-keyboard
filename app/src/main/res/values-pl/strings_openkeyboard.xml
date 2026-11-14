@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">Motyw</string>
+    <string name="ok_tile_resize">Rozmiar</string>
+    <string name="ok_tile_stickers">Naklejki</string>
+    <string name="ok_tile_gifs">GIF-y</string>
+    <string name="ok_tile_voice_typing">Pisanie głosem</string>
+    <string name="ok_tile_translate">Tłumacz</string>
+    <string name="ok_tile_voice_translate">Tłumaczenie głosu</string>
+    <string name="ok_tile_language">Język</string>
+    <string name="ok_tile_my_info">Moje dane</string>
+    <string name="ok_tile_writing_help">Pomoc w pisaniu</string>
+    <string name="ok_tile_scan_text">Skanuj tekst</string>
+    <string name="ok_tile_one_handed">Jedna ręka</string>
+    <string name="ok_tile_floating">Pływająca</string>
+    <string name="ok_tile_text_editing">Edycja tekstu</string>
+    <string name="ok_tile_clipboard">Schowek</string>
+    <string name="ok_tile_emoji">Emoji</string>
+    <string name="ok_tile_undo">Cofnij</string>
+    <string name="ok_tile_redo">Ponów</string>
+    <string name="ok_tile_numbers">Cyfry</string>
+    <string name="ok_tile_split">Podziel</string>
+    <string name="ok_tile_incognito">Incognito</string>
+    <string name="ok_tile_settings">Ustawienia</string>
+    <string name="ok_tile_bug_report">Zgłoś błąd</string>
+    <string name="ok_tile_switch_keyboard">Zmień klawiaturę</string>
+    <string name="ok_tile_keyboard_language">Język klawiatury</string>
+    <string name="ok_tile_add_language">+ Dodaj język</string>
+    <string name="ok_tile_add_edit">+ Dodaj / edytuj</string>
+</resources>

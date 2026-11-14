@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">រចនាបថ</string>
+    <string name="ok_tile_resize">ប្ដូរទំហំ</string>
+    <string name="ok_tile_stickers">ស្ទីគ័រ</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">វាយដោយសំឡេង</string>
+    <string name="ok_tile_translate">បកប្រែ</string>
+    <string name="ok_tile_voice_translate">បកប្រែសំឡេង</string>
+    <string name="ok_tile_language">ភាសា</string>
+    <string name="ok_tile_my_info">ព័ត៌មានខ្ញុំ</string>
+    <string name="ok_tile_writing_help">ជំនួយសរសេរ</string>
+    <string name="ok_tile_scan_text">ស្កេនអក្សរ</string>
+    <string name="ok_tile_one_handed">ដៃម្ខាង</string>
+    <string name="ok_tile_floating">អណ្ដែត</string>
+    <string name="ok_tile_text_editing">កែអត្ថបទ</string>
+    <string name="ok_tile_clipboard">ក្ដារតម្បៀតខ្ទាស់</string>
+    <string name="ok_tile_emoji">អ៊ីម៉ូជី</string>
+    <string name="ok_tile_undo">មិនធ្វើវិញ</string>
+    <string name="ok_tile_redo">ធ្វើវិញ</string>
+    <string name="ok_tile_numbers">លេខ</string>
+    <string name="ok_tile_split">បំបែក</string>
+    <string name="ok_tile_incognito">អនាមិក</string>
+    <string name="ok_tile_settings">ការកំណត់</string>
+    <string name="ok_tile_bug_report">រាយការណ៍កំហុស</string>
+    <string name="ok_tile_switch_keyboard">ប្ដូរក្ដារចុច</string>
+    <string name="ok_tile_keyboard_language">ភាសាក្ដារចុច</string>
+    <string name="ok_tile_add_language">+ បន្ថែមភាសា</string>
+    <string name="ok_tile_add_edit">+ បន្ថែម / កែ</string>
+</resources>

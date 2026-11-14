@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">المظهر</string>
+    <string name="ok_tile_resize">تغيير الحجم</string>
+    <string name="ok_tile_stickers">ملصقات</string>
+    <string name="ok_tile_gifs">صور GIF</string>
+    <string name="ok_tile_voice_typing">الكتابة بالصوت</string>
+    <string name="ok_tile_translate">ترجمة</string>
+    <string name="ok_tile_voice_translate">ترجمة صوتية</string>
+    <string name="ok_tile_language">اللغة</string>
+    <string name="ok_tile_my_info">معلوماتي</string>
+    <string name="ok_tile_writing_help">مساعد الكتابة</string>
+    <string name="ok_tile_scan_text">مسح النص</string>
+    <string name="ok_tile_one_handed">يد واحدة</string>
+    <string name="ok_tile_floating">عائمة</string>
+    <string name="ok_tile_text_editing">تحرير النص</string>
+    <string name="ok_tile_clipboard">الحافظة</string>
+    <string name="ok_tile_emoji">رموز تعبيرية</string>
+    <string name="ok_tile_undo">تراجع</string>
+    <string name="ok_tile_redo">إعادة</string>
+    <string name="ok_tile_numbers">أرقام</string>
+    <string name="ok_tile_split">تقسيم</string>
+    <string name="ok_tile_incognito">التصفح المتخفي</string>
+    <string name="ok_tile_settings">الإعدادات</string>
+    <string name="ok_tile_bug_report">الإبلاغ عن خطأ</string>
+    <string name="ok_tile_switch_keyboard">تبديل لوحة المفاتيح</string>
+    <string name="ok_tile_keyboard_language">لغة لوحة المفاتيح</string>
+    <string name="ok_tile_add_language">+ إضافة لغة</string>
+    <string name="ok_tile_add_edit">+ إضافة / تعديل</string>
+</resources>

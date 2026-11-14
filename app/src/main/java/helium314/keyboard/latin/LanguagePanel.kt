@@ -82,11 +82,11 @@ object LanguagePanel {
         }
         val top = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(context, 12f), 0, dp(context, 12f), 0) }
         top.addView(TextView(context).apply {
-            this.text = "Keyboard language"
+            this.text = context.getString(R.string.ok_tile_keyboard_language)
             setTextColor(text)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(pill("+ Add language", true) { KeyboardMenu.hide(); ime(context)?.launchSettings(SettingsDestination.Languages) })
+        top.addView(pill(context.getString(R.string.ok_tile_add_language), true) { KeyboardMenu.hide(); ime(context)?.launchSettings(SettingsDestination.Languages) })
         top.addView(pill("✕") { KeyboardMenu.hide() },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(context, 6f) })
         column.addView(top)

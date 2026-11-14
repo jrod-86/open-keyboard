@@ -83,7 +83,7 @@ object KeyboardMenu {
 
     private class Item(val label: String, val icon: () -> android.graphics.drawable.Drawable?, val key: ToolbarKey? = null, val plugin: String? = null, val tint: Boolean = true, idOverride: String? = null, val bigIcon: Boolean = false, val action: () -> Unit) {
         /** Stays the same when the label changes (e.g. "Voice → Khmer"), so the saved order holds. */
-        val id: String = idOverride ?: label
+        val id: String = idOverride ?: englishOf[label] ?: label
     }
 
     // ---- moving buttons between the menu and the top bar ----
@@ -119,6 +119,8 @@ object KeyboardMenu {
     }
 
     private const val PREF_MENU_ORDER = "open_keyboard_menu_order"
+    /** Translated tile name -> English name (the tile's id). */
+    private val englishOf = HashMap<String, String>()
     private var currentGrid: TilePager? = null
     /** The page the menu was on, so it reopens there after moving a tile. */
     private var lastPage = 0
@@ -434,47 +436,49 @@ object KeyboardMenu {
 
     /** Every button the menu can show (and the ones that can sit on the top bar), in default order. */
     private fun buildItems(context: Context, onCode: (Int) -> Unit): List<Item> {
+        // tile names follow the phone's language; ids stay English so saved order and bar spots keep working
+        fun tr(en: String, res: Int): String = context.getString(res).also { englishOf[it] = en }
         fun toolbarIcon(key: ToolbarKey) = { KeyboardIconsSet.instance.getNewDrawable(key.name, context) }
         fun ownIcon(res: Int) = { ContextCompat.getDrawable(context, res)?.mutate() }
 
         fun keyItem(label: String, key: ToolbarKey, action: (() -> Unit)? = null) =
             Item(label, toolbarIcon(key), key, action = action ?: { onCode(helium314.keyboard.latin.utils.getCodeForToolbarKey(key)) })
         return listOf(
-            Item("Theme", ownIcon(R.drawable.ic_menu_theme)) { openSettings(context, SettingsDestination.Theme) },
-            Item("Resize", ownIcon(R.drawable.ic_menu_resize)) { showResize(context) },
-            keyItem("Stickers", ToolbarKey.STICKER) { helium314.keyboard.media.MediaPanel.toggle(context, false) },
-            keyItem("GIFs", ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
-            keyItem("Voice typing", ToolbarKey.VOICE),
-            Item("Translate", plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
-            Item(MadladTranslator.voiceTarget(context)?.let { "Voice → " + TranslatePanel.name(it) } ?: "Voice translate", plugin = "translate",
+            Item(tr("Theme", R.string.ok_tile_theme), ownIcon(R.drawable.ic_menu_theme)) { openSettings(context, SettingsDestination.Theme) },
+            Item(tr("Resize", R.string.ok_tile_resize), ownIcon(R.drawable.ic_menu_resize)) { showResize(context) },
+            keyItem(tr("Stickers", R.string.ok_tile_stickers), ToolbarKey.STICKER) { helium314.keyboard.media.MediaPanel.toggle(context, false) },
+            keyItem(tr("GIFs", R.string.ok_tile_gifs), ToolbarKey.GIF) { helium314.keyboard.media.MediaPanel.toggle(context, true) },
+            keyItem(tr("Voice typing", R.string.ok_tile_voice_typing), ToolbarKey.VOICE),
+            Item(tr("Translate", R.string.ok_tile_translate), plugin = "translate", icon = ownIcon(R.drawable.ic_menu_translate)) { TranslatePanel.show(context) },
+            Item(MadladTranslator.voiceTarget(context)?.let { "Voice → " + TranslatePanel.name(it) } ?: tr("Voice translate", R.string.ok_tile_voice_translate), plugin = "translate",
                 icon = ownIcon(R.drawable.ic_menu_voice_translate), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
-            Item("Language", ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
-            Item("My info", plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
-            Item("Writing help", plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
-            Item("Scan text", plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
+            Item(tr("Language", R.string.ok_tile_language), ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
+            Item(tr("My info", R.string.ok_tile_my_info), plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
+            Item(tr("Writing help", R.string.ok_tile_writing_help), plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
+            Item(tr("Scan text", R.string.ok_tile_scan_text), plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, ScanTextActivity::class.java)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure { android.widget.Toast.makeText(context, "Scan text couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
             },
-            keyItem("One-handed", ToolbarKey.ONE_HANDED),
-            keyItem("Floating", ToolbarKey.FLOATING),
-            keyItem("Text editing", ToolbarKey.DPAD),
-            keyItem("Clipboard", ToolbarKey.CLIPBOARD),
-            keyItem("Emoji", ToolbarKey.EMOJI),
-            keyItem("Undo", ToolbarKey.UNDO),
-            keyItem("Redo", ToolbarKey.REDO),
-            keyItem("Numbers", ToolbarKey.NUMPAD),
-            keyItem("Split", ToolbarKey.SPLIT),
-            keyItem("Incognito", ToolbarKey.INCOGNITO),
-            keyItem("Settings", ToolbarKey.SETTINGS),
-            Item("Bug report", ownIcon(R.drawable.ic_menu_feedback)) {
+            keyItem(tr("One-handed", R.string.ok_tile_one_handed), ToolbarKey.ONE_HANDED),
+            keyItem(tr("Floating", R.string.ok_tile_floating), ToolbarKey.FLOATING),
+            keyItem(tr("Text editing", R.string.ok_tile_text_editing), ToolbarKey.DPAD),
+            keyItem(tr("Clipboard", R.string.ok_tile_clipboard), ToolbarKey.CLIPBOARD),
+            keyItem(tr("Emoji", R.string.ok_tile_emoji), ToolbarKey.EMOJI),
+            keyItem(tr("Undo", R.string.ok_tile_undo), ToolbarKey.UNDO),
+            keyItem(tr("Redo", R.string.ok_tile_redo), ToolbarKey.REDO),
+            keyItem(tr("Numbers", R.string.ok_tile_numbers), ToolbarKey.NUMPAD),
+            keyItem(tr("Split", R.string.ok_tile_split), ToolbarKey.SPLIT),
+            keyItem(tr("Incognito", R.string.ok_tile_incognito), ToolbarKey.INCOGNITO),
+            keyItem(tr("Settings", R.string.ok_tile_settings), ToolbarKey.SETTINGS),
+            Item(tr("Bug report", R.string.ok_tile_bug_report), ownIcon(R.drawable.ic_menu_feedback)) {
                 hide()
                 context.startActivity(android.content.Intent(context, FeedbackActivity::class.java)
                     .putExtra(FeedbackActivity.EXTRA_BUG, true).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             },
-            Item("Switch keyboard", ownIcon(R.drawable.ic_ime_switcher)) {
+            Item(tr("Switch keyboard", R.string.ok_tile_switch_keyboard), ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
             },
         ).filter { it.plugin == null || Plugins.isOn(context, it.plugin) } +

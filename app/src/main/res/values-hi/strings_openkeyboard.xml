@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">थीम</string>
+    <string name="ok_tile_resize">आकार बदलें</string>
+    <string name="ok_tile_stickers">स्टिकर</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">बोलकर टाइप करें</string>
+    <string name="ok_tile_translate">अनुवाद</string>
+    <string name="ok_tile_voice_translate">आवाज़ अनुवाद</string>
+    <string name="ok_tile_language">भाषा</string>
+    <string name="ok_tile_my_info">मेरी जानकारी</string>
+    <string name="ok_tile_writing_help">लेखन सहायता</string>
+    <string name="ok_tile_scan_text">टेक्स्ट स्कैन करें</string>
+    <string name="ok_tile_one_handed">एक हाथ</string>
+    <string name="ok_tile_floating">फ़्लोटिंग</string>
+    <string name="ok_tile_text_editing">टेक्स्ट संपादन</string>
+    <string name="ok_tile_clipboard">क्लिपबोर्ड</string>
+    <string name="ok_tile_emoji">इमोजी</string>
+    <string name="ok_tile_undo">पूर्ववत करें</string>
+    <string name="ok_tile_redo">फिर से करें</string>
+    <string name="ok_tile_numbers">संख्याएँ</string>
+    <string name="ok_tile_split">विभाजित</string>
+    <string name="ok_tile_incognito">गुप्त</string>
+    <string name="ok_tile_settings">सेटिंग</string>
+    <string name="ok_tile_bug_report">बग रिपोर्ट करें</string>
+    <string name="ok_tile_switch_keyboard">कीबोर्ड बदलें</string>
+    <string name="ok_tile_keyboard_language">कीबोर्ड भाषा</string>
+    <string name="ok_tile_add_language">+ भाषा जोड़ें</string>
+    <string name="ok_tile_add_edit">+ जोड़ें / संपादित करें</string>
+</resources>

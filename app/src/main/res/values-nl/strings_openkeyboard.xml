@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">Thema</string>
+    <string name="ok_tile_resize">Formaat</string>
+    <string name="ok_tile_stickers">Stickers</string>
+    <string name="ok_tile_gifs">GIF\'s</string>
+    <string name="ok_tile_voice_typing">Spraakinvoer</string>
+    <string name="ok_tile_translate">Vertalen</string>
+    <string name="ok_tile_voice_translate">Spraakvertaling</string>
+    <string name="ok_tile_language">Taal</string>
+    <string name="ok_tile_my_info">Mijn info</string>
+    <string name="ok_tile_writing_help">Schrijfhulp</string>
+    <string name="ok_tile_scan_text">Tekst scannen</string>
+    <string name="ok_tile_one_handed">Eenhandig</string>
+    <string name="ok_tile_floating">Zwevend</string>
+    <string name="ok_tile_text_editing">Tekst bewerken</string>
+    <string name="ok_tile_clipboard">Klembord</string>
+    <string name="ok_tile_emoji">Emoji</string>
+    <string name="ok_tile_undo">Ongedaan maken</string>
+    <string name="ok_tile_redo">Opnieuw</string>
+    <string name="ok_tile_numbers">Cijfers</string>
+    <string name="ok_tile_split">Gesplitst</string>
+    <string name="ok_tile_incognito">Incognito</string>
+    <string name="ok_tile_settings">Instellingen</string>
+    <string name="ok_tile_bug_report">Bug melden</string>
+    <string name="ok_tile_switch_keyboard">Toetsenbord wisselen</string>
+    <string name="ok_tile_keyboard_language">Toetsenbordtaal</string>
+    <string name="ok_tile_add_language">+ Taal toevoegen</string>
+    <string name="ok_tile_add_edit">+ Toevoegen / bewerken</string>
+</resources>

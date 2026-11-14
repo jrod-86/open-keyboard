@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Open Keyboard: grid menu tile names. Machine-translated; native speakers welcome to fix. -->
+<resources>
+    <string name="ok_tile_theme">Tema</string>
+    <string name="ok_tile_resize">Ubah ukuran</string>
+    <string name="ok_tile_stickers">Stiker</string>
+    <string name="ok_tile_gifs">GIF</string>
+    <string name="ok_tile_voice_typing">Ketik dengan suara</string>
+    <string name="ok_tile_translate">Terjemahkan</string>
+    <string name="ok_tile_voice_translate">Terjemahan suara</string>
+    <string name="ok_tile_language">Bahasa</string>
+    <string name="ok_tile_my_info">Info saya</string>
+    <string name="ok_tile_writing_help">Bantuan menulis</string>
+    <string name="ok_tile_scan_text">Pindai teks</string>
+    <string name="ok_tile_one_handed">Satu tangan</string>
+    <string name="ok_tile_floating">Mengambang</string>
+    <string name="ok_tile_text_editing">Edit teks</string>
+    <string name="ok_tile_clipboard">Papan klip</string>
+    <string name="ok_tile_emoji">Emoji</string>
+    <string name="ok_tile_undo">Urungkan</string>
+    <string name="ok_tile_redo">Ulangi</string>
+    <string name="ok_tile_numbers">Angka</string>
+    <string name="ok_tile_split">Pisah</string>
+    <string name="ok_tile_incognito">Penyamaran</string>
+    <string name="ok_tile_settings">Setelan</string>
+    <string name="ok_tile_bug_report">Laporkan bug</string>
+    <string name="ok_tile_switch_keyboard">Ganti keyboard</string>
+    <string name="ok_tile_keyboard_language">Bahasa keyboard</string>
+    <string name="ok_tile_add_language">+ Tambah bahasa</string>
+    <string name="ok_tile_add_edit">+ Tambah / edit</string>
+</resources>
