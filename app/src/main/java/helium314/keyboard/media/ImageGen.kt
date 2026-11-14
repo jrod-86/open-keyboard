@@ -102,8 +102,11 @@ object ImageGen {
         part.renameTo(file(c, p))
     }
 
+    /** True when [m] is already open, so the next picture skips loading it. */
+    fun isOpen(m: Model) = ctx != 0L && loadedModel === m
+
     @Synchronized
-    private fun ensureLoaded(c: Context, m: Model): Long {
+    fun ensureLoaded(c: Context, m: Model): Long {
         if (!libLoaded) { System.loadLibrary("sdjni"); libLoaded = true }
         if (loadedModel !== m) close()
         if (ctx == 0L) {

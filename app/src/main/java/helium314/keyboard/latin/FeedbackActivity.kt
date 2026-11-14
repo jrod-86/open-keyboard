@@ -128,7 +128,7 @@ class FeedbackActivity : ComponentActivity() {
         val date = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
         val zip = java.io.File(dir, "OpenKeyboard_logs_$date.zip")
         java.util.zip.ZipOutputStream(zip.outputStream()).use { z ->
-            val logcat = runCatching { Runtime.getRuntime().exec("logcat -d -b all *:W").inputStream.use { it.reader().readText() } }.getOrDefault("")
+            val logcat = runCatching { Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-b", "all", "ImageMaker:I", "*:W")).inputStream.use { it.reader().readText() } }.getOrDefault("")
             val internal = helium314.keyboard.latin.utils.Log.getLog().joinToString("\n")
             val phone = "Phone: ${Build.MANUFACTURER} ${Build.MODEL}\nAndroid: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n" +
                 "Open Keyboard: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n\n"

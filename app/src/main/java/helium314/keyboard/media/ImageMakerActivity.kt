@@ -33,6 +33,7 @@ import kotlin.random.Random
 class ImageMakerActivity : Activity() {
     private lateinit var prompt: EditText
     private lateinit var status: TextView
+    private lateinit var stageList: LinearLayout
     private lateinit var progress: ProgressBar
     private lateinit var picture: ImageView
     private lateinit var placeholder: TextView
@@ -177,6 +178,11 @@ class ImageMakerActivity : Activity() {
             setPadding(0, pad / 2, 0, 0)
         }
         card.addView(status)
+        stageList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, pad / 2, 0, 0) }
+        for (name in ImageJob.STAGES) stageList.addView(TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setPadding(0, dp(2f), 0, dp(2f))
+        })
+        card.addView(stageList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
         root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = pad })
 
         actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, pad * 3 / 4, 0, 0) }
@@ -294,17 +300,34 @@ class ImageMakerActivity : Activity() {
             generate.text = if (quick) "Drawing…" else "■  Stop"
             generate.isEnabled = !quick
             progress.visibility = View.VISIBLE
-            progress.isIndeterminate = job.total == 0
-            if (job.total > 0) progress.progress = (job.step * 1000 / job.total).coerceIn(0, 1000)
+            progress.isIndeterminate = job.stageIndex < 0
+            progress.progress = job.overall(this)
             val secs = (System.currentTimeMillis() - job.startedAt) / 1000
-            val what = if (job.total > 0 && job.stage == "Drawing") "Drawing… step ${job.step} of ${job.total}" else job.stage
-            status.text = "$what  ·  ${secs / 60}:%02d".format(secs % 60) +
+            val left = job.secondsLeft(this)
+            status.text = (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
+                "${secs / 60}:%02d".format(secs % 60) +
                 if (!quick) "\nYou can switch apps, it keeps going." else ""
+            stageList.visibility = if (quick) View.GONE else View.VISIBLE
+            for (i in ImageJob.STAGES.indices) {
+                val tv = stageList.getChildAt(i) as TextView
+                val name = ImageJob.STAGES[i]
+                val (mark, text) = when {
+                    i in job.skipped -> "✓" to "$name (already open)"
+                    i < job.stageIndex -> "✓" to name
+                    i == job.stageIndex -> "●" to (if (i == 2 && job.total > 0) "$name, step ${job.step} of ${job.total}" else "$name…")
+                    else -> "○" to name
+                }
+                tv.text = "$mark  $text"
+                tv.alpha = if (i == job.stageIndex) 1f else if (i < job.stageIndex || i in job.skipped) 0.7f else 0.4f
+                tv.setTypeface(null, if (i == job.stageIndex) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                tv.setTextColor(if (i == job.stageIndex) purple else status.currentTextColor)
+            }
             generate.postDelayed(ticker, 1000)
             return
         }
         generate.isEnabled = true
         progress.visibility = View.GONE
+        stageList.visibility = View.GONE
         val r = job.result
         if (r != null) {
             result = r
