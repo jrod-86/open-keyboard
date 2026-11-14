@@ -2,6 +2,19 @@
  "version": 1,
  "packs": [
   {
+   "id": "test-animated",
+   "name": "Test (animated)",
+   "author": "jrod",
+   "license": "Test only",
+   "source": "https://github.com/jrod-86/open-keyboard",
+   "credit": "",
+   "count": 5,
+   "featured": true,
+   "icon": "test-animated-icon.png",
+   "zip": "test-animated.zip",
+   "size": 3707594
+  },
+  {
    "id": "yellow-emoji-story",
    "name": "Yellow Emoji Story",
    "author": "jrod",
