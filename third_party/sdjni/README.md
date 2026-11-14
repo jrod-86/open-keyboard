@@ -27,3 +27,6 @@ not shipped):
 
 The app loads `libsdjni_gpu.so` when /proc/cpuinfo lists i8mm, falling back to `libsdjni.so` if it won't load (no OpenCL
 driver). With an Adreno chip it puts the picture model on the graphics chip (`diffusion=GPUOpenCL,te=cpu,vae=cpu`).
+
+`ggml/src/ggml-opencl/ggml-opencl.cpp` is patched too: its graph loop checks the same flag every 32 nodes (and drains
+the queue every 128), so Stop also ends a step on the graphics chip within a moment.
