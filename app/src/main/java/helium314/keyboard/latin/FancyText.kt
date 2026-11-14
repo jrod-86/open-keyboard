@@ -133,10 +133,14 @@ object FancyText {
         stylePkg = ime?.currentInputEditorInfo?.packageName
         KeyboardMenu.hide()
         ime?.setNeutralSuggestionStrip()
+        android.widget.Toast.makeText(context, if (s == null) "Normal text" else styled(s, s.name) + " on. Open Fancy text again to stop",
+            android.widget.Toast.LENGTH_SHORT).show()
     }
+    private const val SHOW_CHIP = false
 
     /** The chip in the top bar while a style is on: tap it to pick another, ✕ to stop. */
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
+        if (!SHOW_CHIP) return null // Jarrod: the chip covering the top bar was annoying; a short message instead
         val s = style ?: return null
         if (ime.currentInputEditorInfo?.packageName != stylePkg) return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
@@ -194,7 +198,7 @@ object FancyText {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(context, 6f) })
         column.addView(top)
         column.addView(TextView(context).apply {
-            this.text = "Pick a style, then type as normal. Tap ✕ on the top bar to go back to normal text."
+            this.text = "Pick a style, then type as normal. Come back here and tap Normal text to stop."
             setTextColor(ColorUtils.setAlphaComponent(text, 170))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setPadding(dp(context, 14f), dp(context, 4f), dp(context, 14f), dp(context, 6f))
