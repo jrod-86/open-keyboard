@@ -125,10 +125,22 @@ object MediaSender {
 
     /** Sends a sticker from one of the user's own packs. */
     fun sendPackSticker(ime: InputMethodService, file: File) {
-        val mime = StickerPacks.mimeOf(file)
         MediaRecents.add(ime, RecentItem.PackSticker(file))
         StickerPacks.used(ime, file)
-        commit(ime, file, mime, "Sticker", null)
+        // Messenger and friends keep a GIF animated but turn an animated WebP into a still photo
+        val alt = File(file.parentFile, "alt/${file.nameWithoutExtension}.gif")
+        if (alt.isFile && prefersGif(ime)) commit(ime, alt, "image/gif", "Sticker", null)
+        else commit(ime, file, StickerPacks.mimeOf(file), "Sticker", null)
+    }
+
+    private val gifApps = setOf("com.facebook.orca", "com.facebook.mlite", "com.facebook.katana", "com.instagram.android",
+        "com.instagram.barcelona", "com.snapchat.android", "com.discord")
+
+    private fun prefersGif(ime: InputMethodService): Boolean {
+        val ei = ime.currentInputEditorInfo ?: return false
+        if (ei.packageName in gifApps) return true
+        val accepted = EditorInfoCompat.getContentMimeTypes(ei)
+        return accepted.none { ClipDescription.compareMimeTypes("image/webp", it) } && accepted.any { ClipDescription.compareMimeTypes("image/gif", it) }
     }
 
     private fun mediaDir(ctx: Context) = File(ctx.cacheDir, "media").apply {
@@ -256,15 +268,25 @@ object StickerPacks {
         val dir = newPackDir(ctx, name)
         if (storeId != null) File(dir, ".store_id").writeText(storeId)
         var count = 0
+        val savedAs = HashMap<String, String>() // name in the zip -> name in the pack
         stream.let { input ->
             val zip = java.util.zip.ZipInputStream(input)
             while (true) {
                 val entry = zip.nextEntry ?: break
                 val ext = entry.name.substringAfterLast('.', "").lowercase()
+                // alt/<name>.gif: the same animation as a GIF, for apps that turn animated WebP into a still photo
+                if (entry.name.startsWith("alt/") && ext == "gif") {
+                    savedAs[entry.name.substringAfterLast('/').substringBeforeLast('.')]?.let {
+                        File(dir, "alt").mkdirs()
+                        runCatching { File(dir, "alt/$it.gif").writeBytes(zip.readBytes()) }
+                    }
+                    continue
+                }
                 if (entry.isDirectory || entry.name.contains("__MACOSX") || ext !in listOf("png", "webp", "gif", "jpg", "jpeg")) continue
                 if (count >= 200) break
                 runCatching {
                     saveSticker(dir, "%03d".format(count), zip.readBytes(), if (ext == "gif") "image/gif" else if (ext == "webp") "image/webp" else "image/$ext")
+                    savedAs[entry.name.substringAfterLast('/').substringBeforeLast('.')] = "%03d".format(count)
                     count++
                 }
             }
