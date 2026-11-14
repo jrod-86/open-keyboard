@@ -216,13 +216,13 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         copy.scaleType = last.scaleType
         copy.contentDescription = last.contentDescription
         copy.setImageDrawable(last.drawable)
-        copy.layoutParams = android.widget.FrameLayout.LayoutParams(toolbarKeyLayoutParams.width, toolbarKeyLayoutParams.height)
+        copy.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
         setupKey(copy, colors)
         if (last.colorFilter == null) copy.clearColorFilter()
         copy.isVisible = last.isVisible
         copy.setOnClickListener { last.performClick() }
         copy.setOnLongClickListener { last.performLongClick() }
-        val box = android.widget.FrameLayout(context)
+        val box = LinearLayout(context)
         box.addView(copy)
         pinnedKeys.addView(box, 0)
         rightBox = box
