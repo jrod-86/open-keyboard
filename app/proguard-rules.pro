@@ -18,3 +18,9 @@
 
 # ONNX Runtime's native code creates its Java objects (TensorInfo, OnnxTensor, ...) by name
 -keep class ai.onnxruntime.** { *; }
+
+# Image maker: native code calls these back by name
+-keep class helium314.keyboard.media.ImageGen {
+    public static void onProgress(int, int);
+    public static void onStage(java.lang.String, long, long);
+}
