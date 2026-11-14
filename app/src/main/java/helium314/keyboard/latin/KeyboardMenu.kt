@@ -54,7 +54,9 @@ object KeyboardMenu {
     }
 
     fun hide() {
+        val wasResizing = resizeView?.parent != null
         listOf(menuView, resizeView).forEach { v -> (v?.parent as? ViewGroup)?.removeView(v) }
+        if (wasResizing) KeyboardSwitcher.getInstance().wrapperView?.rootView?.requestLayout()
         menuView = null
         resizeView = null
         keepToolbar = true
@@ -628,11 +630,12 @@ object KeyboardMenu {
     /** Blue outline with drag handles: drag the top handle to change the height, the bottom one to raise the keyboard. */
     @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
     private class ResizeOverlay(context: Context) : FrameLayout(context) {
-        // take the keyboard's size, never make the keyboard taller
+        // take the keyboard's size, never hold the keyboard at its old height (left an empty gap when shrinking)
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.EXACTLY)
-                setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), 0)
-            else super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            val p = parent as? ViewGroup
+            var h = 0
+            if (p != null) for (i in 0 until p.childCount) p.getChildAt(i).let { if (it !== this && it.visibility != GONE) h = maxOf(h, it.measuredHeight) }
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
         }
 
         private val blue = Color.rgb(66, 133, 244)
@@ -674,6 +677,12 @@ object KeyboardMenu {
         private fun reset() {
             context.prefs().edit { remove(heightKey()); remove(bottomKey()) }
             KeyboardSwitcher.getInstance().reloadKeyboard()
+            relayout()
+        }
+
+        private fun relayout() {
+            requestLayout()
+            KeyboardSwitcher.getInstance().wrapperView?.rootView?.requestLayout()
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -720,6 +729,7 @@ object KeyboardMenu {
                         prefs.edit { putFloat(bottomKey(), clamped) }
                     }
                     KeyboardSwitcher.getInstance().reloadKeyboard()
+                    relayout()
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = 0
             }
