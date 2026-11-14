@@ -29,4 +29,7 @@ The app loads `libsdjni_gpu.so` when /proc/cpuinfo lists i8mm, falling back to `
 driver). With an Adreno chip it puts the picture model on the graphics chip (`diffusion=GPUOpenCL,te=cpu,vae=cpu`).
 
 `ggml/src/ggml-opencl/ggml-opencl.cpp` is patched too: its graph loop checks the same flag every 32 nodes (and drains
-the queue every 128), so Stop also ends a step on the graphics chip within a moment.
+the queue every 128), so Stop also ends a step on the graphics chip within a moment. When `ggml_gpu_pause_ms` (set by
+`nativeSetPause`, defined in ggml-cpu.c) is above 0 it is a rest percentage: the loop drains the queue every 2 nodes,
+works in ~25 ms slices and then sleeps that % of the slice (min 8 ms, max 400 ms), so the screen gets the chip.
+The app uses 150 for Smooth, 12 for Balanced and 0 for Fastest.
