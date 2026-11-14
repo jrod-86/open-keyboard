@@ -469,6 +469,11 @@ object KeyboardMenu {
             keyItem("Split", ToolbarKey.SPLIT),
             keyItem("Incognito", ToolbarKey.INCOGNITO),
             keyItem("Settings", ToolbarKey.SETTINGS),
+            Item("Bug report", ownIcon(R.drawable.ic_menu_feedback)) {
+                hide()
+                context.startActivity(android.content.Intent(context, FeedbackActivity::class.java)
+                    .putExtra(FeedbackActivity.EXTRA_BUG, true).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            },
             Item("Switch keyboard", ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
             },

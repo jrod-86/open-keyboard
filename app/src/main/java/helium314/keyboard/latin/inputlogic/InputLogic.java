@@ -1266,7 +1266,7 @@ public final class InputLogic {
 
         // Open Keyboard: holding delete just deletes. Words are not re-composed and suggestions are
         // not looked up on every step (that made the text fight back, especially in web based apps);
-        // it starts slow, goes word by word after 2.5 s and fast after 4 s. Suggestions come back on release.
+        // it starts slow, goes word by word after 2.5 s, fast after 4 s, by lines after 8 s. Suggestions come back on release.
         final boolean held = event.isKeyRepeat();
         if (held) {
             mDeleteHeld = true;
@@ -1283,8 +1283,12 @@ public final class InputLogic {
             } else if (heldMs < DELETE_FAST_AFTER_MS) {
                 if (mDeleteStep % 4 != 0) return; // a word every 200 ms
                 deleteWord = true;
-            } else {
+            } else if (heldMs < DELETE_LINES_AFTER_MS) {
                 deleteWord = true; // a word every 50 ms
+            } else {
+                if (mDeleteStep % 6 != 0) return; // a whole line every 300 ms
+                if (deleteLineBeforeCursor()) return;
+                deleteWord = true;
             }
         } else {
             mDeleteStartTime = inputTransaction.getTimestamp();
@@ -1451,6 +1455,24 @@ public final class InputLogic {
 
     private static final long DELETE_WORDS_AFTER_MS = 2500;
     private static final long DELETE_FAST_AFTER_MS = 4000;
+    private static final long DELETE_LINES_AFTER_MS = 8000;
+
+    /** Deletes back to the start of the line (and the line break before it). False if it can't. */
+    private boolean deleteLineBeforeCursor() {
+        if (mConnection.hasSelection() || Constants.NOT_A_CURSOR_POSITION == mConnection.getExpectedSelectionEnd())
+            return false;
+        final CharSequence before = mConnection.getTextBeforeCursor(2000, 0);
+        if (TextUtils.isEmpty(before)) return false;
+        String text = before.toString();
+        // a line break right before the cursor goes with the line above it
+        int end = text.length();
+        while (end > 0 && text.charAt(end - 1) == '\n') end--;
+        final int start = text.lastIndexOf('\n', end - 1) + 1;
+        final int length = text.length() - start;
+        if (length <= 0) return false;
+        mConnection.deleteTextBeforeCursor(length);
+        return true;
+    }
     private long mDeleteStartTime;
     private int mDeleteStep;
     private boolean mDeleteHeld;
