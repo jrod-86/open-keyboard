@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import helium314.keyboard.dictionarypack.DictionaryPackConstants
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.keyboard.emoji.SupportedEmojis
@@ -57,8 +58,24 @@ fun BackupRestorePreference(setting: Setting) {
     val ctx = LocalContext.current
     var error: String? by rememberSaveable { mutableStateOf(null) }
     val backupLauncher = backupLauncher { error = it }
-    val restoreLauncher = restoreLauncher { error = it }
+    var askBackupPassword by rememberSaveable { mutableStateOf(false) }
+    var lockedRestore by rememberSaveable { mutableStateOf<String?>(null) }
+    val restoreLauncher = restoreLauncher(onLocked = { lockedRestore = it.toString() }) { error = it }
     Preference(name = setting.title, onClick = { showDialog = true })
+    if (askBackupPassword) PasswordDialog(
+        title = "Lock your backup",
+        text = "Pick a password. The backup is locked with it, and you'll need it to restore. Nobody else can open the file, " +
+            "so don't lose it. Save the file anywhere, for example Google Drive.",
+        confirm = true,
+        onSkip = { askBackupPassword = false; pendingPassword = null; launchBackup(ctx, backupLauncher) },
+    ) { pw -> askBackupPassword = false; pendingPassword = pw; launchBackup(ctx, backupLauncher) }
+    lockedRestore?.let { uriText ->
+        PasswordDialog(title = "Unlock backup", text = "This backup is locked. Enter the password you picked when you made it.", confirm = false,
+            onSkip = null, onDismiss = { lockedRestore = null }) { pw ->
+            lockedRestore = null
+            doRestore(ctx, android.net.Uri.parse(uriText), pw) { error = it }
+        }
+    }
     if (showDialog) {
         ConfirmationDialog(
             onDismissRequest = { showDialog = false },
@@ -68,20 +85,13 @@ fun BackupRestorePreference(setting: Setting) {
             neutralButtonText = stringResource(R.string.button_restore),
             onNeutral = {
                 showDialog = false
-                val intent = IntentUtils.getResolvableTypeIntent(ctx, "application/zip")
-                    .setAction(Intent.ACTION_OPEN_DOCUMENT)
+                // locked backups aren't zip files, so allow any file
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
                 restoreLauncher.launch(intent)
             },
             onConfirmed = {
-                val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
-                val intent = IntentUtils.getResolvableTypeIntent(ctx, "application/zip")
-                    .setAction(Intent.ACTION_CREATE_DOCUMENT)
-                    .putExtra(
-                        Intent.EXTRA_TITLE,
-                        ctx.getString(R.string.english_ime_name)
-                            .replace(" ", "_") + "_backup_$currentDate.zip"
-                    )
-                backupLauncher.launch(intent)
+                showDialog = false
+                askBackupPassword = true
             }
         )
     }
@@ -117,9 +127,13 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
                 protectedFiles.add(file)
         }
         val wait = CountDownLatch(1)
+        val password = pendingPassword
+        pendingPassword = null
+        val plainFile = File(ctx.cacheDir, "backup-plain.tmp")
         ExecutorUtils.getBackgroundExecutor(ExecutorUtils.KEYBOARD).execute {
             try {
-                ctx.getActivity()?.contentResolver?.openOutputStream(uri)?.use { os ->
+                val target = if (password != null) plainFile.outputStream() else ctx.getActivity()?.contentResolver?.openOutputStream(uri)
+                target?.use { os ->
                     // write files to zip
                     val zipStream = ZipOutputStream(os)
                     files.forEach {
@@ -150,12 +164,23 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
                     zipStream.putNextEntry(ZipEntry(PROTECTED_PREFS_FILE_NAME))
                     settingsToJsonStream(ctx.protectedPrefs().all, zipStream)
                     zipStream.closeEntry()
+                    // Open Keyboard: our other settings files (per-app settings, stickers, translate, voice…)
+                    BackupCrypto.extraPrefs(ctx).forEach { (name, sp) ->
+                        zipStream.putNextEntry(ZipEntry(name))
+                        settingsToJsonStream(sp.all, zipStream)
+                        zipStream.closeEntry()
+                    }
                     zipStream.close()
+                }
+                if (password != null) {
+                    ctx.getActivity()?.contentResolver?.openOutputStream(uri)?.use { BackupCrypto.encrypt(plainFile, it, password) }
                 }
             } catch (t: Throwable) {
                 onError("b" + t.message)
                 Log.w("AdvancedScreen", "error during backup", t)
             } finally {
+                plainFile.delete()
+                password?.fill(' ')
                 wait.countDown()
             }
         }
@@ -164,9 +189,15 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
 }
 
 @Composable
-private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
+private fun restoreLauncher(onLocked: (android.net.Uri) -> Unit, onError: (String) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
     val ctx = LocalContext.current
     return filePicker { uri ->
+        val locked = runCatching { ctx.contentResolver.openInputStream(uri)!!.use { BackupCrypto.isLocked(it) } }.getOrDefault(false)
+        if (locked) onLocked(uri) else doRestore(ctx, uri, null, onError)
+    }
+}
+
+private fun doRestore(ctx: android.content.Context, uri: android.net.Uri, password: CharArray?, onError: (String) -> Unit) {
         val wait = CountDownLatch(1)
         ExecutorUtils.getBackgroundExecutor(ExecutorUtils.KEYBOARD).execute {
             val restoredDb = ctx.getDatabasePath(Database.NAME + "_restored")
@@ -180,7 +211,9 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
             deviceProtectedFilesDir2.renameTo(deviceProtectedFilesDir2)
             try {
                 var anyMatch = false
-                ctx.getActivity()?.contentResolver?.openInputStream(uri)?.use { inputStream ->
+                val plainFile = File(ctx.cacheDir, "restore-plain.tmp")
+                if (password != null) BackupCrypto.decrypt({ ctx.contentResolver.openInputStream(uri)!! }, plainFile, password)
+                (if (password != null) plainFile.inputStream() else ctx.contentResolver.openInputStream(uri))?.use { inputStream ->
                     ZipInputStream(inputStream).use { zip ->
                         var entry: ZipEntry? = zip.nextEntry
                         LayoutUtilsCustom.onLayoutFileChanged()
@@ -208,6 +241,12 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
                                 prefs.edit { clear() }
                                 anyMatch = true
                                 readJsonLinesToSettings(prefLines, prefs)
+                            } else if (entry.name.startsWith("extra_prefs")) {
+                                BackupCrypto.prefsForEntry(ctx, entry.name)?.let { sp ->
+                                    val lines = String(zip.readBytes()).split("\n")
+                                    sp.edit().clear().commit()
+                                    readJsonLinesToSettings(lines, sp)
+                                }
                             } else if (entry.name == PROTECTED_PREFS_FILE_NAME) {
                                 val prefLines = String(zip.readBytes()).split("\n")
                                 val protectedPrefs = ctx.protectedPrefs()
@@ -220,6 +259,7 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
                         }
                     }
                 }
+                plainFile.delete()
                 if (!anyMatch)
                     throw Exception("nothing to restore in the given file")
 
@@ -281,7 +321,6 @@ private fun restoreLauncher(onError: (String) -> Unit): ManagedActivityResultLau
         SupportedEmojis.load(ctx)
         KeyboardSwitcher.getInstance().setThemeNeedsReload()
     }
-}
 
 @Suppress("UNCHECKED_CAST") // it is checked... but whatever (except string set, because can't check for that))
 private fun settingsToJsonStream(settings: Map<String?, Any?>, out: OutputStream) {
@@ -354,3 +393,51 @@ private val backupFilePatterns by lazy { listOf(
     "design_background\\.png".toRegex(),
     "sticker-packs${File.separator}.*".toRegex(),
 ) }
+
+// ---- Open Keyboard: password-locked backups ----
+
+private var pendingPassword: CharArray? = null
+
+private fun launchBackup(ctx: android.content.Context, launcher: ManagedActivityResultLauncher<Intent, ActivityResult>) {
+    val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
+    val locked = pendingPassword != null
+    val name = ctx.getString(R.string.english_ime_name).replace(" ", "_") + "_backup_$currentDate" + if (locked) ".okbackup" else ".zip"
+    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+        .setType(if (locked) "application/octet-stream" else "application/zip")
+        .putExtra(Intent.EXTRA_TITLE, name)
+    launcher.launch(intent)
+}
+
+@Composable
+private fun PasswordDialog(
+    title: String, text: String, confirm: Boolean,
+    onSkip: (() -> Unit)?, onDismiss: () -> Unit = {}, onPassword: (CharArray) -> Unit,
+) {
+    var pw by rememberSaveable { mutableStateOf("") }
+    var pw2 by rememberSaveable { mutableStateOf("") }
+    var show by rememberSaveable { mutableStateOf(false) }
+    val ok = pw.length >= 6 && (!confirm || pw == pw2)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                Text(text)
+                val vt = if (show) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation()
+                androidx.compose.material3.OutlinedTextField(pw, { pw = it }, label = { Text("Password (6 or more characters)") },
+                    singleLine = true, visualTransformation = vt)
+                if (confirm) androidx.compose.material3.OutlinedTextField(pw2, { pw2 = it }, label = { Text("Type it again") },
+                    singleLine = true, visualTransformation = vt, isError = pw2.isNotEmpty() && pw2 != pw)
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(show, { show = it })
+                    Text("Show password")
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { onPassword(pw.toCharArray()); pw = ""; pw2 = "" }) { Text("OK") } },
+        dismissButton = {
+            if (onSkip != null) androidx.compose.material3.TextButton(onClick = onSkip) { Text("No password") }
+            else androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    )
+}
