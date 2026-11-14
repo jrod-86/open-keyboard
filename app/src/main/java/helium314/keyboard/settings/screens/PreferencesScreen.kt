@@ -176,16 +176,14 @@ fun createPreferencesSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_CLIPBOARD_HISTORY_RETENTION_TIME, R.string.clipboard_history_retention_time) { setting ->
         val ctx = LocalContext.current
-        SliderPreference(
-            name = setting.title,
-            key = setting.key,
-            default = Defaults.PREF_CLIPBOARD_HISTORY_RETENTION_TIME,
-            description = {
-                if (it > 120) stringResource(R.string.settings_no_limit)
-                else stringResource(R.string.abbreviation_unit_minutes, it.toString())
-            },
-            range = 1f..121f,
-        ) { ClipboardDao.getInstance(ctx)?.clearOldClips(true) }
+        // Open Keyboard: minutes; 121 means keep forever (HeliBoard's old "no limit" value). Pinned clips always stay.
+        val items = listOf(
+            "10 minutes" to 10, "1 hour" to 60, "24 hours" to 1440, "48 hours" to 2880,
+            "1 week" to 10080, "Forever" to 121,
+        )
+        ListPreference(setting, items, Defaults.PREF_CLIPBOARD_HISTORY_RETENTION_TIME) {
+            ClipboardDao.getInstance(ctx)?.clearOldClips(true)
+        }
     },
     Setting(context, Settings.PREF_CLIPBOARD_HISTORY_PINNED_FIRST, R.string.clipboard_history_pinned_first) {
         SwitchPreference(it, Defaults.PREF_CLIPBOARD_HISTORY_PINNED_FIRST)

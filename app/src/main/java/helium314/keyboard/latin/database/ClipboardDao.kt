@@ -202,7 +202,7 @@ class ClipboardDao private constructor(private val db: Database) {
 
         lastClearOldClips = SystemClock.elapsedRealtime()
         val retentionTime = Settings.getValues()?.mClipboardHistoryRetentionTime ?: 121L
-        if (retentionTime > 120) return
+        if (retentionTime == 121L || retentionTime <= 0) return // keep forever
         val minTime = System.currentTimeMillis() - retentionTime * 60 * 1000L
         val toRemove = cache.filter { it.timeStamp < minTime && !it.isPinned }
         delete(toRemove)

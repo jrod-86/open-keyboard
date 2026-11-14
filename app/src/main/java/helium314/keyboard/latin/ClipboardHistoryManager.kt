@@ -55,6 +55,14 @@ class ClipboardHistoryManager(
             fetchPrimaryClip()
     }
 
+    /**
+     * Open Keyboard: Android pauses the keyboard while it's hidden, so a copy made then may never be
+     * announced. Check the clipboard again whenever the keyboard or the clipboard panel opens.
+     */
+    fun refresh() {
+        if (latinIME.mSettings.current.mClipboardHistoryEnabled) runCatching { fetchPrimaryClip() }
+    }
+
     fun onDestroy() {
         clipboardManager.removePrimaryClipChangedListener(this)
     }

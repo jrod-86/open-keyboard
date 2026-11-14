@@ -810,6 +810,7 @@ public class LatinIME extends InputMethodService implements
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
         KeyboardMenu.INSTANCE.setKeepToolbar(false);
         super.onStartInputView(editorInfo, restarting);
+        mClipboardHistoryManager.refresh();
 
         setGestureDataGatheringMode(editorInfo, restarting);
 

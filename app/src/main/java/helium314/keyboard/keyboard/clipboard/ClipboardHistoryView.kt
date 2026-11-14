@@ -164,6 +164,7 @@ class ClipboardHistoryView @JvmOverloads constructor(
         initialize()
         setupToolbarKeys()
         historyManager.prepareClipboardHistory()
+        historyManager.refresh()
         historyManager.setHistoryChangeListener(this)
         clipboardAdapter.clipboardHistoryManager = historyManager
 
