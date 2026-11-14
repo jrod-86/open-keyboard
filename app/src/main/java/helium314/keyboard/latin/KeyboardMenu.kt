@@ -528,13 +528,13 @@ object KeyboardMenu {
         val items = allItems.filter { (it.key == null || it.key !in onBar) && it.id !in extras }
             .sortedBy { order.indexOf(it.id).let { i -> if (i < 0) 1000 + allItems.indexOf(it) else i } }
 
-        val pager = TilePager(context, dp(context, 8f).toInt(), dp(context, 4f).toInt(), dp(context, 64f).toInt())
+        val pager = TilePager(context, dp(context, 8f).toInt(), dp(context, 4f).toInt(), dp(context, 70f).toInt())
         for (item in items) {
             val tile = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 val p = dp(context, 6f).toInt()
-                setPadding(p, dp(context, 10f).toInt(), p, dp(context, 8f).toInt())
+                setPadding(p, dp(context, 6f).toInt(), p, dp(context, 5f).toInt())
                 background = GradientDrawable().apply {
                     cornerRadius = dp(context, 22f)
                     setColor(tileColor)
@@ -559,14 +559,19 @@ object KeyboardMenu {
                 // an adaptive icon layer has a wide margin around the logo; show it larger so the logo matches in size
                 val big = dp(context, 39f).toInt(); val m = -dp(context, 6.5f).toInt()
                 tile.addView(icon, LinearLayout.LayoutParams(big, big).apply { setMargins(m, m, m, m) })
-            } else tile.addView(icon, LinearLayout.LayoutParams(dp(context, 26f).toInt(), dp(context, 26f).toInt()))
+            } else {
+                // the icon takes what height is left after the name, up to its normal size, so the name is never cut off
+                icon.maxHeight = dp(context, 26f).toInt(); icon.adjustViewBounds = true
+                tile.addView(icon, LinearLayout.LayoutParams(dp(context, 26f).toInt(), 0, 1f))
+            }
             val label = TextView(context).apply {
                 text = item.label
                 setTextColor(textColor)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 gravity = Gravity.CENTER
                 maxLines = 1
-                setPadding(0, dp(context, 4f).toInt(), 0, 0)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(0, dp(context, 3f).toInt(), 0, 0)
             }
             tile.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             pager.addView(tile)
