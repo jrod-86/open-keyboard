@@ -72,7 +72,8 @@ object ImageJob {
         val steps = if (total > 0) total else stepsAsked
         // time per drawing step: measured this run once a step is done, else last run
         val perStep = if (stageIndex == 2 && step > 0) (now - drawStartedAt) / step else learned(c, 2)
-        fun guess(i: Int) = if (i == 2) perStep * steps else learned(c, i)
+        // stages never timed yet get a rough guess so an estimate shows from the first finished step
+        fun guess(i: Int) = if (i == 2) perStep * steps else learned(c, i).takeIf { it > 0 } ?: longArrayOf(5_000, 10_000, 0, 30_000)[i]
         var left = 0L
         for (i in stageIndex until STAGES.size) {
             if (i in skipped) continue
@@ -177,7 +178,7 @@ object ImageJob {
             .setContentIntent(open)
         if (running) {
             val left = secondsLeft(ctx)
-            val where = "Stage ${stageIndex + 1} of ${STAGES.size}: " + (if (stageIndex == 2 && total > 0) "drawing step $step of $total" else STAGES[stageIndex.coerceAtLeast(0)].lowercase())
+            val where = "Stage ${stageIndex + 1} of ${STAGES.size}: " + (if (stageIndex == 2 && total > 0) "drawing step ${minOf(step + 1, total)} of $total" else STAGES[stageIndex.coerceAtLeast(0)].lowercase())
             val text = where + if (left > 0) " · about ${fmtLeft(left)} left" else ""
             b.setContentTitle("Drawing your picture…").setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
                 .setProgress(1000, overall(ctx), stageIndex < 0)

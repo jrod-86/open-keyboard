@@ -314,7 +314,7 @@ class ImageMakerActivity : Activity() {
                 val (mark, text) = when {
                     i in job.skipped -> "✓" to "$name (already open)"
                     i < job.stageIndex -> "✓" to name
-                    i == job.stageIndex -> "●" to (if (i == 2 && job.total > 0) "$name, step ${job.step} of ${job.total}" else "$name…")
+                    i == job.stageIndex -> "●" to (if (i == 2 && job.total > 0) "$name, step ${minOf(job.step + 1, job.total)} of ${job.total}" else "$name…")
                     else -> "○" to name
                 }
                 tv.text = "$mark  $text"
