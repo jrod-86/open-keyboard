@@ -1349,6 +1349,8 @@ public class LatinIME extends InputMethodService implements
     public void onTextInput(@Nullable String rawText) {
         if (rawText == null) return;
         if (mVoiceInput.isActive()) mVoiceInput.cancel();
+        // Open Keyboard: pages of text, split into parts when the app has a message limit
+        if (rawText.length() >= LongPaste.CHECK_FROM && LongPaste.INSTANCE.paste(this, rawText)) return;
         // TODO: have the keyboard pass the correct key code when we need it.
         Event event = Event.createSoftwareTextEvent(rawText, KeyCode.MULTIPLE_CODE_POINTS, null);
         InputTransaction completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(),
@@ -1422,6 +1424,12 @@ public class LatinIME extends InputMethodService implements
         final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
         if (compose != null) {
             mSuggestionStripView.setExternalSuggestionView(compose, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
+        final View longPaste = LongPaste.INSTANCE.chip(this, mSuggestionStripView);
+        if (longPaste != null) {
+            mSuggestionStripView.setExternalSuggestionView(longPaste, false);
             mSuggestionStripView.setToolbarVisibility(false);
             return;
         }
@@ -1526,6 +1534,12 @@ public class LatinIME extends InputMethodService implements
             final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
             if (compose != null) {
                 mSuggestionStripView.setExternalSuggestionView(compose, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
+            final View longPaste = LongPaste.INSTANCE.chip(this, mSuggestionStripView);
+            if (longPaste != null) {
+                mSuggestionStripView.setExternalSuggestionView(longPaste, false);
                 mSuggestionStripView.setToolbarVisibility(false);
                 return;
             }
