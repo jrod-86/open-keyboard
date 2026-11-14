@@ -14,5 +14,5 @@ To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in
 96 face stickers (24 faces, 72 story moments) made by jrod for Open Keyboard. CC0 (public domain).
 
 ## Tuxedo Cat (animated)
-93 animated tuxedo cat stickers (animated WebP) made by jrod for Open Keyboard. CC0 (public domain).
+64 animated tuxedo cat stickers (animated WebP) made by jrod for Open Keyboard. CC0 (public domain).
 GIF copies in `tuxedo-cat-animated-alt/` are fetched one at a time for apps that flatten animated WebP (Messenger).
