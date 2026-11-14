@@ -11,6 +11,7 @@
     <string name="ok_tile_voice_translate">Voice translate</string>
     <string name="ok_tile_language">Language</string>
     <string name="ok_tile_my_info">My info</string>
+    <string name="ok_tile_fancy_text">Fancy text</string>
     <string name="ok_tile_writing_help">Writing help</string>
     <string name="ok_tile_scan_text">Scan text</string>
     <string name="ok_tile_one_handed">One-handed</string>

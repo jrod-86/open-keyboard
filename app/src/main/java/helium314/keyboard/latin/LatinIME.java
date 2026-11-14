@@ -796,6 +796,7 @@ public class LatinIME extends InputMethodService implements
     private void onStartInputInternal(EditorInfo editorInfo, boolean restarting) {
         super.onStartInput(editorInfo, restarting);
         // Open Keyboard: a "Custom" app uses its own settings
+        FancyText.INSTANCE.onStartInput(editorInfo == null ? null : editorInfo.packageName);
         if (AppProfiles.INSTANCE.onStartInput(this, editorInfo == null ? null : editorInfo.packageName))
             mKeyboardSwitcher.setThemeNeedsReload();
 
@@ -1336,6 +1337,12 @@ public class LatinIME extends InputMethodService implements
             mInputLogic.resyncAfterVoiceInput(st, en);
             return kotlin.Unit.INSTANCE;
         };
+        // Open Keyboard: fancy text styles letters as they're typed
+        if (event.getKeyCode() != KeyCode.VOICE_INPUT && FancyText.INSTANCE.handle(getCurrentInputConnection(), event.getCodePoint(),
+                event.getKeyCode() == KeyCode.DELETE, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; }, shortcutResync)) {
+            mKeyboardSwitcher.updateShiftState(getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+            return;
+        }
         if (event.getCodePoint() == ' ' && event.getKeyCode() != KeyCode.VOICE_INPUT) {
             if (TextShortcuts.INSTANCE.expandOnSpace(this, getCurrentInputConnection(),
                     () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; }, shortcutResync)) {
@@ -1434,6 +1441,12 @@ public class LatinIME extends InputMethodService implements
         final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
         if (compose != null) {
             mSuggestionStripView.setExternalSuggestionView(compose, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
+        final View fancy = FancyText.INSTANCE.chip(this, mSuggestionStripView);
+        if (fancy != null) {
+            mSuggestionStripView.setExternalSuggestionView(fancy, false);
             mSuggestionStripView.setToolbarVisibility(false);
             return;
         }
@@ -1544,6 +1557,12 @@ public class LatinIME extends InputMethodService implements
             final View compose = SmartCompose.INSTANCE.chip(this, mSuggestionStripView);
             if (compose != null) {
                 mSuggestionStripView.setExternalSuggestionView(compose, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
+            final View fancy = FancyText.INSTANCE.chip(this, mSuggestionStripView);
+            if (fancy != null) {
+                mSuggestionStripView.setExternalSuggestionView(fancy, false);
                 mSuggestionStripView.setToolbarVisibility(false);
                 return;
             }
