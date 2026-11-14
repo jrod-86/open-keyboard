@@ -1960,6 +1960,8 @@ public final class InputLogic {
         final CharSequence originallyTypedWord = mLastComposedWord.mTypedWord;
         final CharSequence committedWord = mLastComposedWord.mCommittedWord;
         final String committedWordString = committedWord.toString();
+        if (!committedWordString.equals(originallyTypedWord.toString()))
+            helium314.keyboard.latin.AutocorrectMemory.INSTANCE.reverted(mLatinIME, originallyTypedWord.toString(), committedWordString);
         final int cancelLength = committedWord.length();
         final String separatorString = mLastComposedWord.mSeparatorString;
         // If our separator is a space, we won't actually commit it,
@@ -2421,10 +2423,16 @@ public final class InputLogic {
         }
         SuggestedWordInfo autoCorrectionOrNull = mWordComposer.getAutoCorrectionOrNull();
         String typedWord = mWordComposer.getTypedWord();
+        // Open Keyboard: words you've told autocorrect to leave alone stay as typed
+        if (autoCorrectionOrNull != null && !typedWord.equals(autoCorrectionOrNull.getWord())
+                && helium314.keyboard.latin.AutocorrectMemory.INSTANCE.keepTyped(mLatinIME, typedWord, autoCorrectionOrNull.getWord())) {
+            autoCorrectionOrNull = null;
+        }
         String stringToCommit = (autoCorrectionOrNull != null) ? autoCorrectionOrNull.getWord() : typedWord;
         boolean isBatchMode = mWordComposer.isBatchMode();
         commitChosenWord(settingsValues, stringToCommit, autoCorrectionOrNull, LastComposedWord.COMMIT_TYPE_DECIDED_WORD, separator);
         if (!typedWord.equals(stringToCommit)) {
+            helium314.keyboard.latin.AutocorrectMemory.INSTANCE.changed(typedWord, stringToCommit);
             // This will make the correction flash for a short while as a visual clue
             // to the user that auto-correction happened. It has no other effect; in particular
             // note that this won't affect the text inside the text field AT ALL: it only makes
