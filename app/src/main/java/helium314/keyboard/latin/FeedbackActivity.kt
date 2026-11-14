@@ -87,14 +87,16 @@ class FeedbackActivity : ComponentActivity() {
                 Button(enabled = title.isNotBlank() || details.isNotBlank(), onClick = { send(bug, title, details, steps, includePhone) }) {
                     Text("Send")
                 }
-                androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Text("Logs", style = MaterialTheme.typography.titleMedium)
-                Text("Something acting up? Get the keyboard's latest logs (and any crash reports) as one zip file. " +
-                        "Save it to your phone, or share it straight to email, Messenger or Drive. You can attach it to a bug report too.",
-                    style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    androidx.compose.material3.OutlinedButton(onClick = { withLogs { saveLogs.launch(it.name) } }) { Text("Save logs") }
-                    androidx.compose.material3.OutlinedButton(onClick = { withLogs { shareLogs(it) } }) { Text("Share logs") }
+                if (bug) {
+                    androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    Text("Logs", style = MaterialTheme.typography.titleMedium)
+                    Text("Something acting up? Get the keyboard's latest logs (and any crash reports) as one zip file. " +
+                            "Save it to your phone, or share it straight to email, Messenger or Drive. You can attach it to a bug report too.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        androidx.compose.material3.OutlinedButton(onClick = { withLogs { saveLogs.launch(it.name) } }) { Text("Save logs") }
+                        androidx.compose.material3.OutlinedButton(onClick = { withLogs { shareLogs(it) } }) { Text("Share logs") }
+                    }
                 }
             }
         }
