@@ -236,11 +236,18 @@ class ImageMakerActivity : Activity() {
         // title with a two-colour shine, and the 🎨 themes, ⚙️ settings and ℹ️ help buttons beside it
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         root.addView(head)
+        // the Local Image logo, then the name in the logo's purple → pink → orange
+        head.addView(android.widget.ImageView(this).apply {
+            setImageResource(helium314.keyboard.latin.R.drawable.local_image_logo); contentDescription = "Local Image logo"
+        }, LinearLayout.LayoutParams(dp(46f), dp(46f)).apply { rightMargin = dp(8f) })
         head.addView(TextView(this).apply {
-            text = "✨ Local Image"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f); typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6f), 0, 0)
+            text = "Local Image"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f); typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1; setPadding(0, dp(2f), 0, 0)
+            val logoColours = if (night) intArrayOf(0xFFB38CFF.toInt(), 0xFFE5579B.toInt(), 0xFFFF9A4D.toInt())
+                else intArrayOf(0xFF3E1460.toInt(), 0xFFC2337E.toInt(), 0xFFF57A3A.toInt())
             addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-                (v as TextView).paint.shader = android.graphics.LinearGradient(0f, 0f, v.width.toFloat(), 0f, purple, blue, android.graphics.Shader.TileMode.CLAMP)
+                val tw = (v as TextView).paint.measureText("Local Image")
+                v.paint.shader = android.graphics.LinearGradient(0f, 0f, tw, 0f, logoColours, floatArrayOf(0.3f, 0.6f, 1f), android.graphics.Shader.TileMode.CLAMP)
             }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         for ((icon, what, act) in listOf<Triple<String, String, () -> Unit>>(Triple("🎨", "Themes", ::pickTheme), Triple("⚙️", "Settings", ::openSettings), Triple("ℹ️", "How it works", ::showHelp))) {
