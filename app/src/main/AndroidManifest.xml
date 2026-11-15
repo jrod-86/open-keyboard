@@ -140,6 +140,13 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:excludeFromRecents="true"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
+        <activity android:name="helium314.keyboard.latin.AiWriterActivity"
+            android:label="Write for me"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+            android:exported="false" />
         <activity android:name="helium314.keyboard.latin.ClipboardSearchActivity"
             android:label="Search clipboard"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
