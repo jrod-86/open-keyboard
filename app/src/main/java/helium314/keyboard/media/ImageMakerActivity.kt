@@ -19,7 +19,9 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -69,6 +71,8 @@ class ImageMakerActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var picture: ImageView
     private lateinit var placeholder: TextView
+    private lateinit var glowCard: GlowCard
+    private lateinit var magic: MagicView
     private lateinit var generate: Button
     private lateinit var actions: LinearLayout
     private var style = 0
@@ -246,22 +250,25 @@ class ImageMakerActivity : Activity() {
         }
         root.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52f)).apply { topMargin = pad * 3 / 4 })
 
-        // the picture card, with a thin purple-to-blue frame
-        val frame = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(purple, blue)).apply { cornerRadius = dp(20f).toFloat() }
-        val inner = UiKit.rounded(this, 18.5f, cardColor)
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            background = android.graphics.drawable.LayerDrawable(arrayOf(frame, inner)).apply { setLayerInset(1, dp(1.5f), dp(1.5f), dp(1.5f), dp(1.5f)) }
-            setPadding(pad, pad, pad, pad)
+        // the picture card: a thin frame that turns into a spinning rainbow glow while drawing (GlowCard),
+        // with a big square preview that the screen scrolls down to
+        val card = GlowCard(this, cardColor, dp(20f).toFloat(), dp(1.5f).toFloat()).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(pad + dp(4f), pad + dp(4f), pad + dp(4f), pad + dp(4f))
         }
+        glowCard = card
+        val square = SquareFrame(this)
         placeholder = TextView(this).apply { text = "🖼️"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 44f); gravity = Gravity.CENTER; alpha = 0.6f }
-        card.addView(placeholder)
+        square.addView(placeholder, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         picture = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER; visibility = View.GONE
             contentDescription = "Tap to see it full screen"
             setOnClickListener { result?.let { PictureViewer.show(this@ImageMakerActivity, it) } }
         }
-        card.addView(picture, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        square.addView(picture, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        magic = MagicView(this).apply { visibility = View.GONE }
+        square.addView(magic, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        card.addView(square, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
             progressTintList = android.content.res.ColorStateList.valueOf(purple)
@@ -278,7 +285,7 @@ class ImageMakerActivity : Activity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setPadding(0, dp(2f), 0, dp(2f))
         })
         card.addView(stageList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
-        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = pad })
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad })
 
         actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; visibility = View.GONE; setPadding(0, pad * 3 / 4, 0, 0) }
         for ((label, act) in listOf<Pair<String, () -> Unit>>("📤 Send" to ::send, "💾 Save" to ::save, "✂️ Sticker" to ::makeSticker)) {
@@ -290,8 +297,10 @@ class ImageMakerActivity : Activity() {
         }
         root.addView(actions)
         refresh()
-        setContentView(root)
-        root.fitAboveKeyboard(includeTop = true)
+        // the whole screen scrolls, so the preview can be big
+        val scroller = ScrollView(this).apply { isFillViewport = true; addView(root) }
+        setContentView(scroller)
+        scroller.fitAboveKeyboard(includeTop = true)
         // no keyboard until the prompt box is tapped (Jarrod, test 157)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         root.isFocusableInTouchMode = true; root.requestFocus()
@@ -483,7 +492,10 @@ class ImageMakerActivity : Activity() {
         val job = ImageJob
         working = job.running
         generate.removeCallbacks(ticker)
+        glowCard.magic = job.running
+        magic.running = job.running
         if (job.running) {
+            picture.visibility = View.GONE; placeholder.visibility = View.GONE
             val quick = job.model === ImageGen.QUICK
             generate.text = if (job.stopping) "Stopping…" else "■  Stop"
             generate.isEnabled = !job.stopping
@@ -525,6 +537,7 @@ class ImageMakerActivity : Activity() {
             val secs = job.tookMs / 1000
             status.text = "Done in ${if (secs >= 60) "${secs / 60} min ${secs % 60} s" else "$secs s"}. Tap it to see it full screen. Not quite right? Make another."
         } else if (job.error != null) {
+            if (result == null) placeholder.visibility = View.VISIBLE else picture.visibility = View.VISIBLE
             generate.text = "✨  Generate"
             status.text = job.error
         }
