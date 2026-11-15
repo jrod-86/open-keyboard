@@ -79,14 +79,14 @@ object ImageGen {
         icon = "🚀", steps = 6, sampler = "lcm", single = true)
 
     /** SDXL-Lightning 4-step (ByteDance, CreativeML OpenRAIL++-M), Q4_0 GGUF by mzwing. */
-    val LIGHTNING = Model("lightning", "Test", "SDXL-Lightning", "not rated yet · 768 px, 2.7 GB", listOf(Part("sdxl_lightning_4step.q4_0.gguf",
+    val LIGHTNING = Model("lightning", "Sharp", "SDXL-Lightning", "⭐ 7.5/10 · ~5.5 min, 768 px, 2.7 GB", listOf(Part("sdxl_lightning_4step.q4_0.gguf",
         "https://huggingface.co/mzwing/SDXL-Lightning-GGUF/resolve/4fe21f71b298e088be341bb6545f6a2df950b5ff/sdxl_lightning_4step.q4_0.gguf",
         "33cc25b6f5dd121ecf3ad28e35eb38cb21427b7794c53527ceafe2dc3b109f4f", 2584858432L), SAFETY),
         "The model is SDXL-Lightning (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
         steps = 4, sampler = "euler", scheduler = "sgm_uniform", scale = 1.5f, single = true)
 
     /** Best to worst by Jarrod's test scores (Nov 2026), so the list reads as a ranking. */
-    val MODELS = listOf(BEST, DREAM, KLEIN, LIGHTNING, QUICK)
+    val MODELS = listOf(BEST, LIGHTNING, DREAM, KLEIN, QUICK)
 
     /** Told about each finished step while a picture is drawn. */
     @Volatile var progressListener: ((Int, Int) -> Unit)? = null
