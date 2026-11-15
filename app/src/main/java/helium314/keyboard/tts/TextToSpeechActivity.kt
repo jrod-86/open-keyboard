@@ -437,9 +437,9 @@ class TextToSpeechActivity : Activity() {
                     while (true) {
                         val chunk = queue.take()
                         if (chunk === end || stopping) break
-                        t.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
+                        if (runCatching { t.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING) }.getOrDefault(-1) < 0) break // track released
                     }
-                    if (!stopping) drain(t, all.sumOf { it.size })
+                    if (!stopping) runCatching { drain(t, all.sumOf { it.size }) }
                 }
                 var done = 0
                 val t0 = System.currentTimeMillis()
@@ -516,11 +516,16 @@ class TextToSpeechActivity : Activity() {
         thread(name = "tts-replay") {
             val t = runCatching { openTrack(rate) }.getOrNull() ?: return@thread
             var i = 0
-            while (i < a.size && !stopping && track === t) {
-                val n = minOf(rate / 4, a.size - i)
-                t.write(a, i, n, AudioTrack.WRITE_BLOCKING); i += n
+            // Tapping another voice (or Stop) releases this track from the main thread, maybe mid-write: that
+            // throws "Unable to retrieve AudioTrack pointer", which just means we're done (crash in test 176).
+            runCatching {
+                while (i < a.size && !stopping && track === t) {
+                    val n = minOf(rate / 4, a.size - i)
+                    if (t.write(a, i, n, AudioTrack.WRITE_BLOCKING) < 0) break
+                    i += n
+                }
+                if (!stopping && track === t) { drain(t, a.size); runOnUiThread { if (track === t) releaseTrack() } }
             }
-            if (!stopping && track === t) { drain(t, a.size); runOnUiThread { if (track === t) releaseTrack() } }
         }
     }
 
