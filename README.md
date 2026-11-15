@@ -54,6 +54,7 @@ It includes code under other compatible licences, kept with their notices:
 | sherpa-onnx (speech engine) | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | ONNX Runtime (inside sherpa-onnx) | MIT | https://github.com/microsoft/onnxruntime |
 | GTCRN noise remover (`assets/gtcrn_simple.onnx`) | MIT (`LICENSE-MIT-GTCRN`) | https://github.com/Xiaobin-Rong/gtcrn |
+| Silero VAD speech detector (`assets/silero_vad.onnx`) | MIT (`LICENSE-MIT-SILERO-VAD`) | https://github.com/snakers4/silero-vad |
 
 Speech models are not bundled; the app downloads them when you ask it to:
 
