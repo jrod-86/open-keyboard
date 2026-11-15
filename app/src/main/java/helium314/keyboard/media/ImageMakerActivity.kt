@@ -329,7 +329,8 @@ class ImageMakerActivity : Activity() {
         picture = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER; visibility = View.GONE
             contentDescription = "Tap to see it full screen"
-            setOnClickListener { result?.let { PictureViewer.show(this@ImageMakerActivity, it) } }
+            setOnClickListener { result?.let { b -> PictureViewer.show(this@ImageMakerActivity, b, listOf(
+                "📤 Export" to { export(b); false }, "💾 Save" to { saveBitmap(b); false })) } }
         }
         square.addView(picture, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         magic = MagicView(this).apply { visibility = View.GONE }
@@ -766,7 +767,7 @@ class ImageMakerActivity : Activity() {
                     val img = ImageView(this).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true
                         background = UiKit.rounded(this@ImageMakerActivity, 12f, cardColor)
-                        setOnClickListener { openFromGallery(item) }
+                        setOnClickListener { viewGalleryItem(item) }
                         setOnLongClickListener { galleryMenu(item); true }
                     }
                     cell.addView(img, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -797,12 +798,42 @@ class ImageMakerActivity : Activity() {
         (picture.parent as View).let { v -> (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0).let { sc -> if (sc is ScrollView) sc.smoothScrollTo(0, (v.parent as View).top) } }
     }
 
+    /** Tap a gallery picture: see it full screen, with export, save, reuse and delete along the bottom. */
+    private fun viewGalleryItem(item: Gallery.Item) {
+        val bmp = item.full() ?: return
+        PictureViewer.show(this, bmp, listOf(
+            "📤 Export" to { export(bmp); false },
+            "💾 Save" to { saveBitmap(bmp); false },
+            "✏️ Reuse" to { openFromGallery(item); true },
+            "🗑️ Delete" to {
+                AlertDialog.Builder(this).setMessage("Delete this picture from your gallery?")
+                    .setPositiveButton("Delete") { _, _ -> item.delete(); loadGallery(); Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show() }
+                    .setNegativeButton("Cancel", null).show()
+                false
+            },
+        ))
+    }
+
+    /** Opens Android's share sheet so the picture can go to any app (messages, email, Drive…). */
+    private fun export(bmp: Bitmap) {
+        runCatching {
+            val dir = File(cacheDir, "media").apply { mkdirs() }
+            dir.listFiles { f -> f.name.startsWith("local_image_") }?.forEach { it.delete() }
+            val f = File(dir, "local_image_${System.currentTimeMillis()}.png")
+            f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.media", f)
+            val send = Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(Intent.createChooser(send, "Export picture"))
+        }.onFailure { Toast.makeText(this, "Couldn't export it", Toast.LENGTH_SHORT).show() }
+    }
+
     private fun galleryMenu(item: Gallery.Item) {
         AlertDialog.Builder(this)
             .setTitle("This picture")
             .setItems(arrayOf("🔍 See it full screen", "✏️ Use its words again", "🗑️ Delete")) { _, which ->
                 when (which) {
-                    0 -> item.full()?.let { PictureViewer.show(this, it) }
+                    0 -> viewGalleryItem(item)
                     1 -> { prompt.setText(item.words); prompt.setSelection(prompt.text.length) }
                     2 -> AlertDialog.Builder(this).setMessage("Delete this picture from your gallery?")
                         .setPositiveButton("Delete") { _, _ -> item.delete(); loadGallery() }
@@ -812,13 +843,33 @@ class ImageMakerActivity : Activity() {
             .show()
     }
 
+    /** 🎨 theme picker: a grid of tiles, each a tiny preview of this screen in that theme. */
     private fun pickTheme() {
-        val names = ImageThemes.ALL.mapIndexed { i, t -> (if (i == 0) "📱 " else if (t.dark) "🌙 " else "☀️ ") + t.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("🎨 Themes")
-            .setSingleChoiceItems(names, ImageThemes.index(this)) { d, which ->
-                ImageThemes.set(this, which); d.dismiss(); recreate()
+        val cur = ImageThemes.index(this)
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14f), dp(6f), dp(14f), dp(6f)) }
+        var dlg: AlertDialog? = null
+        ImageThemes.ALL.indices.chunked(3).forEach { rowIdx ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (k in 0 until 3) {
+                val i = rowIdx.getOrNull(k)
+                val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+                if (i != null) {
+                    val t = if (i == 0) ImageThemes.current(this, night).let { d -> ImageTheme("Phone default", d.a1, d.a2, d.bg, d.card, d.line, d.text) } else ImageThemes.ALL[i]
+                    cell.addView(ThemePreview(this, t, i == cur), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    cell.addView(TextView(this).apply {
+                        text = (if (i == 0) "📱 " else "") + ImageThemes.ALL[i].name; gravity = Gravity.CENTER
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setPadding(0, dp(4f), 0, 0)
+                        if (i == cur) typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    })
+                    cell.setOnClickListener { dlg?.dismiss(); if (i != cur) { ImageThemes.set(this, i); recreate() } }
+                }
+                row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(5f); marginEnd = dp(5f) })
             }
+            grid.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12f) })
+        }
+        dlg = AlertDialog.Builder(this)
+            .setTitle("🎨 Themes")
+            .setView(ScrollView(this).apply { addView(grid) })
             .setNegativeButton("Close", null)
             .show()
     }
@@ -886,7 +937,7 @@ Tap the picture to see it full screen (pinch or double-tap to zoom). Then:
 • ✂️ Sticker cuts it out to make a sticker.
 
 🖼️ Your pictures (gallery)
-Every picture you make is kept here, newest first. Tap one to bring it back with its words. Press and hold one to see it full screen, reuse its words, or delete it. ⚙️ Settings chooses how many to keep. Once that many are stored, the oldest are replaced.
+Every picture you make is kept here, newest first. Tap one to see it full screen, with 📤 Export (send it to any app), 💾 Save, ✏️ Reuse (bring it back with its words) and 🗑️ Delete. ⚙️ Settings chooses how many to keep. Once that many are stored, the oldest are replaced.
 
 🎨 Themes
 20 colour themes for this screen.
@@ -960,8 +1011,9 @@ You can leave the screen or switch apps. A notification shows how it's going and
         finish()
     }
 
-    private fun save() {
-        val bmp = result ?: return
+    private fun save() { result?.let { saveBitmap(it) } }
+
+    private fun saveBitmap(bmp: Bitmap) {
         val ok = runCatching {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, "OpenKeyboard_${System.currentTimeMillis()}.png")

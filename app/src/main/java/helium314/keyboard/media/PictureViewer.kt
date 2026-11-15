@@ -21,7 +21,8 @@ import android.view.Gravity
 
 /** Full-screen look at a finished picture: pinch or double-tap to zoom, drag to look around, tap or Back to close. */
 object PictureViewer {
-    fun show(context: Context, bmp: Bitmap) {
+    /** [actions]: buttons along the bottom, e.g. Export, Save, Delete; each closes the viewer if it returns true. */
+    fun show(context: Context, bmp: Bitmap, actions: List<Pair<String, () -> Boolean>> = emptyList()) {
         val dialog = Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val view = ZoomImage(context, bmp) { dialog.dismiss() }
@@ -32,7 +33,27 @@ object PictureViewer {
         }
         root.addView(close, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
         val hint = TextView(context).apply {
-            text = "Pinch or double-tap to zoom · tap to close"; textSize = 13f; setTextColor(0xAAFFFFFF.toInt()); setPadding(0, 0, 0, 60)
+            text = "Pinch or double-tap to zoom · tap the picture to close"; textSize = 13f; setTextColor(0xAAFFFFFF.toInt()); setPadding(0, 0, 0, 60)
+        }
+        val density = context.resources.displayMetrics.density
+        if (actions.isNotEmpty()) {
+            val bar = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+                setPadding((8 * density).toInt(), (10 * density).toInt(), (8 * density).toInt(), (28 * density).toInt())
+                setBackgroundColor(0x99000000.toInt())
+            }
+            for ((label, act) in actions) {
+                bar.addView(TextView(context).apply {
+                    text = label; textSize = 15f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                    setPadding((6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt())
+                    background = android.graphics.drawable.GradientDrawable().apply { setColor(0x33FFFFFF); cornerRadius = 22 * density }
+                    setOnClickListener { if (act()) dialog.dismiss() }
+                }, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = (4 * density).toInt(); marginEnd = (4 * density).toInt()
+                })
+            }
+            root.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+            hint.setPadding(0, 0, 0, (100 * density).toInt())
         }
         root.addView(hint, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         dialog.setContentView(root)
