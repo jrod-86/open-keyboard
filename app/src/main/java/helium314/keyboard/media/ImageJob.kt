@@ -159,7 +159,10 @@ object ImageJob {
         e.apply()
     }
 
-    fun start(ctx: Context, m: ImageGen.Model, prompt: String, steps: Int) {
+    /** Shows a picture from the gallery as the current one (only when nothing is being drawn). */
+    fun pick(bmp: Bitmap) { if (!running) { result = bmp; error = null; tookMs = 0 } }
+
+    fun start(ctx: Context, m: ImageGen.Model, prompt: String, steps: Int, words: String = prompt) {
         if (running) return
         val app = ctx.applicationContext
         running = true; result = null; error = null; step = 0; total = 0; model = m
@@ -230,6 +233,7 @@ object ImageJob {
             }
             r = checked
             result = r.getOrNull()
+            result?.let { Gallery.add(app, it, words) }
             error = r.exceptionOrNull()?.let {
                 if (it is HeldBack) return@let "The safety check held this picture back. Try different words."
                 if (stopping) "Stopped." else if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}"
@@ -276,7 +280,7 @@ object ImageJob {
 
     fun buildNote(ctx: Context): android.app.Notification {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) nm?.createNotificationChannel(NotificationChannel(CHANNEL, "Image maker", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) nm?.createNotificationChannel(NotificationChannel(CHANNEL, "Local Image", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, ImageMakerActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         @Suppress("DEPRECATION")
@@ -290,7 +294,7 @@ object ImageJob {
             b.setContentTitle("Drawing your picture…").setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
                 .setProgress(1000, overall(ctx), stageIndex < 0)
         } else {
-            b.setContentTitle(if (result != null) "Your picture is ready ✨" else "Image maker").setAutoCancel(true)
+            b.setContentTitle(if (result != null) "Your picture is ready ✨" else "Local Image").setAutoCancel(true)
                 .setContentText(if (result != null) "Tap to see it" else (error ?: "Stopped"))
             result?.let { b.setLargeIcon(it) }
         }

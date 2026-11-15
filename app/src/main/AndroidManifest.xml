@@ -104,7 +104,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:exported="false" />
 
         <activity android:name="helium314.keyboard.media.ImageMakerActivity"
-            android:label="Image maker"
+            android:label="Local Image"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:taskAffinity="io.github.jrod86.openkeyboard.imagemaker"

@@ -109,10 +109,15 @@ class ImageMakerActivity : Activity() {
 
     private val night get() = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
-    private val purple = Color.rgb(142, 84, 233)
-    private val blue = Color.rgb(66, 133, 244)
-    private val cardColor get() = if (night) Color.rgb(36, 37, 42) else Color.rgb(242, 243, 247)
-    private val lineColor get() = if (night) Color.rgb(64, 66, 74) else Color.rgb(216, 218, 226)
+    // colours come from the chosen 🎨 theme (ImageThemes); "purple" and "blue" are its two accent colours
+    private val theme by lazy { ImageThemes.current(this, night) }
+    private val purple get() = theme.a1
+    private val blue get() = theme.a2
+    private val cardColor get() = theme.card
+    private val lineColor get() = theme.line
+    private lateinit var galleryTitle: TextView
+    private lateinit var galleryGrid: LinearLayout
+    private var galleryShown = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,14 +128,22 @@ class ImageMakerActivity : Activity() {
         style = prefs.getInt("style", 0).coerceIn(0, styles.size - 1)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
 
-        // title with a purple-to-blue shine
-        root.addView(TextView(this).apply {
-            text = "✨ Image maker"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f); typeface = android.graphics.Typeface.DEFAULT_BOLD
+        // title with a two-colour shine, and the 🎨 themes, ⚙️ settings and ℹ️ help buttons beside it
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        root.addView(head)
+        head.addView(TextView(this).apply {
+            text = "✨ Local Image"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f); typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6f), 0, 0)
             addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
                 (v as TextView).paint.shader = android.graphics.LinearGradient(0f, 0f, v.width.toFloat(), 0f, purple, blue, android.graphics.Shader.TileMode.CLAMP)
             }
-        })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        for ((icon, what, act) in listOf<Triple<String, String, () -> Unit>>(Triple("🎨", "Themes", ::pickTheme), Triple("⚙️", "Settings", ::openSettings), Triple("ℹ️", "How it works", ::showHelp))) {
+            head.addView(TextView(this).apply {
+                text = icon; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(8f), dp(8f), dp(8f), dp(4f))
+                contentDescription = what; setOnClickListener { act() }
+            })
+        }
         root.addView(TextView(this).apply {
             text = "Dream it up, your phone draws it. Nothing leaves your phone."
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); alpha = 0.7f; setPadding(0, dp(2f), 0, pad * 3 / 4)
@@ -205,8 +218,13 @@ class ImageMakerActivity : Activity() {
             setRawInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
             maxLines = 8; background = null
             // long 🪄 prompts: a scroll bar, and the box (not the page) scrolls when you drag inside it
-            isVerticalScrollBarEnabled = true; isScrollbarFadingEnabled = false
-            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            // a view made in code has no scroll bar drawable until it's given one (without it, drawing crashed: test 160)
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                verticalScrollbarThumbDrawable = GradientDrawable().apply { setColor(purple); cornerRadius = dp(2f).toFloat(); setSize(dp(4f), dp(24f)) }
+                verticalScrollbarTrackDrawable = GradientDrawable().apply { setColor(lineColor); cornerRadius = dp(2f).toFloat(); setSize(dp(4f), dp(24f)) }
+                isVerticalScrollBarEnabled = true; isScrollbarFadingEnabled = false
+                scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            }
             setOnTouchListener { v, e ->
                 if (v.canScrollVertically(1) || v.canScrollVertically(-1)) {
                     v.parent.requestDisallowInterceptTouchEvent(e.actionMasked != android.view.MotionEvent.ACTION_UP && e.actionMasked != android.view.MotionEvent.ACTION_CANCEL)
@@ -298,6 +316,24 @@ class ImageMakerActivity : Activity() {
             }, LinearLayout.LayoutParams(0, dp(46f), 1f).apply { marginStart = pad / 4; marginEnd = pad / 4 })
         }
         root.addView(actions)
+
+        // the gallery: every picture made, newest first, three across
+        galleryTitle = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f); typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(4f), pad * 3 / 2, 0, pad / 2)
+        }
+        root.addView(galleryTitle)
+        galleryGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(galleryGrid)
+
+        // theme colours for the page and all its text
+        root.setBackgroundColor(theme.bg)
+        window.decorView.setBackgroundColor(theme.bg)
+        window.statusBarColor = theme.bg; window.navigationBarColor = theme.bg
+        if (android.os.Build.VERSION.SDK_INT >= 30) window.insetsController?.setSystemBarsAppearance(
+            if (theme.dark) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+        tint(root)
         refresh()
         // the whole screen scrolls, so the preview can be big
         val scroller = ScrollView(this).apply { isFillViewport = true; addView(root) }
@@ -517,7 +553,7 @@ class ImageMakerActivity : Activity() {
         if (m !== ImageGen.QUICK && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 5) }
-        ImageJob.start(this, m, words + styles[style].suffix, steps)
+        ImageJob.start(this, m, words + styles[style].suffix, steps, words)
         show()
     }
 
@@ -569,12 +605,179 @@ class ImageMakerActivity : Activity() {
             actions.visibility = View.VISIBLE
             generate.text = "✨  Make another"
             val secs = job.tookMs / 1000
+            if (job.tookMs == 0L) status.text = "From your gallery. Tap it to see it full screen." else
             status.text = "Done in ${if (secs >= 60) "${secs / 60} min ${secs % 60} s" else "$secs s"}. Tap it to see it full screen. Not quite right? Make another."
         } else if (job.error != null) {
             if (result == null) placeholder.visibility = View.VISIBLE else picture.visibility = View.VISIBLE
             generate.text = "✨  Generate"
             status.text = job.error
         }
+        loadGallery()
+    }
+
+    /** Text and hint colours from the theme, for every text view on the page (buttons with their own colour excepted). */
+    private fun tint(v: View) {
+        when (v) {
+            is Button -> {}
+            is EditText -> { v.setTextColor(theme.text); v.setHintTextColor((theme.text and 0x00FFFFFF) or 0x80000000.toInt()) }
+            is TextView -> v.setTextColor(theme.text)
+            is ViewGroup -> for (i in 0 until v.childCount) tint(v.getChildAt(i))
+        }
+    }
+
+    /** Fills the gallery grid; only redone when the pictures changed. */
+    private fun loadGallery() {
+        val items = Gallery.items(this)
+        val key = items.size.toString() + (items.firstOrNull()?.file?.name ?: "")
+        if (key == galleryShown) return
+        galleryShown = key
+        galleryTitle.text = if (items.isEmpty()) "🖼️ Your pictures" else "🖼️ Your pictures (${items.size})"
+        galleryGrid.removeAllViews()
+        if (items.isEmpty()) {
+            galleryGrid.addView(TextView(this).apply {
+                text = "Pictures you make show up here."; alpha = 0.6f; setPadding(dp(4f), 0, 0, 0); setTextColor(theme.text)
+            })
+            return
+        }
+        val gap = dp(6f)
+        val cells = mutableListOf<Pair<ImageView, Gallery.Item>>()
+        items.chunked(3).forEach { rowItems ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (k in 0 until 3) {
+                val cell = SquareFrame(this)
+                val item = rowItems.getOrNull(k)
+                if (item != null) {
+                    val img = ImageView(this).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true
+                        background = UiKit.rounded(this@ImageMakerActivity, 12f, cardColor)
+                        setOnClickListener { openFromGallery(item) }
+                        setOnLongClickListener { galleryMenu(item); true }
+                    }
+                    cell.addView(img, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                    cells.add(img to item)
+                }
+                row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (k > 0) marginStart = gap / 2
+                    if (k < 2) marginEnd = gap / 2
+                })
+            }
+            galleryGrid.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = gap })
+        }
+        // small copies, read off the main thread
+        thread(name = "image-maker-gallery") {
+            for ((img, item) in cells) {
+                val t = item.thumb(dp(120f)) ?: continue
+                runOnUiThread { img.setImageBitmap(t) }
+            }
+        }
+    }
+
+    private fun openFromGallery(item: Gallery.Item) {
+        if (working) return
+        val bmp = item.full() ?: return
+        ImageJob.pick(bmp)
+        item.words.takeIf { it.isNotBlank() }?.let { prompt.setText(it); beforeEnhance = null }
+        show()
+        (picture.parent as View).let { v -> (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0).let { sc -> if (sc is ScrollView) sc.smoothScrollTo(0, (v.parent as View).top) } }
+    }
+
+    private fun galleryMenu(item: Gallery.Item) {
+        AlertDialog.Builder(this)
+            .setTitle("This picture")
+            .setItems(arrayOf("🔍 See it full screen", "✏️ Use its words again", "🗑️ Delete")) { _, which ->
+                when (which) {
+                    0 -> item.full()?.let { PictureViewer.show(this, it) }
+                    1 -> { prompt.setText(item.words); prompt.setSelection(prompt.text.length) }
+                    2 -> AlertDialog.Builder(this).setMessage("Delete this picture from your gallery?")
+                        .setPositiveButton("Delete") { _, _ -> item.delete(); loadGallery() }
+                        .setNegativeButton("Cancel", null).show()
+                }
+            }
+            .show()
+    }
+
+    private fun pickTheme() {
+        val names = ImageThemes.ALL.mapIndexed { i, t -> (if (i == 0) "📱 " else if (t.dark) "🌙 " else "☀️ ") + t.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("🎨 Themes")
+            .setSingleChoiceItems(names, ImageThemes.index(this)) { d, which ->
+                ImageThemes.set(this, which); d.dismiss(); recreate()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun openSettings() {
+        val labels = Gallery.LIMITS.map { it.second }.toTypedArray()
+        val now = Gallery.LIMITS.indexOfFirst { it.first == Gallery.limit(this) }
+        AlertDialog.Builder(this)
+            .setTitle("⚙️ Gallery storage: how many pictures to keep")
+            .setSingleChoiceItems(labels, now) { d, which ->
+                val n = Gallery.LIMITS[which].first
+                val would = Gallery.items(this).size - (if (n <= 0) Int.MAX_VALUE else n)
+                fun apply() { Gallery.setLimit(this, n); galleryShown = ""; loadGallery(); d.dismiss() }
+                if (would > 0) AlertDialog.Builder(this)
+                    .setMessage("That deletes your $would oldest picture${if (would == 1) "" else "s"} now. Pictures you saved to your phone's Pictures folder aren't touched.")
+                    .setPositiveButton("OK") { _, _ -> apply() }.setNegativeButton("Cancel", null).show()
+                else apply()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showHelp() {
+        val text = """
+✨ Making a picture
+Type what you'd like to see in the box, then tap Generate. Everything happens on your phone: nothing is sent anywhere.
+
+⚡ Quick or 💎 Z-Image Turbo
+Quick makes a picture in seconds, but it's simple. Z-Image Turbo makes much better pictures but takes a few minutes. Pick one in MODEL. Each downloads once the first time you use it.
+
+📷 Style
+Adds a look to your words, like Photo, Cartoon or Painting.
+
+4 or 8 steps
+More steps take longer but look sharper.
+
+🎮 Graphics chip or 🧠 Main processor
+The graphics chip is about twice as fast. If it ever crashes, the app switches to the main processor by itself.
+
+🌿 Smooth · ⚖️ Balanced · 🚀 Fastest
+How much of your phone's power to use. Smooth keeps your phone smooth but takes longest. Fastest is quickest, but don't use other apps while it draws. Tap one to see details.
+
+🪄 Improve my words
+Turns a few words into a detailed description that the model draws much better. It fills in anything you didn't say. Tap 🪄 again to go back to your own words. It needs the keyboard's Writing help model.
+
+🎲 Surprise me
+Gives you a new random idea every time.
+
+✕ Clear
+Empties the box so you can start a new idea.
+
+🖼️ Your picture
+Tap the picture to see it full screen (pinch or double-tap to zoom). Then:
+• 📤 Send puts it into the chat you came from.
+• 💾 Save copies it to Pictures › Open Keyboard.
+• ✂️ Sticker cuts it out to make a sticker.
+
+🖼️ Your pictures (gallery)
+Every picture you make is kept here, newest first. Tap one to bring it back with its words. Press and hold one to see it full screen, reuse its words, or delete it. ⚙️ Settings chooses how many to keep. Once that many are stored, the oldest are replaced.
+
+🎨 Themes
+20 colour themes for this screen.
+
+🛡️ Safety
+Local Image won't draw nude, sexual or gory pictures. Some words are blocked, and every finished picture is checked on your phone before it's shown.
+
+⏳ While it draws
+You can leave the screen or switch apps. A notification shows how it's going and opens the picture when it's ready. Tap Stop to cancel.
+""".trim()
+        val tv = TextView(this).apply { this.text = text; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setPadding(dp(22f), dp(8f), dp(22f), dp(8f)); setLineSpacing(0f, 1.15f) }
+        AlertDialog.Builder(this)
+            .setTitle("ℹ️ How Local Image works")
+            .setView(ScrollView(this).apply { addView(tv) })
+            .setPositiveButton("Got it", null)
+            .show()
     }
 
     override fun onResume() {

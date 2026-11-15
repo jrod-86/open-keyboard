@@ -32,6 +32,6 @@ object SafePrompt {
         val all = words + squashed
         val pairs = words.zipWithNext { a, b -> "$a $b" }
         val hit = all.any { it in blocked } || pairs.any { it in blocked }
-        return if (hit) "The Image maker doesn't make nude, sexual or gory pictures. Try something else." else null
+        return if (hit) "Local Image doesn't make nude, sexual or gory pictures. Try something else." else null
     }
 }
