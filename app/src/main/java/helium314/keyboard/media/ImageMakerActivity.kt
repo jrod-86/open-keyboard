@@ -292,7 +292,9 @@ class ImageMakerActivity : Activity() {
         refresh()
         setContentView(root)
         root.fitAboveKeyboard(includeTop = true)
-        prompt.requestFocus()
+        // no keyboard until the prompt box is tapped (Jarrod, test 157)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        root.isFocusableInTouchMode = true; root.requestFocus()
     }
 
     private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
@@ -463,6 +465,9 @@ class ImageMakerActivity : Activity() {
         if (working) return
         val words = prompt.text.toString().trim()
         if (words.isEmpty()) { status.text = "Type what you'd like a picture of first."; return }
+        // put the keyboard away so the picture area shows
+        getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(prompt.windowToken, 0)
+        prompt.clearFocus()
         SafePrompt.check(words)?.let { status.text = it; return }
         val m = model
         if (!ImageGen.downloaded(this, m)) { askDownload(m); return }
