@@ -175,11 +175,11 @@ object ImageGen {
     val onGpu get() = ctx != 0L && loadedOnGpu
 
     /** Makes one 512×512 picture. Slow: call off the main thread. */
-    fun generate(c: Context, m: Model, prompt: String, seed: Long, steps: Int, gpu: Boolean = false): Bitmap {
+    fun generate(c: Context, m: Model, prompt: String, seed: Long, steps: Int, gpu: Boolean = false, width: Int = 512, height: Int = 512): Bitmap {
         val h = ensureLoaded(c, m, gpu)
         val data = synchronized(this) {
-            if (m === QUICK) nativeGenerate(h, prompt, "", 512, 512, 1, 1f, seed)
-            else nativeGenerate(h, prompt, "", 512, 512, steps, 1f, seed)
+            if (m === QUICK) nativeGenerate(h, prompt, "", width, height, 1, 1f, seed)
+            else nativeGenerate(h, prompt, "", width, height, steps, 1f, seed)
         } ?: throw IllegalStateException("no picture came out")
         fun int(at: Int) = (data[at].toInt() and 255 shl 24) or (data[at + 1].toInt() and 255 shl 16) or
             (data[at + 2].toInt() and 255 shl 8) or (data[at + 3].toInt() and 255)

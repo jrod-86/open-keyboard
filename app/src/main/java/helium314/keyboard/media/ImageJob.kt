@@ -162,13 +162,31 @@ object ImageJob {
     /** Shows a picture from the gallery as the current one (only when nothing is being drawn). */
     fun pick(bmp: Bitmap) { if (!running) { result = bmp; error = null; tookMs = 0 } }
 
-    fun start(ctx: Context, m: ImageGen.Model, prompt: String, steps: Int, words: String = prompt) {
+    /** Starts the queue run: draws the first waiting picture, and the rest follow one after another. */
+    fun startQueue(ctx: Context): Boolean {
+        if (running) return false
+        val app = ctx.applicationContext
+        val n = ImageQueue.items(app).size
+        if (n == 0) return false
+        ImageQueue.active = true; ImageQueue.done = 0; ImageQueue.total = n
+        return next(app)
+    }
+
+    private fun next(app: Context): Boolean {
+        val item = ImageQueue.takeNext(app) ?: run { ImageQueue.active = false; return false }
+        val m = ImageGen.MODELS.firstOrNull { it.id == item.model } ?: ImageGen.QUICK
+        if (!ImageGen.downloaded(app, m)) { ImageQueue.active = false; return false }
+        start(app, m, item.prompt, item.steps, item.words, item.w, item.h)
+        return true
+    }
+
+    fun start(ctx: Context, m: ImageGen.Model, prompt: String, steps: Int, words: String = prompt, width: Int = 512, height: Int = 512) {
         if (running) return
         val app = ctx.applicationContext
         running = true; result = null; error = null; step = 0; total = 0; model = m
         // a foreground service tells Android this is work the person is waiting for, so it isn't
         // cleared to free memory when they switch apps (test 156: killed in the background at step 3 of 4)
-        if (m !== ImageGen.QUICK) runCatching { app.startForegroundService(Intent(app, ImageJobService::class.java)) }
+        if (m !== ImageGen.QUICK || ImageQueue.active) runCatching { app.startForegroundService(Intent(app, ImageJobService::class.java)) }
             .onFailure { Log.w("ImageMaker", "no foreground service: $it") }
         stepsAsked = if (m === ImageGen.QUICK) 1 else steps
         took.fill(0); stageIndex = -1
@@ -204,7 +222,7 @@ object ImageJob {
                 ImageGen.ensureLoaded(app, m, usingGpu)
                 ImageGen.setSpeed(speed)
                 enter(1); changed(app)
-                return ImageGen.generate(app, m, prompt, seed, steps, usingGpu)
+                return ImageGen.generate(app, m, prompt, seed, steps, usingGpu, width, height)
             }
             if (usingGpu) p.edit().putBoolean("gpu_running", true).commit()
             var r = runCatching { draw() }
@@ -239,6 +257,16 @@ object ImageJob {
                 if (stopping) "Stopped." else if (it is OutOfMemoryError) "Your phone ran out of memory for this one. Try Quick." else "Stopped: ${it.message}"
             }
             running = false
+            // queue run: on to the next picture (a held-back or failed one doesn't stop the run; Stop does)
+            if (ImageQueue.active) {
+                ImageQueue.done++
+                if (stopping) ImageQueue.active = false
+                else if (ImageQueue.items(app).isNotEmpty()) {
+                    changed(app)
+                    main.post { if (!next(app)) { changed(app); ImageJobService.finish() } }
+                    return@bigThread
+                } else ImageQueue.active = false
+            }
             changed(app)
             ImageJobService.finish()
         }
@@ -248,7 +276,7 @@ object ImageJob {
 
     @Volatile var stopping = false; private set
 
-    fun stop(ctx: Context) { if (running && !stopping) { stopping = true; ImageGen.cancel(); changed(ctx.applicationContext) } }
+    fun stop(ctx: Context) { if (running && !stopping) { stopping = true; ImageQueue.active = false; ImageGen.cancel(); changed(ctx.applicationContext) } }
 
     /** Forget a finished picture once it's been shown or used. */
     fun clear() { if (!running) { result = null; error = null } }
@@ -291,7 +319,7 @@ object ImageJob {
             val left = secondsLeft(ctx)
             val where = "Stage ${stageIndex + 1} of ${STAGES.size}: " + (if (stageIndex == 2 && total > 0) "drawing step ${minOf(step + 1, total)} of $total" else STAGES[stageIndex.coerceAtLeast(0)].lowercase())
             val text = where + if (left > 0) " · about ${fmtLeft(left)} left" else ""
-            b.setContentTitle("Drawing your picture…").setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
+            b.setContentTitle(if (ImageQueue.active) "Queue: picture ${ImageQueue.done + 1} of ${ImageQueue.total}" else "Drawing your picture…").setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
                 .setProgress(1000, overall(ctx), stageIndex < 0)
         } else {
             b.setContentTitle(if (result != null) "Your picture is ready ✨" else "Local Image").setAutoCancel(true)
@@ -308,7 +336,12 @@ class ImageJobService : android.app.Service() {
 
     override fun onCreate() { super.onCreate(); current = this }
 
+    // keeps the processor awake with the screen off, for overnight queues (released when drawing ends)
+    private var wake: android.os.PowerManager.WakeLock? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (wake == null) wake = getSystemService(android.os.PowerManager::class.java)
+            ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "OpenKeyboard:LocalImage")?.apply { acquire(12 * 60 * 60 * 1000L) }
         val note = ImageJob.buildNote(this)
         runCatching {
             if (Build.VERSION.SDK_INT >= 34)
@@ -320,7 +353,11 @@ class ImageJobService : android.app.Service() {
         return START_NOT_STICKY
     }
 
-    override fun onDestroy() { if (current === this) current = null; super.onDestroy() }
+    override fun onDestroy() {
+        runCatching { wake?.let { if (it.isHeld) it.release() } }; wake = null
+        if (current === this) current = null
+        super.onDestroy()
+    }
 
     private fun finishNow() {
         // keep the "ready" notification showing after the service goes

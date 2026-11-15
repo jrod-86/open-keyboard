@@ -33,7 +33,7 @@ import kotlin.random.Random
 
 // Best (Z-Image Turbo, Qwen3 text reader): its makers say it draws best from long, detailed descriptions written as
 // natural sentences, in the order subject, setting, camera, lighting, style. No "no ..." phrases: it has no negative prompt.
-private const val ENHANCE_BEST = "You write prompts for an image generator that draws best from long, detailed descriptions " +
+internal const val ENHANCE_BEST = "You write prompts for an image generator that draws best from long, detailed descriptions " +
     "written as natural sentences, not lists of tags. Turn the user's idea into one rich description of a single picture, " +
     "70 to 100 words, in this order: first the main subject with specific details (age, build, face, hair, expression, " +
     "clothing, colours and materials); then what they are doing and their pose; then the setting and background with a few " +
@@ -53,7 +53,7 @@ private const val ENHANCE_BEST = "You write prompts for an image generator that 
 
 // Quick (SDXS, a small Stable Diffusion model with a CLIP text reader): only the first ~75 words-pieces count,
 // so a short description with the most important things first, in comma-separated phrases.
-private const val ENHANCE_QUICK = "You write prompts for a small, fast image generator that only reads about 50 words. Turn the " +
+internal const val ENHANCE_QUICK = "You write prompts for a small, fast image generator that only reads about 50 words. Turn the " +
     "user's idea into one picture description of 30 to 45 words, as short descriptive phrases separated by commas, most " +
     "important first: the main subject and what it looks like, what it is doing, the setting, the lighting, the colours, " +
     "the style. Keep everything the user asked for and choose fitting details where they didn't say. Don't add writing to " +
@@ -96,13 +96,48 @@ class ImageMakerActivity : Activity() {
     private class Style(val icon: String, val name: String, val sub: String, val suffix: String)
 
     private val styles = listOf(
-        Style("🏷️", "Sticker", "Cute, bold outline, white background", ", cute sticker, cartoon, bold outline, plain white background"),
-        Style("🖍️", "Cartoon", "Bright and playful", ", cartoon illustration, bright colours"),
-        Style("🌸", "Anime", "Japanese animation look", ", anime style illustration, vibrant, detailed"),
-        Style("📷", "Photo", "Realistic, like a camera shot", ", photo, realistic, detailed, natural light"),
-        Style("🧸", "3D", "Soft 3D toy look", ", 3d render, soft lighting, cute, clay style"),
+        // most popular first
+        Style("📷", "Photorealistic", "Looks like a real photo", ", photorealistic photo, realistic, highly detailed, natural light, sharp focus"),
+        Style("🎬", "Cinematic", "A still from a movie", ", cinematic film still, dramatic lighting, shallow depth of field, film grain, widescreen composition"),
+        Style("🌸", "Anime", "Japanese animation look", ", anime style illustration, vibrant colours, clean line art, detailed"),
+        Style("🖥️", "Digital art", "Polished digital painting", ", digital art, detailed digital painting, vivid colours, artstation quality"),
+        Style("🧸", "3D animation", "Like an animated family film", ", 3d animated movie style, soft lighting, expressive, cute, high quality render"),
+        Style("🐉", "Fantasy art", "Epic, magical worlds", ", epic fantasy art, magical atmosphere, dramatic light, highly detailed illustration"),
+        Style("🌃", "Cyberpunk", "Neon city of the future", ", cyberpunk style, neon lights, futuristic city, rain reflections, pink and cyan glow"),
+        Style("🏷️", "Logo", "Clean logo design (put any name in \"quotes\")", ", minimalist vector logo design, flat colours, simple bold shapes, clean lines, centered, plain white background"),
+        Style("🖍️", "Cartoon", "Bright and playful", ", cartoon illustration, bright colours, bold outlines"),
+        Style("🖼️", "Oil painting", "Classic painted canvas", ", oil painting on canvas, visible brush strokes, rich colours, fine art"),
         Style("🎨", "Watercolour", "Painted, soft edges", ", watercolour painting, soft colours, paper texture"),
+        Style("💥", "Comic book", "Inked comic panel", ", comic book art, bold ink lines, halftone dots, vibrant colours"),
+        Style("🎭", "Concept art", "Game and film design art", ", concept art, painterly, atmospheric, detailed environment design"),
+        Style("📸", "Portrait photo", "Studio portrait", ", professional studio portrait photo, soft key light, 85mm lens, blurred background"),
+        Style("🎁", "Greeting card", "Festive card illustration", ", greeting card illustration, festive, charming, soft colours, decorative border"),
+        Style("📚", "Storybook", "Children's book illustration", ", children's storybook illustration, whimsical, soft gouache colours, gentle"),
+        Style("🏷", "Sticker", "Cute, bold outline, white background", ", cute sticker, cartoon, bold white outline, plain white background"),
         Style("👾", "Pixel art", "Retro video game", ", pixel art, 16-bit, retro game style"),
+        Style("🏰", "Isometric", "Tiny 3D diorama", ", isometric 3d diorama, miniature, clean, soft shadows, cute"),
+        Style("🟣", "Low poly", "Faceted 3D shapes", ", low poly 3d art, geometric facets, soft pastel lighting"),
+        Style("🧱", "Claymation", "Handmade clay figures", ", claymation style, plasticine models, handmade texture, stop motion look"),
+        Style("✏️", "Pencil sketch", "Hand-drawn graphite", ", detailed pencil sketch, graphite, cross-hatching, white paper"),
+        Style("🖋️", "Line art", "Clean black lines", ", clean black line art, minimal, white background, vector illustration"),
+        Style("🎞️", "Vintage photo", "Old film photograph", ", vintage 1970s film photo, faded colours, film grain, nostalgic"),
+        Style("⚫", "Black & white", "Monochrome photo", ", black and white photograph, high contrast, dramatic shadows"),
+        Style("🌅", "Synthwave", "80s neon retro", ", synthwave retro 80s style, neon grid, sunset gradient, purple and pink glow"),
+        Style("⚙️", "Steampunk", "Brass and gears", ", steampunk style, brass, copper gears, victorian machinery, warm light"),
+        Style("🟡", "Pop art", "Bold comic-print colours", ", pop art style, bold flat colours, halftone, thick outlines"),
+        Style("🏛️", "Art deco", "1920s glamour", ", art deco style, gold and black, geometric patterns, elegant poster"),
+        Style("🌊", "Ukiyo-e", "Japanese woodblock print", ", ukiyo-e japanese woodblock print, flat colours, textured paper"),
+        Style("🌻", "Impressionist", "Soft dabs of colour", ", impressionist painting, loose brush strokes, light and colour, plein air"),
+        Style("🌀", "Surreal", "Dreamlike and strange", ", surreal dreamlike art, impossible scene, soft light, highly detailed"),
+        Style("🦇", "Dark fantasy", "Gothic and moody", ", dark fantasy art, gothic, moody lighting, mist, dramatic"),
+        Style("🪟", "Stained glass", "Glowing coloured glass", ", stained glass window art, bold lead lines, glowing colours"),
+        Style("📄", "Paper craft", "Cut paper layers", ", layered paper craft art, cut paper, soft shadows, handmade"),
+        Style("🎌", "Chibi", "Tiny cute characters", ", chibi style, big head, tiny body, cute, kawaii, pastel colours"),
+        Style("💀", "Tattoo", "Tattoo flash design", ", tattoo flash design, bold lines, traditional tattoo style, limited colours"),
+        Style("🧯", "Graffiti", "Street art spray paint", ", graffiti street art, spray paint, bold colours, urban wall"),
+        Style("🔬", "Macro photo", "Extreme close-up", ", macro photography, extreme close-up, fine detail, shallow depth of field"),
+        Style("📦", "Product photo", "Clean product shot", ", professional product photography, clean studio background, soft shadows, sharp"),
+        Style("◻️", "Minimalist", "Simple and clean", ", minimalist art, simple shapes, lots of empty space, calm colours"),
         Style("😀", "Emoji", "Glossy icon", ", emoji icon, 3d, glossy, plain white background"),
         Style("✏️", "None", "Just your words", ""),
     )
@@ -116,6 +151,8 @@ class ImageMakerActivity : Activity() {
     private val cardColor get() = theme.card
     private val lineColor get() = theme.line
     private lateinit var galleryTitle: TextView
+    private lateinit var shapeValue: TextView
+    private lateinit var queueValue: TextView
     private lateinit var galleryGrid: LinearLayout
     private var galleryShown = ""
 
@@ -125,7 +162,8 @@ class ImageMakerActivity : Activity() {
         val pad = dp(16f)
         model = ImageGen.MODELS.firstOrNull { it.id == prefs.getString("model", "quick") } ?: ImageGen.QUICK
         steps = prefs.getInt("steps", 4)
-        style = prefs.getInt("style", 0).coerceIn(0, styles.size - 1)
+        // remembered by name, so adding or reordering styles keeps the person's choice ("Photo" is now "Photorealistic")
+        style = styles.indexOfFirst { it.name == prefs.getString("style_name", "Photorealistic")!!.let { n -> if (n == "Photo") "Photorealistic" else n } }.coerceAtLeast(0)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
 
         // title with a two-colour shine, and the 🎨 themes, ⚙️ settings and ℹ️ help buttons beside it
@@ -157,6 +195,14 @@ class ImageMakerActivity : Activity() {
         drops.addView(modelCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = pad / 4 })
         drops.addView(styleCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = pad / 4 })
         root.addView(drops)
+        // picture shape, and the 🌙 queue for lining up many pictures (e.g. overnight)
+        val drops2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val (shapeCard, shv) = dropdown("SHAPE") { if (!working) pickShape(it) }
+        val (queueCard, qv) = dropdown("QUEUE") { if (!ImageQueue.active) openQueue() }
+        shapeValue = shv; queueValue = qv
+        drops2.addView(shapeCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = pad / 4 })
+        drops2.addView(queueCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = pad / 4 })
+        root.addView(drops2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
 
         // steps, only for the model that has them: a two-part switch
         val seg = LinearLayout(this).apply {
@@ -365,11 +411,16 @@ class ImageMakerActivity : Activity() {
 
     /** A dropdown list under [anchor]: icon, name, a short line about it, and a tick on the current one. */
     private fun sheet(anchor: View, rows: List<Triple<String, String, String>>, selected: Int, onPick: (Int) -> Unit) {
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(0, dp(6f), 0, dp(6f))
-            background = UiKit.rounded(this@ImageMakerActivity, 16f, if (night) Color.rgb(44, 45, 51) else Color.WHITE, lineColor)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(6f), 0, dp(6f)) }
+        // long lists (40+ styles) scroll, at most about two thirds of the screen tall
+        val maxH = resources.displayMetrics.heightPixels * 2 / 3
+        val scroll = object : ScrollView(this) {
+            override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST))
+        }.apply {
+            addView(list)
+            background = UiKit.rounded(this@ImageMakerActivity, 16f, cardColor, lineColor)
         }
-        val popup = android.widget.PopupWindow(list, maxOf(anchor.width, dp(280f)), ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        val popup = android.widget.PopupWindow(scroll, maxOf(anchor.width, dp(280f)), ViewGroup.LayoutParams.WRAP_CONTENT, true)
         rows.forEachIndexed { i, (icon, name, sub) ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -379,14 +430,16 @@ class ImageMakerActivity : Activity() {
             }
             row.addView(TextView(this).apply { text = icon; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(0, 0, dp(12f), 0) })
             val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            texts.addView(TextView(this).apply { text = name; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); typeface = android.graphics.Typeface.DEFAULT_BOLD })
-            texts.addView(TextView(this).apply { text = sub; setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); alpha = 0.7f })
+            texts.addView(TextView(this).apply { text = name; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(theme.text) })
+            texts.addView(TextView(this).apply { text = sub; setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); alpha = 0.7f; setTextColor(theme.text) })
             row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             if (i == selected) row.addView(TextView(this).apply { text = "✓"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setTextColor(purple) })
             list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6f); marginEnd = dp(6f) })
         }
         popup.elevation = dp(8f).toFloat()
         popup.showAsDropDown(anchor, 0, dp(6f))
+        // start scrolled to the current choice
+        if (selected > 3) scroll.post { list.getChildAt(selected)?.let { scroll.scrollTo(0, it.top - dp(40f)) } }
     }
 
     private fun pickModel(anchor: View) {
@@ -401,7 +454,7 @@ class ImageMakerActivity : Activity() {
 
     private fun pickStyle(anchor: View) {
         sheet(anchor, styles.map { Triple(it.icon, it.name, it.sub) }, style) { i ->
-            style = i; prefs.edit().putInt("style", i).apply(); refresh()
+            style = i; prefs.edit().putString("style_name", styles[i].name).apply(); refresh()
         }
     }
 
@@ -514,6 +567,9 @@ class ImageMakerActivity : Activity() {
         stepRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
         modelValue.text = (if (model === ImageGen.QUICK) "⚡ " else "💎 ") + model.name + "  ▾"
         styleValue.text = styles[style].icon + " " + styles[style].name + "  ▾"
+        shapeValue.text = ImageShapes.label(this) + "  ▾"
+        val queued = ImageQueue.items(this).size
+        queueValue.text = (if (ImageQueue.active) "🌙 Running" else if (queued == 0) "🌙 Set up" else "🌙 $queued waiting") + "  ▾"
         engineRow.visibility = if (model === ImageGen.BEST && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
         speedRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
         val speed = ImageJob.speed(this)
@@ -553,7 +609,8 @@ class ImageMakerActivity : Activity() {
         if (m !== ImageGen.QUICK && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 5) }
-        ImageJob.start(this, m, words + styles[style].suffix, steps, words)
+        val (w, h) = ImageShapes.size(this)
+        ImageJob.start(this, m, words + styles[style].suffix, steps, words, w, h)
         show()
     }
 
@@ -567,14 +624,15 @@ class ImageMakerActivity : Activity() {
         if (job.running) {
             picture.visibility = View.GONE; placeholder.visibility = View.GONE
             val quick = job.model === ImageGen.QUICK
-            generate.text = if (job.stopping) "Stopping…" else "■  Stop"
+            generate.text = if (job.stopping) "Stopping…" else if (ImageQueue.active) "■  Stop the queue" else "■  Stop"
             generate.isEnabled = !job.stopping
             progress.visibility = View.VISIBLE
             progress.isIndeterminate = job.stageIndex < 0
             progress.progress = job.overall(this)
             val secs = (System.currentTimeMillis() - job.startedAt) / 1000
             val left = job.secondsLeft(this)
-            status.text = (if (job.note.isNotEmpty()) job.note + "\n" else "") + (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
+            status.text = (if (ImageQueue.active) "🌙 Queue: picture ${ImageQueue.done + 1} of ${ImageQueue.total}\n" else "") +
+                (if (job.note.isNotEmpty()) job.note + "\n" else "") + (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
                 "${secs / 60}:%02d".format(secs % 60) +
                 if (!quick) (when (ImageJob.speed(this)) { 2 -> "\nFastest: your phone may be hard to use until it's done."; 1 -> "\nBalanced: your phone may feel slow until it's done."; else -> "\nYou can switch apps, it keeps going." }) else ""
             stageList.visibility = if (quick) View.GONE else View.VISIBLE
@@ -613,6 +671,64 @@ class ImageMakerActivity : Activity() {
             status.text = job.error
         }
         loadGallery()
+        refresh()
+    }
+
+    private fun pickShape(anchor: View) {
+        val rows = ImageShapes.PRESETS.map { sh -> ImageShapes.size(sh.wr, sh.hr).let { (w, h) -> Triple(sh.icon, sh.name, "${sh.use} · $w×$h") } } +
+            Triple("✏️", "Custom", "Any shape you like, e.g. 5:4 or 1:3")
+        sheet(anchor, rows, ImageShapes.index(this)) { i ->
+            if (i < ImageShapes.PRESETS.size) { ImageShapes.set(this, i); refresh(); return@sheet }
+            val (cw, ch) = ImageShapes.custom(this)
+            fun num(v: Int) = EditText(this).apply {
+                setText(v.toString()); inputType = android.text.InputType.TYPE_CLASS_NUMBER; gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); minWidth = dp(80f)
+            }
+            val wBox = num(cw); val hBox = num(ch)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(20f), dp(12f), dp(20f), 0)
+                addView(LinearLayout(this@ImageMakerActivity).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@ImageMakerActivity).apply { text = "Width"; gravity = Gravity.CENTER }); addView(wBox) })
+                addView(TextView(this@ImageMakerActivity).apply { text = " : "; setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f) })
+                addView(LinearLayout(this@ImageMakerActivity).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@ImageMakerActivity).apply { text = "Height"; gravity = Gravity.CENTER }); addView(hBox) })
+            }
+            AlertDialog.Builder(this)
+                .setTitle("✏️ Custom shape")
+                .setMessage("Type the shape as width : height, like 5 : 4 or 1 : 3. The picture keeps about the same number of pixels, so it takes about the same time.")
+                .setView(row)
+                .setPositiveButton("Use it") { _, _ ->
+                    val w = wBox.text.toString().toIntOrNull()?.coerceIn(1, 100) ?: return@setPositiveButton
+                    val h = hBox.text.toString().toIntOrNull()?.coerceIn(1, 100) ?: return@setPositiveButton
+                    // keep it to shapes the models can draw: no thinner than 1:4
+                    val (fw, fh) = when { w > h * 4 -> 4 to 1; h > w * 4 -> 1 to 4; else -> w to h }
+                    ImageShapes.setCustom(this, fw, fh); refresh()
+                    val (pw, ph) = ImageShapes.size(fw, fh)
+                    status.text = "Shape set to $fw:$fh ($pw × $ph pixels)." + if (fw != w || fh != h) " That was thinner than 1:4, so it's been widened." else ""
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Opens the 🌙 queue sheet; pictures added there use the settings on this screen. */
+    private fun openQueue() {
+        val (w, h) = ImageShapes.size(this)
+        val m = model; val st = styles[style]; val n = if (m === ImageGen.QUICK) 1 else steps
+        val per = if (m === ImageGen.QUICK) 20L else ((if (ImageJob.gpuOn(this) && gpuName.isNotEmpty()) 240L else 480L) * n / 4)
+        val label = "${if (m === ImageGen.QUICK) "⚡" else "💎"} ${m.name} · ${st.name} · " + (if (m === ImageGen.QUICK) "" else "$n steps · ") + ImageShapes.label(this)
+        QueueSheet(this, theme, m === ImageGen.BEST, st.name, label, per,
+            mainWords = { prompt.text.toString() },
+            makeItem = { words -> ImageQueue.Item(words, words + st.suffix, m.id, n, w, h) },
+            onStart = { startQueue() },
+            onClosed = { refresh() },
+        ).show()
+    }
+
+    private fun startQueue() {
+        if (!ImageGen.downloaded(this, model)) { askDownload(model); return }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            runCatching { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 5) }
+        if (ImageJob.startQueue(this)) show() else status.text = "Couldn't start the queue: is its model downloaded?"
     }
 
     /** Text and hint colours from the theme, for every text view on the page (buttons with their own colour excepted). */
@@ -734,7 +850,16 @@ Type what you'd like to see in the box, then tap Generate. Everything happens on
 Quick makes a picture in seconds, but it's simple. Z-Image Turbo makes much better pictures but takes a few minutes. Pick one in MODEL. Each downloads once the first time you use it.
 
 📷 Style
-Adds a look to your words, like Photo, Cartoon or Painting.
+Adds a look to your words. There are over 40, most popular first: Photorealistic, Cinematic, Anime, Cyberpunk, Logo, Oil painting and more. For a logo, put the name in "quotes", e.g. a coffee shop logo with the name "Bean There".
+
+⬛ Shape
+The picture's shape: Square, Phone (9:16), Wide (16:9), Portrait, Landscape, Photo, Card, Cinema, or ✏️ Custom for any shape you like. Every shape takes about the same time.
+
+🌙 Queue
+Line up lots of pictures and let them draw one after another, for example overnight.
+• ✨ Automatic: type a theme (like "Christmas cards") and how many. The writing helper invents a different idea for each, with detailed descriptions if you tick 🪄.
+• ✍️ Manual: type each picture yourself, or add what's in the main box.
+Each picture uses the model, style, steps and shape set on the main screen when you add it. Tap ▶ Start, plug in your charger and turn the screen off. Every picture goes into your gallery. Stop ends the run, and anything not drawn yet stays in the queue.
 
 4 or 8 steps
 More steps take longer but look sharper.
