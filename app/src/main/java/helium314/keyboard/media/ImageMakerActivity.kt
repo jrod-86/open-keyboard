@@ -132,6 +132,7 @@ class ImageMakerActivity : Activity() {
     private lateinit var placeholder: TextView
     private lateinit var glowCard: GlowCard
     private lateinit var magic: MagicView
+    private lateinit var journey: JourneyMap
     private lateinit var generate: Button
     private lateinit var actions: LinearLayout
     private var style = 0
@@ -399,6 +400,9 @@ class ImageMakerActivity : Activity() {
         square.addView(picture, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         magic = MagicView(this).apply { visibility = View.GONE }
         square.addView(magic, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // the progress map with a little animal walking it, over the colour clouds (Jarrod's idea, test 170)
+        journey = JourneyMap(this, purple, blue, theme.text, cardColor).apply { visibility = View.GONE }
+        square.addView(journey, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         card.addView(square, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
@@ -687,6 +691,10 @@ class ImageMakerActivity : Activity() {
         generate.removeCallbacks(ticker)
         glowCard.magic = job.running
         magic.running = job.running
+        val mapOn = job.running && job.model !== ImageGen.QUICK
+        journey.running = mapOn
+        magic.alpha = if (mapOn) 0.45f else 1f
+        if (mapOn) journey.update(job.stageIndex, job.step, if (job.total > 0) job.total else if (job.model.steps > 0) job.model.steps else steps, 0 in job.skipped)
         if (job.running) {
             picture.visibility = View.GONE; placeholder.visibility = View.GONE
             val quick = job.model === ImageGen.QUICK
@@ -701,7 +709,8 @@ class ImageMakerActivity : Activity() {
                 (if (job.note.isNotEmpty()) job.note + "\n" else "") + (if (left > 0) "About ${job.fmtLeft(left)} left  ·  " else if (!quick) "Working out how long…  ·  " else "") +
                 "${secs / 60}:%02d".format(secs % 60) +
                 if (!quick) (when (ImageJob.speed(this)) { 2 -> "\nFastest: your phone may be hard to use until it's done."; 1 -> "\nBalanced: your phone may feel slow until it's done."; else -> "\nYou can switch apps, it keeps going." }) else ""
-            stageList.visibility = if (quick) View.GONE else View.VISIBLE
+            // the map's stops say what's happening now, so the old list stays hidden
+            stageList.visibility = View.GONE
             for (i in ImageJob.STAGES.indices) {
                 val tv = stageList.getChildAt(i) as TextView
                 val name = ImageJob.STAGES[i] + if (i == 2 && job.usingGpu) " on the graphics chip" else ""
