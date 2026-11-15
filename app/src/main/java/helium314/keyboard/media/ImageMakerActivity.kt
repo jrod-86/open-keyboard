@@ -107,13 +107,6 @@ class ImageMakerActivity : Activity() {
         Style("✏️", "None", "Just your words", ""),
     )
 
-    private val ideas = listOf(
-        "tuxedo cat eating pizza", "kangaroo surfing at sunset", "a koala astronaut on the moon", "a robot making pancakes",
-        "a cosy cabin in the snow at night", "a dragon drinking bubble tea", "a corgi wearing sunglasses at the beach",
-        "a tiny house inside a teacup", "a penguin DJ at a party", "a lighthouse in a storm", "a fox reading a book under a tree",
-        "an owl wizard casting a spell",
-    )
-
     private val night get() = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
     private val purple = Color.rgb(142, 84, 233)
@@ -210,7 +203,16 @@ class ImageMakerActivity : Activity() {
             hint = "What should it draw?"
             imeOptions = EditorInfo.IME_ACTION_GO
             setRawInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
-            maxLines = 6; background = null
+            maxLines = 8; background = null
+            // long 🪄 prompts: a scroll bar, and the box (not the page) scrolls when you drag inside it
+            isVerticalScrollBarEnabled = true; isScrollbarFadingEnabled = false
+            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            setOnTouchListener { v, e ->
+                if (v.canScrollVertically(1) || v.canScrollVertically(-1)) {
+                    v.parent.requestDisallowInterceptTouchEvent(e.actionMasked != android.view.MotionEvent.ACTION_UP && e.actionMasked != android.view.MotionEvent.ACTION_CANCEL)
+                }
+                false
+            }
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setPadding(pad, pad * 3 / 4, dp(4f), pad * 3 / 4)
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_GO) { start(); true } else false }
@@ -238,7 +240,7 @@ class ImageMakerActivity : Activity() {
         promptBox.addView(TextView(this).apply {
             text = "🎲"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(10f), dp(6f), dp(12f), dp(6f))
             contentDescription = "Surprise me"
-            setOnClickListener { prompt.setText(ideas.random()); prompt.setSelection(prompt.text.length) }
+            setOnClickListener { prompt.setText(Ideas.next(this@ImageMakerActivity)); prompt.setSelection(prompt.text.length) }
         })
         root.addView(promptBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad * 3 / 4 })
 
@@ -383,10 +385,27 @@ class ImageMakerActivity : Activity() {
             return
         }
         enhancing = true
-        enhanceButton.alpha = 0.4f
         val styleName = styles[style].name
         val best = model === ImageGen.BEST
-        status.text = if (best) "🪄 Writing a detailed description…" else "🪄 Making your words more detailed…"
+        // show it's working: the wand waves, the status line animates, then the words appear in the box as they're written
+        val wave = android.animation.ObjectAnimator.ofFloat(enhanceButton, View.ROTATION, -25f, 25f).apply {
+            duration = 350; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE; start()
+        }
+        prompt.isEnabled = false
+        var writing = false
+        var tick = 0
+        val sparkles = listOf("✨", "💫", "⭐", "🌟")
+        val animateStatus = object : Runnable {
+            override fun run() {
+                if (!enhancing) return
+                val dots = ".".repeat(tick % 4)
+                val what = if (!writing) "Waking up the writing helper" else if (best) "Writing a detailed description" else "Adding detail"
+                status.text = "${sparkles[tick % sparkles.size]} $what$dots"
+                tick++
+                status.postDelayed(this, 350)
+            }
+        }
+        animateStatus.run()
         thread(name = "image-maker-enhance") {
             val out = runCatching {
                 kotlinx.coroutines.runBlocking {
@@ -395,18 +414,33 @@ class ImageMakerActivity : Activity() {
                         engine.setSystemPrompt(if (best) ENHANCE_BEST else ENHANCE_QUICK)
                         val sb = StringBuilder()
                         val style = if (styleName == "None") "" else " The picture style will be: $styleName."
-                        engine.sendUserPrompt("Idea: $words$style", if (best) 220 else 110).collect { sb.append(it) }
+                        var lastShown = 0L
+                        engine.sendUserPrompt("Idea: $words$style", if (best) 220 else 110).collect {
+                            sb.append(it)
+                            writing = true
+                            val now = System.currentTimeMillis()
+                            if (now - lastShown > 120) {
+                                lastShown = now
+                                val sofar = sb.toString().trim().replace('\n', ' ').removePrefix("Description:").trim()
+                                if (!sofar.contains("BLOCKED")) runOnUiThread { if (enhancing) { prompt.setText(sofar + " ▍"); prompt.setSelection(prompt.text.length) } }
+                            }
+                        }
                         sb.toString()
                     }.also { helium314.keyboard.latin.WritingTools.unloadNow(this@ImageMakerActivity) }
                 }
             }.getOrNull()?.let { cleanEnhanced(it) }
             runOnUiThread {
-                enhancing = false; enhanceButton.alpha = 1f
-                if (out.isNullOrBlank() || out.contains("BLOCKED")) { status.text = "🪄 couldn't improve that one, try again."; return@runOnUiThread }
-                SafePrompt.check(out)?.let { status.text = it; return@runOnUiThread }
+                enhancing = false
+                wave.cancel(); enhanceButton.rotation = 0f
+                status.removeCallbacks(animateStatus)
+                prompt.isEnabled = true
+                fun giveBack() { prompt.setText(words); prompt.setSelection(words.length) }
+                if (out.isNullOrBlank() || out.contains("BLOCKED")) { giveBack(); status.text = "🪄 couldn't improve that one, try again."; return@runOnUiThread }
+                SafePrompt.check(out)?.let { giveBack(); status.text = it; return@runOnUiThread }
                 beforeEnhance = words; lastEnhanced = out
-                prompt.setText(out); prompt.setSelection(out.length)
-                status.text = "🪄 Done. Edit it if you like, or tap 🪄 again to go back to your words."
+                // show it from the start so it can be read top to bottom
+                prompt.setText(out); prompt.setSelection(0); prompt.scrollTo(0, 0)
+                status.text = "🪄 Done. Scroll the box to read it all, edit it if you like, or tap 🪄 again to go back to your words."
             }
         }
     }

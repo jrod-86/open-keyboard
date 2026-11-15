@@ -33,14 +33,15 @@ object ImageGen {
         "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L), SAFETY),
         "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.")
 
-    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.2 GB", listOf(
+    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.5 GB", listOf(
         // Q4_0 rather than Q3_K: newer phones have fast int8 maths for Q4_0, none for Q3_K
         Part("z_image_turbo-Q4_0.gguf",
             "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q4_0.gguf",
             "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5", 3683370944L),
-        Part("Qwen3-4B-Instruct-2507-Q3_K_M.gguf",
-            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q3_K_M.gguf",
-            "9c6e0763577125a994a9bea0bbd7a737ac4498b8a6a4e0f788727553af1806c9", 2075618400L),
+        // the word reader runs on the main processor: Q4_0 for the same fast int8 maths (Q3_K took ~30 s for a 🪄 prompt)
+        Part("Qwen3-4B-Instruct-2507-Q4_0.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q4_0.gguf",
+            "e0ba675d86ab277c61701c6793659b2ae801d95e3be791464c321e6fbf613be2", 2375773280L),
         Part("ae.safetensors",
             "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/6fc90a3b1b653e935a0d175e260736de25b84df5/split_files/vae/ae.safetensors",
             "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", 335304388L), SAFETY),
