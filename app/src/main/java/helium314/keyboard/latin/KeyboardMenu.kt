@@ -478,6 +478,22 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
+            Item(tr("Text to speech", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), idOverride = "text to speech") {
+                // bring along what's selected, or everything written in the box
+                var c: Context? = context
+                while (c is android.content.ContextWrapper && c !is LatinIME) c = c.baseContext
+                val ic = (c as? LatinIME)?.currentInputConnection
+                val text = runCatching {
+                    ic?.getSelectedText(0)?.toString()?.takeIf { it.isNotBlank() }
+                        ?: ((ic?.getTextBeforeCursor(6000, 0)?.toString().orEmpty()) + (ic?.getTextAfterCursor(6000, 0)?.toString().orEmpty()))
+                }.getOrNull().orEmpty()
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, helium314.keyboard.tts.TextToSpeechActivity::class.java)
+                        .putExtra(helium314.keyboard.tts.TextToSpeechActivity.EXTRA_TEXT, text)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            },
             Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), idOverride = "sticker maker") {
                 hide()
                 runCatching {
