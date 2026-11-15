@@ -227,15 +227,19 @@ object MyInfo {
         if (!Plugins.isOn(ime, "shortcuts")) return null
         val ei = ime.currentInputEditorInfo
         if (isPassword(ei)) return null
-        val ic = ime.currentInputConnection ?: return null
-        val before = ic.getTextBeforeCursor(80, 0)?.toString().orEmpty()
-        val after = ic.getTextAfterCursor(1, 0)?.toString().orEmpty()
-        if (before.isNotEmpty() && (after.isEmpty() || after[0].isWhitespace())) {
+        if (ime.currentInputConnection == null) return null
+        // Open Keyboard: this runs after every key press, so read the keyboard's own copy of the text
+        // and only ask the app (slow when the app is busy) when a chip may really show
+        val conn = ime.mInputLogic.mConnection
+        val before = conn.getTextBeforeCursor(80, 0)?.toString().orEmpty()
+        if (before.isNotEmpty()) {
             val (typed, full) = completion(ime, before) ?: return null
+            val after = conn.getTextAfterCursor(1, 0)?.toString().orEmpty()
+            if (after.isNotEmpty() && !after[0].isWhitespace()) return null
             return makeChip(ime, parent, "★  ${full.lineSequence().first()}") { complete(ime, typed, full) }
         }
         val kind = kindOf(ei) ?: return null
-        if (before.isNotEmpty() || after.isNotEmpty()) return null
+        if (!conn.getTextAfterCursor(1, 0).isNullOrEmpty()) return null
         val value = match(ime, kind) ?: return null
         val icon = when (kind) { Kind.EMAIL -> "✉"; Kind.PHONE -> "☎"; Kind.ADDRESS -> "⌂"; Kind.NAME -> "☺" }
         return makeChip(ime, parent, "$icon  ${value.lineSequence().first()}") { type(ime, value); ime.setNeutralSuggestionStrip() }

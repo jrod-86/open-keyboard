@@ -195,11 +195,13 @@ class VoiceInputController(
         Thread.sleep(chimes.onLengthMs) // let the start chime finish so it isn't heard as speech
         record.startRecording()
         Log.i(TAG, "mic recording, loading streaming model")
+        VoiceEngine.begin() // keeps the models loaded until this session's last sentence is checked
         val recognizer = try {
             VoiceEngine.onlineRecognizer(ime)
         } catch (e: Throwable) {
             Log.e(TAG, "could not load streaming model", e)
             main.post { toast("Voice model could not be loaded"); stop() }
+            VoiceEngine.end()
             runCatching { record.stop() }
             suppressor?.release()
             record.release()
@@ -258,7 +260,13 @@ class VoiceInputController(
             record.release()
             stream.release()
             if (keep != null) runCatching { writeWav(VoicePrefs.lastRecording(ime), keep.toByteArray()) }
-            finalPass.execute { main.post { if (session == sessionId) finishIfIdle() } }
+            finalPass.execute {
+                VoiceEngine.end()
+                main.post { if (session == sessionId) finishIfIdle() }
+                // free the models' memory if voice typing isn't used again for a few minutes
+                main.postDelayed({ runCatching { finalPass.execute { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } } },
+                    VoiceEngine.IDLE_RELEASE_MS + 1000)
+            }
         }
     }
 

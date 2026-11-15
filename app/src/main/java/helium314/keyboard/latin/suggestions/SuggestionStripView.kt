@@ -635,8 +635,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     /** Open Keyboard: notes in the app's log who hid a chip, to chase paste-chip problems. */
     private fun chipLog(what: String) {
-        val by = Throwable().stackTrace.drop(2).take(4).joinToString(" < ") { "${it.fileName?.removeSuffix(".kt")?.removeSuffix(".java")}:${it.lineNumber}" }
-        helium314.keyboard.latin.utils.Log.i("SuggestionStripView", "chip $what by $by")
+        // (the paste chip problem this chased is fixed; walking the call stack on every word was wasted time)
+        helium314.keyboard.latin.utils.Log.i("SuggestionStripView", "chip $what")
     }
 
     private fun clear() {

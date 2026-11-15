@@ -822,6 +822,7 @@ public class LatinIME extends InputMethodService implements
 
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
         KeyboardMenu.INSTANCE.setKeepToolbar(false);
+        LagWatch.INSTANCE.start(); // Open Keyboard: notes short freezes in the log (Bug report > logs)
         super.onStartInputView(editorInfo, restarting);
         mClipboardHistoryManager.refresh();
 
@@ -1009,6 +1010,7 @@ public class LatinIME extends InputMethodService implements
 
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
+        LagWatch.INSTANCE.stop();
         Log.i(TAG, "onFinishInputView");
         cleanupInternalStateForFinishInput();
     }
@@ -1488,6 +1490,12 @@ public class LatinIME extends InputMethodService implements
         }
     }
 
+    /** Open Keyboard: text before the cursor from the keyboard's own copy, so the app isn't asked (slow when it's busy). */
+    @Nullable
+    public CharSequence cachedTextBeforeCursor(final int n) {
+        return mInputLogic.mConnection.getTextBeforeCursor(n, 0);
+    }
+
     private boolean isTextFieldEmpty() {
         final RichInputConnection connection = mInputLogic.mConnection;
         if (connection.hasSelection()) return false;
@@ -1813,7 +1821,11 @@ public class LatinIME extends InputMethodService implements
         if (level > TRIM_MEMORY_BACKGROUND) {
             KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
             mKeyboardSwitcher.trimMemory();
-            if (!mVoiceInput.isListening()) VoiceEngine.INSTANCE.release();
+            VoiceEngine.INSTANCE.releaseIfIdle(0); // Open Keyboard: never while a voice session still uses them
+        } else if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            // Open Keyboard: the keyboard stays "running" while hidden, so it rarely gets the level above;
+            // the phone is short of memory, so give back the voice models if they're resting
+            VoiceEngine.INSTANCE.releaseIfIdle(30_000);
         }
     }
 

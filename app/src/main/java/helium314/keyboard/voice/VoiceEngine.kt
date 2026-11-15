@@ -22,8 +22,9 @@ import helium314.keyboard.latin.utils.Log
 
 /**
  * Holds the loaded sherpa-onnx recognizers. Loading takes a second or two, so it happens on a
- * background thread the first time voice typing starts, and the models stay loaded until
- * [release] is called (when the keyboard is destroyed or memory runs low).
+ * background thread the first time voice typing starts. Open Keyboard: the models (often
+ * close to 1 GB) are freed a few minutes after voice typing was last used, so the keyboard
+ * doesn't sit on that memory all day (which made the phone close it and reopen it slowly).
  */
 object VoiceEngine {
     const val SAMPLE_RATE = 16000
@@ -31,6 +32,26 @@ object VoiceEngine {
     @Volatile private var online: OnlineRecognizer? = null
     @Volatile private var offline: OfflineRecognizer? = null
     @Volatile private var offlineModel: VoiceModel? = null
+
+    /** Voice sessions still using the models (listening, or sentences still being checked). */
+    private var users = 0
+    private var lastUsed = 0L
+    const val IDLE_RELEASE_MS = 5 * 60_000L
+
+    /** For the lag log. */
+    val loaded: Boolean get() = online != null || offline != null
+
+    @Synchronized fun begin() { users++; lastUsed = android.os.SystemClock.uptimeMillis() }
+    @Synchronized fun end() { users = (users - 1).coerceAtLeast(0); lastUsed = android.os.SystemClock.uptimeMillis() }
+
+    /** Frees the models if no voice session has used them for [idleMs]. Never frees them mid-use. */
+    @Synchronized
+    fun releaseIfIdle(idleMs: Long) {
+        if (users > 0 || online == null && offline == null && denoiser == null) return
+        if (android.os.SystemClock.uptimeMillis() - lastUsed < idleMs) return
+        Log.i("VoiceEngine", "voice models not used for a while, freeing their memory")
+        release()
+    }
 
     @Synchronized
     fun onlineRecognizer(context: Context): OnlineRecognizer {

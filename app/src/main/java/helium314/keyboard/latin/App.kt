@@ -33,6 +33,10 @@ class App : Application() {
         if (process.endsWith(":imagemaker")) return
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
+        // Open Keyboard: the TTS screens (":tts") only need crash reports. Running the rest of the keyboard
+        // set-up there too meant two processes writing the same settings file, so a setting changed
+        // in the keyboard could be put back to its old value after using TTS.
+        if (process.endsWith(":tts")) return
         NativeCrashes.collect(this)
 
         val scope = CoroutineScope(Dispatchers.Default)
