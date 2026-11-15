@@ -47,6 +47,7 @@ class MakeVoiceActivity : Activity() {
     private lateinit var clipText: TextView
     private lateinit var record: Button
     private lateinit var play: Button
+    private lateinit var stopButton: Button
     private lateinit var readBox: TextView
     private lateinit var name: EditText
     private lateinit var consent: CheckBox
@@ -60,6 +61,7 @@ class MakeVoiceActivity : Activity() {
     @Volatile private var working = false
     @Volatile private var cancelled = false
     private var track: AudioTrack? = null
+    private var paused = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,8 +92,10 @@ class MakeVoiceActivity : Activity() {
         val clipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         clipText = TextView(this).apply { text = "No clip yet."; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setPadding(dp(4f), 0, 0, 0) }
         clipRow.addView(clipText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        play = UiKit.chip(this, "▶ Play") { playClip() }.apply { visibility = View.GONE }
+        play = UiKit.chip(this, "▶ Play") { playPause() }.apply { visibility = View.GONE }
         clipRow.addView(play, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f)))
+        stopButton = UiKit.chip(this, "⏹ Stop") { stopPlayback(); refresh() }.apply { visibility = View.GONE }
+        clipRow.addView(stopButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f)).apply { marginStart = dp(8f) })
         root.addView(clipRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10f) })
 
         root.addView(label("2 · NAME IT"))
@@ -133,6 +137,8 @@ class MakeVoiceActivity : Activity() {
         val c = clip
         clipText.text = if (c == null) "No clip yet." else "✅ Clip ready · ${c.size / VoiceClones.RATE} s"
         play.visibility = if (c != null && !recording) View.VISIBLE else View.GONE
+        play.text = when { track == null -> "▶ Play"; paused -> "▶ Resume"; else -> "⏸ Pause" }
+        stopButton.visibility = if (track != null && !recording) View.VISIBLE else View.GONE
         record.text = if (recording) "⏹ Stop" else if (c != null) "🎙 Record again" else "🎙 Record"
         readBox.visibility = if (recording) View.VISIBLE else View.GONE
         val ready = VoiceClones.installed(this)
@@ -230,6 +236,17 @@ class MakeVoiceActivity : Activity() {
         refresh()
     }
 
+    /** Play, then the same button pauses and resumes; Stop sits next to it while the clip is playing or paused. */
+    private fun playPause() {
+        val t = track
+        when {
+            t == null -> playClip()
+            paused -> { runCatching { t.play() }; paused = false }
+            else -> { runCatching { t.pause() }; paused = true }
+        }
+        refresh()
+    }
+
     private fun playClip() {
         val a = clip ?: return
         stopPlayback()
@@ -239,10 +256,16 @@ class MakeVoiceActivity : Activity() {
             .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
             .setBufferSizeInBytes(a.size * 4).setTransferMode(AudioTrack.MODE_STATIC).build()
         t.write(a, 0, a.size, AudioTrack.WRITE_BLOCKING)
-        t.play(); track = t
+        // back to "▶ Play" once the clip has played to the end
+        t.notificationMarkerPosition = a.size
+        t.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+            override fun onMarkerReached(at: AudioTrack) { if (track === at) { stopPlayback(); refresh() } }
+            override fun onPeriodicNotification(at: AudioTrack) {}
+        })
+        t.play(); track = t; paused = false
     }
 
-    private fun stopPlayback() { track?.let { runCatching { it.stop(); it.release() } }; track = null }
+    private fun stopPlayback() { track?.let { runCatching { it.stop(); it.release() } }; track = null; paused = false }
 
     // ---- making it ----
 
