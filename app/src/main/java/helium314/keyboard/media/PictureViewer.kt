@@ -23,17 +23,40 @@ import android.view.Gravity
 object PictureViewer {
     /** [actions]: buttons along the bottom, e.g. Export, Save, Delete; each closes the viewer if it returns true. */
     fun show(context: Context, bmp: Bitmap, actions: List<Pair<String, () -> Boolean>> = emptyList()) {
+        showMany(context, 1, 0, { bmp }, actions.map { (l, a) -> l to { _: Int -> a() } })
+    }
+
+    /** Pages through [count] pictures (the gallery): swipe left or right for the next one. Actions get the index shown. */
+    /** Lets the caller update an open viewer, e.g. after deleting the picture shown. */
+    class Pager(val refresh: () -> Unit, val close: () -> Unit)
+
+    fun showMany(context: Context, count: Int, start: Int, load: (Int) -> Bitmap?, actions: List<Pair<String, (Int) -> Boolean>>,
+                 total: () -> Int = { count }): Pager? {
+        val first = load(start) ?: return null
+        var index = start
         val dialog = Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
-        val view = ZoomImage(context, bmp) { dialog.dismiss() }
+        val counter = TextView(context).apply { textSize = 15f; setTextColor(0xDDFFFFFF.toInt()); setPadding(48, 48, 48, 48) }
+        fun showCount() { val n = total(); counter.text = if (n > 1) "${index + 1} / $n" else "" }
+        lateinit var view: ZoomImage
+        view = ZoomImage(context, first, { dialog.dismiss() }) { dir ->
+            // dir +1 = next (swiped left), -1 = previous; false when there's nothing that way
+            val n = total()
+            val next = index + dir
+            if (next < 0 || next >= n) return@ZoomImage false
+            val b = load(next) ?: return@ZoomImage false
+            index = next; view.setPicture(b); showCount(); true
+        }
         root.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(counter, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START))
+        showCount()
         val close = TextView(context).apply {
             text = "✕"; textSize = 22f; setTextColor(Color.WHITE); setPadding(40, 40, 40, 40)
             setOnClickListener { dialog.dismiss() }
         }
         root.addView(close, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
         val hint = TextView(context).apply {
-            text = "Pinch or double-tap to zoom · tap the picture to close"; textSize = 13f; setTextColor(0xAAFFFFFF.toInt()); setPadding(0, 0, 0, 60)
+            text = if (count > 1) "Swipe for the next picture · pinch to zoom · tap to close" else "Pinch or double-tap to zoom · tap the picture to close"; textSize = 13f; setTextColor(0xAAFFFFFF.toInt()); setPadding(0, 0, 0, 60)
         }
         val density = context.resources.displayMetrics.density
         if (actions.isNotEmpty()) {
@@ -47,7 +70,7 @@ object PictureViewer {
                     text = label; textSize = 15f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
                     setPadding((6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt())
                     background = android.graphics.drawable.GradientDrawable().apply { setColor(0x33FFFFFF); cornerRadius = 22 * density }
-                    setOnClickListener { if (act()) dialog.dismiss() }
+                    setOnClickListener { if (act(index)) dialog.dismiss() }
                 }, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = (4 * density).toInt(); marginEnd = (4 * density).toInt()
                 })
@@ -62,10 +85,33 @@ object PictureViewer {
             setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
         }
         dialog.show()
+        return Pager(refresh = {
+            // the list changed (a picture was deleted): show what's now at this place, or close when it's empty
+            val n = total()
+            if (n <= 0) dialog.dismiss()
+            else { index = index.coerceAtMost(n - 1); load(index)?.let { view.setPicture(it) }; showCount() }
+        }, close = { dialog.dismiss() })
     }
 
     @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
-    private class ZoomImage(context: Context, private val bmp: Bitmap, private val onTap: () -> Unit) : ImageView(context) {
+    private class ZoomImage(context: Context, private var bmp: Bitmap, private val onTap: () -> Unit,
+                            private val onSwipe: (Int) -> Boolean = { false }) : ImageView(context) {
+        private var dragX = 0f
+
+        fun setPicture(b: Bitmap) { bmp = b; setImageBitmap(b); fit() }
+
+        /** Slides the picture off to one side, swaps it, and slides the new one in; springs back if there's none. */
+        private fun settle(fling: Int) {
+            val dir = if (fling != 0) fling else if (dragX < -width * 0.2f) 1 else if (dragX > width * 0.2f) -1 else 0
+            if (dir == 0) { animate().translationX(0f).setDuration(150).start(); return }
+            animate().translationX(-dir * width.toFloat()).setDuration(140).withEndAction {
+                if (onSwipe(dir)) {
+                    translationX = dir * width.toFloat()
+                    animate().translationX(0f).setDuration(170).start()
+                } else animate().translationX(0f).setDuration(150).start()
+            }.start()
+            dragX = 0f
+        }
         private val m = Matrix()
         private var base = 1f // scale that fits the whole picture on screen
         private var zoom = 1f // extra zoom on top of base, 1..6
@@ -108,13 +154,19 @@ object PictureViewer {
         }
 
         private val scaler = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(d: ScaleGestureDetector): Boolean { zoomBy(d.scaleFactor, d.focusX, d.focusY); return true }
+            override fun onScale(d: ScaleGestureDetector): Boolean { dragX = 0f; translationX = 0f; zoomBy(d.scaleFactor, d.focusX, d.focusY); return true }
         })
 
         private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
-                if (zoom > 1f) { m.postTranslate(-dx, -dy); clamp() }
+                if (zoom > 1.01f) { m.postTranslate(-dx, -dy); clamp() }
+                else { dragX -= dx; translationX = dragX } // not zoomed: the picture follows the finger sideways
+                return true
+            }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (zoom > 1.01f || kotlin.math.abs(vx) < kotlin.math.abs(vy) || kotlin.math.abs(vx) < 800f) return false
+                flung = if (vx < 0) 1 else -1
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -124,9 +176,15 @@ object PictureViewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap(); return true }
         })
 
+        private var flung = 0
+
         override fun onTouchEvent(e: MotionEvent): Boolean {
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) { flung = 0; dragX = 0f; animate().cancel(); translationX = 0f }
             scaler.onTouchEvent(e)
             if (!scaler.isInProgress) gestures.onTouchEvent(e)
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
+                if (zoom <= 1.01f && (dragX != 0f || flung != 0)) settle(flung)
+            }
             return true
         }
     }

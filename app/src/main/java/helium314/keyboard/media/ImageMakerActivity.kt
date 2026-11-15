@@ -912,18 +912,29 @@ class ImageMakerActivity : Activity() {
 
     /** Tap a gallery picture: see it full screen, with export, save, reuse and delete along the bottom. */
     private fun viewGalleryItem(item: Gallery.Item) {
-        val bmp = item.full() ?: return
-        PictureViewer.show(this, bmp, listOf(
-            "📤 Export" to { export(bmp); false },
-            "💾 Save" to { saveBitmap(bmp); false },
-            "✏️ Reuse" to { openFromGallery(item); true },
-            "🗑️ Delete" to {
-                AlertDialog.Builder(this).setMessage("Delete this picture from your gallery?")
-                    .setPositiveButton("Delete") { _, _ -> item.delete(); loadGallery(); Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show() }
-                    .setNegativeButton("Cancel", null).show()
+        // swipe left and right through the whole gallery (Jarrod, test 174), starting at the one tapped
+        val items = Gallery.items(this).toMutableList()
+        val start = items.indexOfFirst { it.file == item.file }.coerceAtLeast(0)
+        if (items.isEmpty()) return
+        var pager: PictureViewer.Pager? = null
+        pager = PictureViewer.showMany(this, items.size, start, { i -> items.getOrNull(i)?.full() }, listOf(
+            "📤 Export" to { i -> items.getOrNull(i)?.full()?.let { export(it) }; false },
+            "💾 Save" to { i -> items.getOrNull(i)?.full()?.let { saveBitmap(it) }; false },
+            "✏️ Reuse" to { i -> items.getOrNull(i)?.let { openFromGallery(it) }; true },
+            "🗑️ Delete" to { i ->
+                // asks first; the viewer then shows the next picture (or closes when none are left)
+                val it = items.getOrNull(i)
+                if (it != null) {
+                    AlertDialog.Builder(this).setMessage("Delete this picture from your gallery?")
+                        .setPositiveButton("Delete") { _, _ ->
+                            it.delete(); items.remove(it); loadGallery(); Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+                            pager?.refresh?.invoke()
+                        }
+                        .setNegativeButton("Cancel", null).show()
+                }
                 false
             },
-        ))
+        ), total = { items.size })
     }
 
     /** Opens Android's share sheet so the picture can go to any app (messages, email, Drive…). */
