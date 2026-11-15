@@ -306,13 +306,13 @@ class TextToSpeechActivity : Activity() {
                 var done = 0
                 val t0 = System.currentTimeMillis()
                 runOnUiThread { status.text = "Speaking…"; progress.isIndeterminate = false; progress.progress = 0 }
-                tts.generateWithCallback(ready, v.sid, s) { samples ->
-                    if (stopping) return@generateWithCallback 0
+                tts.generateWithCallback(ready, v.sid, s, SpeechChunks { samples ->
+                    if (stopping) return@SpeechChunks 0
                     val copy = samples.copyOf()
                     all.add(copy); queue.put(copy); done++
                     runOnUiThread { progress.progress = (done * 1000 / sentences).coerceAtMost(1000) }
                     1
-                }
+                })
                 Log.i(TAG, "made ${all.sumOf { it.size } / RATE.toFloat()} s of speech in ${System.currentTimeMillis() - t0} ms")
                 queue.put(end)
                 player?.join()
@@ -496,4 +496,13 @@ class TextToSpeechActivity : Activity() {
         stopPlayback()
         super.onDestroy()
     }
+}
+
+/**
+ * sherpa-onnx's native code calls the callback by name, as invoke(float[]) returning Integer. A plain lambda gets
+ * rewritten by R8 (test 168 crashed: "no non-static method ...invoke([F)Ljava/lang/Integer;"), so it's a real class,
+ * kept as-is in proguard-rules.pro.
+ */
+class SpeechChunks(private val onChunk: (FloatArray) -> Int) : (FloatArray) -> Int {
+    override fun invoke(samples: FloatArray): Int = onChunk(samples)
 }
