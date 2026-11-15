@@ -19,7 +19,14 @@ import java.security.MessageDigest
  */
 object ImageGen {
     class Part(val name: String, val url: String, val sha: String, val size: Long)
-    class Model(val id: String, val label: String, val name: String, val detail: String, val parts: List<Part>, val about: String) {
+    /**
+     * [steps] 0 = the person picks (Best); [single] = one file holding everything (SD 1.5 / SDXL style);
+     * [scale] draws bigger than the chosen shape (SDXL looks poor below ~768 px); [longPrompt] = reads long
+     * sentences (an LLM text model), not the ~77 words a CLIP model takes.
+     */
+    class Model(val id: String, val label: String, val name: String, val detail: String, val parts: List<Part>, val about: String,
+                val icon: String = "🧪", val steps: Int = 0, val cfg: Float = 1f, val sampler: String = "", val scheduler: String = "",
+                val scale: Float = 1f, val longPrompt: Boolean = false, val single: Boolean = false) {
         val totalSize get() = parts.sumOf { it.size }
     }
 
@@ -31,7 +38,8 @@ object ImageGen {
     val QUICK = Model("quick", "Quick", "SDXS-512", "fast, 1 step, 770 MB", listOf(Part("sdxs-512-q8_0.gguf",
         "https://huggingface.co/concedo/sdxs-512-tinySDdistilled-GGUF/resolve/3144d898d61492f8382ffcabec055733fc5b2a0e/sdxs-512-tinySDdistilled_Q8_0.gguf",
         "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L), SAFETY),
-        "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.")
+        "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
+        icon = "⚡", steps = 1, single = true)
 
     val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.5 GB", listOf(
         // Q4_0 rather than Q3_K: newer phones have fast int8 maths for Q4_0, none for Q3_K
@@ -45,9 +53,39 @@ object ImageGen {
         Part("ae.safetensors",
             "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/6fc90a3b1b653e935a0d175e260736de25b84df5/split_files/vae/ae.safetensors",
             "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", 335304388L), SAFETY),
-        "The model is Z-Image Turbo (Apache 2.0 licence, free for any use).")
+        "The model is Z-Image Turbo (Apache 2.0 licence, free for any use).", icon = "💎", longPrompt = true)
 
-    val MODELS = listOf(QUICK, BEST)
+    // ---- test models (Nov 2026 shortlist, "Fast local image models" report): which one replaces SDXS as Quick ----
+
+    /** FLUX.2-klein 4B (Black Forest Labs, Apache-2.0), Q4_0 by leejet; Qwen3-4B (Apache-2.0) reads the words, FLUX.2 decoder (Apache-2.0). */
+    val KLEIN = Model("klein", "Test", "FLUX.2-klein 4B", "test, 4 steps, 5 GB", listOf(
+        Part("flux-2-klein-4b-Q4_0.gguf",
+            "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/3b1f5a9dc3abb32238b053aeb3d823c30afdacbd/flux-2-klein-4b-Q4_0.gguf",
+            "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4", 2460378560L),
+        // the plain Qwen3-4B it was trained with (Z-Image uses the Instruct-2507 one, so they can't share)
+        Part("Qwen3-4B-Q4_0.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/22c9fc8a8c7700b76a1789366280a6a5a1ad1120/Qwen3-4B-Q4_0.gguf",
+            "92f4a83cdfe691b216a949f915e47f35f0ed85b833aa03490c719160ac5cdf7a", 2375773472L),
+        Part("flux2-vae.safetensors",
+            "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/e7b7dc27f91deacad38e78976d1f2b499d76a294/vae/diffusion_pytorch_model.safetensors",
+            "ca70d2202afe6415bdbcb8793ba8cd99fd159cfe6192381504d6c4d3036e0f04", 168120878L), SAFETY),
+        "The model is FLUX.2-klein 4B (Apache 2.0 licence, free for any use).", steps = 4, longPrompt = true)
+
+    /** DreamShaper 8 LCM (Lykon, CreativeML OpenRAIL-M), Q8_0 GGUF by haven-ai-companion; SDXS was taught by this one. */
+    val DREAM = Model("dreamshaper", "Test", "DreamShaper 8 LCM", "test, 6 steps, 1.9 GB", listOf(Part("DreamShaper8_LCM_q8_0.gguf",
+        "https://huggingface.co/haven-ai-companion/dreamshaper8-lcm-gguf/resolve/56ac67e016b599c1eaf5be04e68980ff6bbdfa32/DreamShaper8_LCM_q8_0.gguf",
+        "dd06826d1eca711efa38190395a5ee949d0427fc6422c39433358a815e5b066c", 1802206336L), SAFETY),
+        "The model is DreamShaper 8 LCM (CreativeML OpenRAIL-M licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
+        steps = 6, sampler = "lcm", single = true)
+
+    /** SDXL-Lightning 4-step (ByteDance, CreativeML OpenRAIL++-M), Q4_0 GGUF by mzwing. */
+    val LIGHTNING = Model("lightning", "Test", "SDXL-Lightning", "test, 4 steps, 768 px, 2.7 GB", listOf(Part("sdxl_lightning_4step.q4_0.gguf",
+        "https://huggingface.co/mzwing/SDXL-Lightning-GGUF/resolve/4fe21f71b298e088be341bb6545f6a2df950b5ff/sdxl_lightning_4step.q4_0.gguf",
+        "33cc25b6f5dd121ecf3ad28e35eb38cb21427b7794c53527ceafe2dc3b109f4f", 2584858432L), SAFETY),
+        "The model is SDXL-Lightning (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
+        steps = 4, sampler = "euler", scheduler = "sgm_uniform", scale = 1.5f, single = true)
+
+    val MODELS = listOf(QUICK, BEST, KLEIN, DREAM, LIGHTNING)
 
     /** Told about each finished step while a picture is drawn. */
     @Volatile var progressListener: ((Int, Int) -> Unit)? = null
@@ -159,12 +197,13 @@ object ImageGen {
     fun ensureLoaded(c: Context, m: Model, gpu: Boolean = false): Long {
         if (cacheDir == null) cacheDir = c.cacheDir
         loadLib()
-        val onGpu = gpu && m === BEST && gpu().isNotEmpty()
+        val onGpu = gpu && m !== QUICK && gpu().isNotEmpty()
         if (loadedModel !== m || loadedOnGpu != onGpu) close()
         if (ctx == 0L) {
-            ctx = if (m === QUICK) nativeLoad(file(c, m.parts[0]).path, threads())
+            val backend = if (onGpu) "diffusion=GPUOpenCL,te=cpu,vae=cpu" else null
+            ctx = if (m.single) nativeLoad(file(c, m.parts[0]).path, threads(), backend)
                 else nativeLoadParts(file(c, m.parts[0]).path, file(c, m.parts[1]).path, file(c, m.parts[2]).path, threads(),
-                    if (onGpu) "diffusion=GPUOpenCL,te=cpu,vae=cpu" else null)
+                    backend)
             if (ctx == 0L) throw IllegalStateException("couldn't open the model")
             loadedModel = m; loadedOnGpu = onGpu
         }
@@ -178,8 +217,8 @@ object ImageGen {
     fun generate(c: Context, m: Model, prompt: String, seed: Long, steps: Int, gpu: Boolean = false, width: Int = 512, height: Int = 512): Bitmap {
         val h = ensureLoaded(c, m, gpu)
         val data = synchronized(this) {
-            if (m === QUICK) nativeGenerate(h, prompt, "", width, height, 1, 1f, seed)
-            else nativeGenerate(h, prompt, "", width, height, steps, 1f, seed)
+            fun size(x: Int) = (Math.round(x * m.scale / 64f) * 64).coerceIn(256, 1536)
+            nativeGenerate(h, prompt, "", size(width), size(height), if (m.steps > 0) m.steps else steps, m.cfg, seed, m.sampler, m.scheduler)
         } ?: throw IllegalStateException("no picture came out")
         fun int(at: Int) = (data[at].toInt() and 255 shl 24) or (data[at + 1].toInt() and 255 shl 16) or
             (data[at + 2].toInt() and 255 shl 8) or (data[at + 3].toInt() and 255)
@@ -209,7 +248,7 @@ object ImageGen {
         if (ctx != 0L) { nativeFree(ctx); ctx = 0L; loadedModel = null }
     }
 
-    private external fun nativeLoad(model: String, threads: Int): Long
+    private external fun nativeLoad(model: String, threads: Int, backend: String?): Long
     private external fun nativeLoadParts(diffusion: String, llm: String, vae: String, threads: Int, backend: String?): Long
     private external fun nativeGpu(): String
     private external fun nativeSetPause(ms: Int)
@@ -219,7 +258,7 @@ object ImageGen {
      * Smooth rests 1.5x as long as it worked, Balanced a little, Fastest not at all.
      */
     fun setSpeed(speed: Int) { if (libLoaded) runCatching { nativeSetPause(when (speed) { 0 -> 150; 1 -> 12; else -> 0 }) } }
-    private external fun nativeGenerate(ctx: Long, prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long): ByteArray?
+    private external fun nativeGenerate(ctx: Long, prompt: String, negative: String, width: Int, height: Int, steps: Int, cfg: Float, seed: Long, sampler: String, scheduler: String): ByteArray?
     private external fun nativeCancel(ctx: Long)
     private external fun nativeFree(ctx: Long)
 }

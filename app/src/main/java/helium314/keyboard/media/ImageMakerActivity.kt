@@ -445,7 +445,7 @@ class ImageMakerActivity : Activity() {
 
     private fun pickModel(anchor: View) {
         val rows = ImageGen.MODELS.map { m ->
-            Triple(if (m === ImageGen.QUICK) "⚡" else "💎", "${m.name} · ${m.label}",
+            Triple(m.icon, "${m.name} · ${m.label}",
                 m.detail + if (ImageGen.downloaded(this, m)) "" else " · not downloaded yet")
         }
         sheet(anchor, rows, ImageGen.MODELS.indexOf(model)) { i ->
@@ -476,7 +476,7 @@ class ImageMakerActivity : Activity() {
         }
         enhancing = true
         val styleName = styles[style].name
-        val best = model === ImageGen.BEST
+        val best = model.longPrompt
         // show it's working: the wand waves, the status line animates, then the words appear in the box as they're written
         val wave = android.animation.ObjectAnimator.ofFloat(enhanceButton, View.ROTATION, -25f, 25f).apply {
             duration = 350; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE; start()
@@ -565,14 +565,14 @@ class ImageMakerActivity : Activity() {
     }
 
     private fun refresh() {
-        stepRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
-        modelValue.text = (if (model === ImageGen.QUICK) "⚡ " else "💎 ") + model.name + "  ▾"
+        stepRow.visibility = if (model.steps == 0) View.VISIBLE else View.GONE
+        modelValue.text = model.icon + " " + model.name + "  ▾"
         styleValue.text = styles[style].icon + " " + styles[style].name + "  ▾"
         shapeValue.text = ImageShapes.label(this) + "  ▾"
         val queued = ImageQueue.items(this).size
         queueValue.text = (if (ImageQueue.active) "🌙 Running" else if (queued == 0) "🌙 Set up" else "🌙 $queued waiting") + "  ▾"
-        engineRow.visibility = if (model === ImageGen.BEST && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
-        speedRow.visibility = if (model === ImageGen.BEST) View.VISIBLE else View.GONE
+        engineRow.visibility = if (model !== ImageGen.QUICK && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
+        speedRow.visibility = if (model !== ImageGen.QUICK) View.VISIBLE else View.GONE
         val speed = ImageJob.speed(this)
         speedButtons.forEachIndexed { i, b ->
             val on = i == speed
@@ -713,10 +713,10 @@ class ImageMakerActivity : Activity() {
     /** Opens the 🌙 queue sheet; pictures added there use the settings on this screen. */
     private fun openQueue() {
         val (w, h) = ImageShapes.size(this)
-        val m = model; val st = styles[style]; val n = if (m === ImageGen.QUICK) 1 else steps
+        val m = model; val st = styles[style]; val n = if (m.steps > 0) m.steps else steps
         val per = if (m === ImageGen.QUICK) 20L else ((if (ImageJob.gpuOn(this) && gpuName.isNotEmpty()) 240L else 480L) * n / 4)
-        val label = "${if (m === ImageGen.QUICK) "⚡" else "💎"} ${m.name} · ${st.name} · " + (if (m === ImageGen.QUICK) "" else "$n steps · ") + ImageShapes.label(this)
-        QueueSheet(this, theme, m === ImageGen.BEST, st.name, label, per,
+        val label = "${m.icon} ${m.name} · ${st.name} · " + (if (m === ImageGen.QUICK) "" else "$n steps · ") + ImageShapes.label(this)
+        QueueSheet(this, theme, m.longPrompt, st.name, label, per,
             mainWords = { prompt.text.toString() },
             makeItem = { words -> ImageQueue.Item(words, words + st.suffix, m.id, n, w, h) },
             onStart = { startQueue() },
@@ -975,7 +975,7 @@ You can leave the screen or switch apps. A notification shows how it's going and
         AlertDialog.Builder(this)
             .setTitle("Download \"${m.label}\"?")
             .setMessage("It's a one-time download of about $size, so Wi-Fi is best. After that it works without internet.\n\n" + m.about +
-                if (m === ImageGen.BEST) "\n\nIt needs plenty of free memory and takes a few minutes per picture." else "")
+                if (m !== ImageGen.QUICK) "\n\nIt needs plenty of free memory and takes a few minutes per picture." else "")
             .setPositiveButton("Download") { _, _ -> download(m) }
             .setNegativeButton("Not now", null)
             .show()

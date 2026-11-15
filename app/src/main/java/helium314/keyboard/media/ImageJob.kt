@@ -188,7 +188,7 @@ object ImageJob {
         // cleared to free memory when they switch apps (test 156: killed in the background at step 3 of 4)
         if (m !== ImageGen.QUICK || ImageQueue.active) runCatching { app.startForegroundService(Intent(app, ImageJobService::class.java)) }
             .onFailure { Log.w("ImageMaker", "no foreground service: $it") }
-        stepsAsked = if (m === ImageGen.QUICK) 1 else steps
+        stepsAsked = if (m.steps > 0) m.steps else steps
         took.fill(0); stageIndex = -1
         // a graphics driver crash takes the whole Image maker down; if the last graphics run never finished, don't use it again
         val p = prefs(app)
@@ -198,7 +198,7 @@ object ImageJob {
             p.edit().putBoolean("gpu_running", false).putBoolean("gpu_broken", crashed).commit()
             if (crashed) crashNote = "The graphics chip crashed last time, so this one uses the main processor. You can switch back above."
         }
-        usingGpu = m === ImageGen.BEST && gpuOn(app) && !gpuFound.isNullOrEmpty()
+        usingGpu = m !== ImageGen.QUICK && gpuOn(app) && !gpuFound.isNullOrEmpty()
         skipped = if (ImageGen.isOpen(m, usingGpu)) setOf(0) else emptySet()
         enter(if (0 in skipped) 1 else 0)
         startedAt = System.currentTimeMillis()

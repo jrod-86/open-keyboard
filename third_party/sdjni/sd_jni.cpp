@@ -70,18 +70,20 @@ static void ggml_log_cb(enum ggml_log_level level, const char* text, void*) {
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring model, jint threads) {
+Java_helium314_keyboard_media_ImageGen_nativeLoad(JNIEnv* env, jobject, jstring model, jint threads, jstring backend) {
     sd_set_log_callback(log_cb, nullptr);
     sd_set_progress_callback(progress_cb, nullptr);
     const char* path = env->GetStringUTFChars(model, nullptr);
     sd_ctx_params_t p;
     sd_ctx_params_init(&p);
+    const char* b = backend ? env->GetStringUTFChars(backend, nullptr) : nullptr;
     p.model_path = path;
     p.n_threads = threads;
     p.enable_mmap = true;
-    p.backend = "cpu";
+    p.backend = (b && *b) ? b : "cpu";
     sd_ctx_t* ctx = new_sd_ctx(&p);
     if (ctx) sd_set_generation_progress_callback(ctx, stage_cb, nullptr);
+    if (b) env->ReleaseStringUTFChars(backend, b);
     env->ReleaseStringUTFChars(model, path);
     return reinterpret_cast<jlong>(ctx);
 }
@@ -116,7 +118,8 @@ Java_helium314_keyboard_media_ImageGen_nativeLoadParts(JNIEnv* env, jobject, jst
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_helium314_keyboard_media_ImageGen_nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring prompt, jstring negative,
-                                                      jint width, jint height, jint steps, jfloat cfg, jlong seed) {
+                                                      jint width, jint height, jint steps, jfloat cfg, jlong seed,
+                                                      jstring sampler, jstring scheduler) {
     auto* ctx = reinterpret_cast<sd_ctx_t*>(handle);
     if (!ctx) return nullptr;
     ggml_cpu_abort_flag = 0;
@@ -132,6 +135,17 @@ Java_helium314_keyboard_media_ImageGen_nativeGenerate(JNIEnv* env, jobject, jlon
     g.batch_count = 1;
     g.sample_params.sample_steps = steps;
     g.sample_params.guidance.txt_cfg = cfg;
+    // e.g. "lcm" for LCM models, "euler" + "sgm_uniform" for SDXL-Lightning; empty = the model's own default
+    if (sampler) {
+        const char* sm = env->GetStringUTFChars(sampler, nullptr);
+        if (*sm) { auto v = str_to_sample_method(sm); if (v != SAMPLE_METHOD_COUNT) g.sample_params.sample_method = v; }
+        env->ReleaseStringUTFChars(sampler, sm);
+    }
+    if (scheduler) {
+        const char* sc = env->GetStringUTFChars(scheduler, nullptr);
+        if (*sc) { auto v = str_to_scheduler(sc); if (v != SCHEDULER_COUNT) g.sample_params.scheduler = v; }
+        env->ReleaseStringUTFChars(scheduler, sc);
+    }
     sd_image_generation_result_t* res = nullptr;
     bool ok = generate_image(ctx, &g, &res);
     env->ReleaseStringUTFChars(prompt, pr);
