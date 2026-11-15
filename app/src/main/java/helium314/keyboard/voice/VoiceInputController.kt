@@ -165,6 +165,17 @@ class VoiceInputController(
 
     private fun ic(): InputConnection? = ime.currentInputConnection
 
+    /**
+     * Runs [block] on the final-pass thread. Open Keyboard: once the keyboard is closed down
+     * ([release]) that thread is gone, and the voice thread finishing a moment later crashed the
+     * keyboard (crash report 2026-11-16, ChatGPT). Returns false if it couldn't run.
+     */
+    private fun onFinal(block: () -> Unit): Boolean = try {
+        finalPass.execute(block); true
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+        false
+    }
+
     private fun writeWav(file: java.io.File, pcm: ByteArray) {
         file.parentFile?.mkdirs()
         val rate = VoiceEngine.SAMPLE_RATE
@@ -208,7 +219,7 @@ class VoiceInputController(
             return
         }
         // warm up the accuracy model while the user starts talking
-        finalPass.execute { runCatching { VoiceEngine.offlineRecognizer(ime) } }
+        onFinal { runCatching { VoiceEngine.offlineRecognizer(ime) } }
 
         val stream = recognizer.createStream("")
         val chunk = ShortArray(VoiceEngine.SAMPLE_RATE / 10) // 100 ms
@@ -260,13 +271,14 @@ class VoiceInputController(
             record.release()
             stream.release()
             if (keep != null) runCatching { writeWav(VoicePrefs.lastRecording(ime), keep.toByteArray()) }
-            finalPass.execute {
+            val handedOver = onFinal {
                 VoiceEngine.end()
                 main.post { if (session == sessionId) finishIfIdle() }
                 // free the models' memory if voice typing isn't used again for a few minutes
-                main.postDelayed({ runCatching { finalPass.execute { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } } },
+                main.postDelayed({ onFinal { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } },
                     VoiceEngine.IDLE_RELEASE_MS + 1000)
             }
+            if (!handedOver) VoiceEngine.end() // keyboard closed down: still let the models go
         }
     }
 
@@ -275,7 +287,7 @@ class VoiceInputController(
         VoiceCommands.action(streamingText)?.let { action ->
             main.post { if (session == sessionId) { current = ""; render() } }
             // run after the sentences before it have been written
-            finalPass.execute { main.post { if (session == sessionId) runAction(action) } }
+            onFinal { main.post { if (session == sessionId) runAction(action) } }
             return
         }
         val shown = formatStreaming(streamingText)
@@ -284,7 +296,7 @@ class VoiceInputController(
             pending.addLast(shown); current = ""
             render()
         }
-        finalPass.execute {
+        onFinal {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
             val english = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
