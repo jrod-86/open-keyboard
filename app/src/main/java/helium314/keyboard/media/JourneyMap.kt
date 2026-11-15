@@ -124,12 +124,13 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
     private fun layoutTrack() {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || stops.isEmpty()) return
-        val per = if (stops.size > 12) 4 else 3
-        val rows = ceil(stops.size / per.toFloat()).toInt()
+        val snake = stops.size - 1
+        val per = if (snake > 12) 4 else 3
+        val rows = ceil(snake / per.toFloat()).toInt()
         val left = w * 0.14f; val right = w * 0.86f
-        val top = h * 0.13f; val bottom = h * 0.84f
+        val top = h * 0.12f; val bottom = h * 0.64f
         pts.clear()
-        for (i in stops.indices) {
+        for (i in 0 until snake) {
             val r = i / per; val c = i % per
             val col = if (r % 2 == 0) c else per - 1 - c
             val x = left + (right - left) * col / (per - 1)
@@ -151,12 +152,33 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
             }
             dist.add(PathMeasure(track, false).length)
         }
+        // Jarrod's finish (test 173): loop round past Finishing, then a long straight along the bottom,
+        // through a finish gate, to a spot a little past it where the celebration happens
+        val p = pts.last()
+        val fy = h * 0.84f
+        val side = if (p.x >= w / 2) 1 else -1
+        val endX = if (side == 1) w * 0.12f else w * 0.88f
+        track.cubicTo(p.x + side * bend * 1.6f, p.y, p.x + side * bend * 1.6f, fy, p.x, fy)
+        track.lineTo(endX, fy)
+        gateX = if (side == 1) w * 0.38f else w * 0.62f
+        gateY = fy
+        pts.add(PointF(endX, fy))
+        dist.add(PathMeasure(track, false).length)
         measure = PathMeasure(track, false)
         val sw = w * 0.022f
         trackPaint.strokeWidth = sw; donePaint.strokeWidth = sw
         trackPaint.pathEffect = DashPathEffect(floatArrayOf(sw * 1.4f, sw * 1.2f), 0f)
         donePaint.shader = LinearGradient(0f, top, 0f, bottom, a1, a2, Shader.TileMode.CLAMP)
         invalidate()
+    }
+
+    private var gateX = 0f
+    private var gateY = 0f
+
+    private class Bit(val x: Float, val speed: Float, val sway: Float, val size: Float, val color: Int, val spin: Float, val delay: Float)
+    private val confetti = List(46) {
+        Bit(Random.nextFloat(), 0.25f + Random.nextFloat() * 0.35f, Random.nextFloat() * 6.3f, 0.6f + Random.nextFloat() * 0.8f,
+            PAINT[Random.nextInt(PAINT.size)], (Random.nextFloat() - 0.5f) * 720f, Random.nextFloat() * 0.8f)
     }
 
     private fun tick() {
@@ -169,7 +191,7 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
             pos = minOf(target, pos + dt * maxOf(if (finishing) 2.5f else 1f, (target - pos) * 0.8f))
             if (pos >= target) arrivedAt = now
         } else if (pos > target) pos = target
-        if (finishing && pos >= target && now - arrivedAt > 1400) {
+        if (finishing && pos >= target && now - arrivedAt > 2600) {
             val then = onFinished; onFinished = null
             if (then != null) post { then() }
         }
@@ -197,7 +219,8 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
         val r = w * 0.04f
         val cur = target.toInt()
         emoji.textSize = r * 1.15f
-        for (i in stops.indices) {
+        drawGate(c, w)
+        for (i in 0 until stops.size - 1) {
             val p = pts.getOrNull(i) ?: continue
             val passed = i < cur || (i == 0 && opened && cur > 0)
             fill.color = if (passed) a1 else Color.argb(235, Color.red(bg()), Color.green(bg()), Color.blue(bg()))
@@ -264,12 +287,57 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
                 drawEmoji(c, "✨", ax + size * 0.75f + sin(tsec * 3f) * size * 0.3f, ay - size * 0.45f, size * 0.35f, 0f)
                 ay -= abs(sin(tsec * 3f)) * size * 0.15f
             }
-            stop == "🏁" -> { ay -= abs(sin(tsec * 6f)) * size * 0.4f; drawEmoji(c, "🎉", ax + size * 0.7f, ay - size * 0.2f, size * 0.55f, 0f) }
+            stop == "🏁" && !walking -> {
+                // through the gate: jump for joy holding up the trophy, confetti falling
+                ay -= abs(sin(tsec * 5f)) * size * 0.35f
+                drawEmoji(c, "🏆", ax + size * 0.15f, ay - size * 0.85f, size * 0.7f, sin(tsec * 5f) * 10f)
+                drawConfetti(c, (now - arrivedAt) / 1000f)
+            }
         }
         drawEmoji(c, animal, ax, ay, size * scale, tilt)
     }
 
     private fun bg(): Int = cardFill
+
+    /** The finish gate on the bottom straight: two posts and a chequered FINISH banner across the top. */
+    private fun drawGate(c: Canvas, w: Float) {
+        if (gateX == 0f) return
+        val gh = w * 0.15f; val gw = w * 0.12f
+        val l = gateX - gw / 2; val rt = gateX + gw / 2; val base = gateY + w * 0.03f; val topY = base - gh
+        fill.style = Paint.Style.FILL
+        fill.color = textColor; fill.alpha = 200
+        box.set(l - w * 0.008f, topY, l + w * 0.008f, base); c.drawRoundRect(box, w * 0.008f, w * 0.008f, fill)
+        box.set(rt - w * 0.008f, topY, rt + w * 0.008f, base); c.drawRoundRect(box, w * 0.008f, w * 0.008f, fill)
+        fill.alpha = 255
+        // chequered banner
+        val bh = w * 0.05f; val cols = 8; val cell = (rt - l) / cols
+        for (row in 0..1) for (col in 0 until cols) {
+            fill.color = if ((row + col) % 2 == 0) Color.WHITE else Color.BLACK
+            c.drawRect(l + col * cell, topY + row * bh / 2, l + (col + 1) * cell, topY + (row + 1) * bh / 2, fill)
+        }
+        ring.strokeWidth = w * 0.004f; ring.color = textColor
+        box.set(l, topY, rt, topY + bh); c.drawRect(box, ring)
+        label.textSize = w * 0.032f; label.typeface = Typeface.DEFAULT_BOLD
+        label.color = if (target.toInt() >= stops.size - 1) a2 else textColor; label.alpha = 230
+        c.drawText("FINISH", gateX, topY - w * 0.015f, label)
+    }
+
+    private fun drawConfetti(c: Canvas, t: Float) {
+        val w = width.toFloat(); val h = height.toFloat()
+        fill.style = Paint.Style.FILL
+        for (b in confetti) {
+            val k = t - b.delay
+            if (k < 0f) continue
+            val y = -h * 0.05f + k * b.speed * h
+            if (y > h) continue
+            val x = b.x * w + sin(k * 3f + b.sway) * w * 0.03f
+            fill.color = b.color
+            c.save(); c.rotate(b.spin * k, x, y)
+            val s = w * 0.012f * b.size
+            c.drawRect(x - s, y - s * 0.6f, x + s, y + s * 0.6f, fill)
+            c.restore()
+        }
+    }
 
     private fun drawEmoji(c: Canvas, e: String, x: Float, y: Float, size: Float, rot: Float) {
         emoji.textSize = size; emoji.color = Color.BLACK
