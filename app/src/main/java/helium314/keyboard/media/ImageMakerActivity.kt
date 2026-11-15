@@ -63,6 +63,65 @@ internal const val ENHANCE_QUICK = "You write prompts for a small, fast image ge
     "Example description: smiling woman with wavy auburn hair in a cream trench coat, leaning on a glossy red sports car, " +
     "cobblestone street, old stone buildings, golden hour sunlight, soft shadows, warm colours, realistic photo, sharp focus"
 
+// 🧪 FLUX.2-klein (Qwen3 text reader). Black Forest Labs' guide: write "like a novelist, not a search engine": flowing
+// prose, most important first (subject, action, style, setting, details), lighting matters most; 30-80 words for most
+// pictures; the prompt is used literally (no rewriting), so every sentence should add something visible.
+internal const val ENHANCE_KLEIN = "You write prompts for an image generator that reads natural prose, like a novelist " +
+    "describing a scene, not a list of keywords. Turn the user's idea into one description of a single picture, 50 to 70 " +
+    "words, most important first: the main subject with specific details (look, clothing, colours, materials) and what they " +
+    "are doing; then the setting with a few concrete objects; then the lighting, which matters most, described precisely " +
+    "(light source, direction, quality, time of day); then the camera or medium and the mood. Keep everything the user asked " +
+    "for, and choose fitting, specific details where they didn't say. Every phrase must add something you can see: no filler " +
+    "such as \"beautiful\", \"stunning\" or \"high quality\". Describe only what should be in the picture, never what should " +
+    "not. Only put writing in the picture if the user asked for it, with the exact words in quotes. " +
+    "Keep it family-friendly: never describe nudity, sexual content or gore; if the idea asks for any of that, reply only BLOCKED. " +
+    "Reply with only the description, in English, as one paragraph.\n\n" +
+    "Example idea: a woman next to a sports car\n" +
+    "Example description: A confident woman with wavy auburn hair and a cream trench coat leans against a glossy cherry-red " +
+    "sports car on a quiet cobblestone street, old stone buildings and a small corner cafe behind her. Low golden sunlight " +
+    "from the left rakes across the car's curves and casts long soft shadows. Shot on a 50mm lens at eye level, shallow " +
+    "depth of field, warm and relaxed mood."
+
+// 🧪 DreamShaper 8 LCM (Stable Diffusion 1.5, CLIP text reader): treats the prompt as a "bag of words" and only reads the
+// first ~75 word-pieces; its own example is comma-separated phrases with look words ("intricate, sharp focus, soft lighting").
+// Drawn with LCM at guidance 1, so there's no negative prompt.
+internal const val ENHANCE_DREAM = "You write prompts for a Stable Diffusion 1.5 image generator that reads a list of short " +
+    "phrases and only the first 60 or so words. Turn the user's idea into 35 to 50 words of short descriptive phrases " +
+    "separated by commas, most important first: the medium (for example portrait photo, digital painting, 3D render), the " +
+    "main subject and what it looks like, what it is doing, the setting, then lighting and colour words, then a few look " +
+    "words such as intricate, highly detailed, sharp focus, soft lighting, vibrant colors. Keep everything the user asked " +
+    "for and choose fitting details where they didn't say. Don't use full sentences and don't add writing to the picture. " +
+    "Keep it family-friendly: never describe nudity, sexual content or gore; if the idea asks for any of that, reply only " +
+    "BLOCKED. Reply with only the description, in English, on one line.\n\n" +
+    "Example idea: a woman next to a sports car\n" +
+    "Example description: portrait photo of a smiling woman with wavy auburn hair, cream trench coat, leaning on a glossy " +
+    "red sports car, cobblestone street, old stone buildings, golden hour, soft lighting, light bokeh, intricate, sharp " +
+    "focus, vibrant colors"
+
+// 🧪 SDXL-Lightning (SDXL, two CLIP text readers): SDXL "can actually understand what you say", so a short plain sentence
+// for the scene, then comma phrases for light and style; still only ~75 word-pieces count. Guidance 0/1: no negative prompt.
+internal const val ENHANCE_LIGHTNING = "You write prompts for an SDXL image generator that understands a plain sentence but " +
+    "only reads the first 60 or so words. Turn the user's idea into 40 to 55 words: first one clear sentence saying the main " +
+    "subject, what it looks like and what it is doing, and where; then short comma-separated phrases for the lighting, the " +
+    "camera or medium, the colours and the style. Most important things first. Keep everything the user asked for and " +
+    "choose fitting details where they didn't say. No filler words such as \"masterpiece\" or \"best quality\". Only put " +
+    "writing in the picture if the user asked for it, with the exact words in quotes. Keep it family-friendly: never describe " +
+    "nudity, sexual content or gore; if the idea asks for any of that, reply only BLOCKED. Reply with only the description, " +
+    "in English, on one line.\n\n" +
+    "Example idea: a woman next to a sports car\n" +
+    "Example description: A smiling woman with wavy auburn hair in a cream trench coat leans on a glossy red sports car on " +
+    "a cobblestone street lined with old stone buildings, golden hour sunlight, long soft shadows, 50mm photo, shallow depth " +
+    "of field, warm natural colours, realistic"
+
+/** The 🪄 instructions and length (in word-pieces) that suit how [m] likes to be prompted. */
+internal fun enhanceFor(m: ImageGen.Model): Pair<String, Int> = when (m.id) {
+    "best" -> ENHANCE_BEST to 220
+    "klein" -> ENHANCE_KLEIN to 160
+    "dreamshaper" -> ENHANCE_DREAM to 110
+    "lightning" -> ENHANCE_LIGHTNING to 120
+    else -> ENHANCE_QUICK to 110
+}
+
 /** Image maker: type what you want, the phone draws it (see [ImageGen]), then send it, save it or make it a sticker. */
 class ImageMakerActivity : Activity() {
     private lateinit var prompt: EditText
@@ -153,6 +212,7 @@ class ImageMakerActivity : Activity() {
     private lateinit var galleryTitle: TextView
     private lateinit var shapeValue: TextView
     private lateinit var queueValue: TextView
+    private lateinit var seedValue: TextView
     private lateinit var galleryGrid: LinearLayout
     private var galleryShown = ""
 
@@ -203,6 +263,10 @@ class ImageMakerActivity : Activity() {
         drops2.addView(shapeCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = pad / 4 })
         drops2.addView(queueCard, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = pad / 4 })
         root.addView(drops2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
+        // 🎲 a new seed every picture, or 📌 a fixed one so the same words give the same picture (good for comparing models)
+        val (seedCard, sdv) = dropdown("SEED") { if (!working) pickSeed(it) }
+        seedValue = sdv
+        root.addView(seedCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = pad / 2 })
 
         // steps, only for the model that has them: a two-part switch
         val seg = LinearLayout(this).apply {
@@ -501,11 +565,11 @@ class ImageMakerActivity : Activity() {
                 kotlinx.coroutines.runBlocking {
                     helium314.keyboard.latin.WritingTools.withEngine(this@ImageMakerActivity) { engine ->
                         engine.startFresh()
-                        engine.setSystemPrompt(if (best) ENHANCE_BEST else ENHANCE_QUICK)
+                        engine.setSystemPrompt(enhanceFor(model).first)
                         val sb = StringBuilder()
                         val style = if (styleName == "None") "" else " The picture style will be: $styleName."
                         var lastShown = 0L
-                        engine.sendUserPrompt("Idea: $words$style", if (best) 220 else 110).collect {
+                        engine.sendUserPrompt("Idea: $words$style", enhanceFor(model).second).collect {
                             sb.append(it)
                             writing = true
                             val now = System.currentTimeMillis()
@@ -569,6 +633,7 @@ class ImageMakerActivity : Activity() {
         modelValue.text = model.icon + " " + model.name + "  ▾"
         styleValue.text = styles[style].icon + " " + styles[style].name + "  ▾"
         shapeValue.text = ImageShapes.label(this) + "  ▾"
+        seedValue.text = (if (prefs.getBoolean("seed_fixed", false)) "📌 Fixed: ${prefs.getLong("seed", 0L)}" else "🎲 Random") + "  ▾"
         val queued = ImageQueue.items(this).size
         queueValue.text = (if (ImageQueue.active) "🌙 Running" else if (queued == 0) "🌙 Set up" else "🌙 $queued waiting") + "  ▾"
         engineRow.visibility = if (model !== ImageGen.QUICK && gpuName.isNotEmpty()) View.VISIBLE else View.GONE
@@ -675,6 +740,36 @@ class ImageMakerActivity : Activity() {
         refresh()
     }
 
+    private fun pickSeed(anchor: View) {
+        val fixed = prefs.getBoolean("seed_fixed", false)
+        val last = prefs.getLong("last_seed", -1L)
+        val rows = mutableListOf(Triple("🎲", "Random", "A different picture every time"))
+        if (last >= 0) rows.add(Triple("📌", "Keep the last picture's seed", "Seed $last · same words give the same picture"))
+        rows.add(Triple("✏️", "Type a seed", if (fixed) "Now: ${prefs.getLong("seed", 0L)}" else "Any whole number"))
+        sheet(anchor, rows, if (!fixed) 0 else -1) { i ->
+            when {
+                i == 0 -> { prefs.edit().putBoolean("seed_fixed", false).apply(); refresh() }
+                i == 1 && last >= 0 -> { prefs.edit().putBoolean("seed_fixed", true).putLong("seed", last).apply(); refresh() }
+                else -> {
+                    val box = EditText(this).apply {
+                        setText(if (fixed) prefs.getLong("seed", 0L).toString() else ""); inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                        gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle("📌 Fixed seed")
+                        .setMessage("The seed is the starting point for the picture. With the same seed, words, model, style and shape, you get the same picture again.")
+                        .setView(box)
+                        .setPositiveButton("Use it") { _, _ ->
+                            val n = box.text.toString().take(9).toLongOrNull() ?: return@setPositiveButton
+                            prefs.edit().putBoolean("seed_fixed", true).putLong("seed", n).apply(); refresh()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+        }
+    }
+
     private fun pickShape(anchor: View) {
         val rows = ImageShapes.PRESETS.map { sh -> ImageShapes.size(sh.wr, sh.hr).let { (w, h) -> Triple(sh.icon, sh.name, "${sh.use} · $w×$h") } } +
             Triple("✏️", "Custom", "Any shape you like, e.g. 5:4 or 1:3")
@@ -716,7 +811,7 @@ class ImageMakerActivity : Activity() {
         val m = model; val st = styles[style]; val n = if (m.steps > 0) m.steps else steps
         val per = if (m === ImageGen.QUICK) 20L else ((if (ImageJob.gpuOn(this) && gpuName.isNotEmpty()) 240L else 480L) * n / 4)
         val label = "${m.icon} ${m.name} · ${st.name} · " + (if (m === ImageGen.QUICK) "" else "$n steps · ") + ImageShapes.label(this)
-        QueueSheet(this, theme, m.longPrompt, st.name, label, per,
+        QueueSheet(this, theme, m.longPrompt, enhanceFor(m), st.name, label, per,
             mainWords = { prompt.text.toString() },
             makeItem = { words -> ImageQueue.Item(words, words + st.suffix, m.id, n, w, h) },
             onStart = { startQueue() },
@@ -898,10 +993,13 @@ class ImageMakerActivity : Activity() {
 Type what you'd like to see in the box, then tap Generate. Everything happens on your phone: nothing is sent anywhere.
 
 ⚡ Quick or 💎 Z-Image Turbo
-Quick makes a picture in seconds, but it's simple. Z-Image Turbo makes much better pictures but takes a few minutes. Pick one in MODEL. Each downloads once the first time you use it.
+Quick makes a picture in seconds, but it's simple. Z-Image Turbo makes much better pictures but takes a few minutes. The 🧪 Test models are candidates for a better Quick. Pick one in MODEL. Each downloads once the first time you use it.
 
 📷 Style
 Adds a look to your words. There are over 40, most popular first: Photorealistic, Cinematic, Anime, Cyberpunk, Logo, Oil painting and more. For a logo, put the name in "quotes", e.g. a coffee shop logo with the name "Bean There".
+
+🎲 Seed
+The seed is the starting point for a picture. 🎲 Random gives a different picture every time. 📌 Fixed gives the same picture again for the same words, model, style and shape. That's handy for comparing models, or for changing one word and seeing what changes. "Keep the last picture's seed" fixes the seed of a picture you liked.
 
 ⬛ Shape
 The picture's shape: Square, Phone (9:16), Wide (16:9), Portrait, Landscape, Photo, Card, Cinema, or ✏️ Custom for any shape you like. Every shape takes about the same time.

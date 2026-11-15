@@ -31,6 +31,8 @@ class QueueSheet(
     private val a: Activity,
     private val theme: ImageTheme,
     private val best: Boolean,
+    /** The 🪄 instructions and length for the model the pictures use. */
+    private val enhance: Pair<String, Int>,
     private val styleName: String,
     private val settingsLabel: String,
     private val perPictureSecs: Long,
@@ -249,7 +251,7 @@ class QueueSheet(
                             var words = idea
                             if (detailed) {
                                 ui { autoStatus.text = "🪄 Writing picture ${i + 1} of ${ideas.size}…" }
-                                val full = cleanUp(ask(if (best) ENHANCE_BEST else ENHANCE_QUICK, "Idea: $idea$style", if (best) 220 else 110))
+                                val full = cleanUp(ask(enhance.first, "Idea: $idea$style", enhance.second))
                                 if (full.isNotBlank() && !full.contains("BLOCKED") && SafePrompt.check(full) == null) words = full
                             }
                             ImageQueue.add(a, makeItem(words)); added++

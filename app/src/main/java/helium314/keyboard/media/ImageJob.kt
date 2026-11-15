@@ -215,7 +215,9 @@ object ImageJob {
         }
         changed(app)
         bigThread("image-maker") {
-            val seed = Random.nextLong(0, Int.MAX_VALUE.toLong())
+            val sp = prefs(app)
+            val seed = if (sp.getBoolean("seed_fixed", false)) sp.getLong("seed", 0L) else Random.nextLong(0, Int.MAX_VALUE.toLong())
+            sp.edit().putLong("last_seed", seed).apply()
             val speed = speed(app)
             if (speed == 2) runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT) }
             fun draw(): Bitmap {
