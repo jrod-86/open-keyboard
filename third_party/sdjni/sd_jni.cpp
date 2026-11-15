@@ -135,6 +135,13 @@ Java_helium314_keyboard_media_ImageGen_nativeGenerate(JNIEnv* env, jobject, jlon
     g.batch_count = 1;
     g.sample_params.sample_steps = steps;
     g.sample_params.guidance.txt_cfg = cfg;
+    // bigger pictures (SDXL draws at ~768 px): decode in tiles, or the last stage runs the phone out of memory (test 164)
+    if ((long)width * height > 512L * 512L * 6 / 5) {
+        g.vae_tiling_params.enabled = true;
+        g.vae_tiling_params.tile_size_w = 512;
+        g.vae_tiling_params.tile_size_h = 512;
+        g.vae_tiling_params.target_overlap = 0.25f;
+    }
     // e.g. "lcm" for LCM models, "euler" + "sgm_uniform" for SDXL-Lightning; empty = the model's own default
     if (sampler) {
         const char* sm = env->GetStringUTFChars(sampler, nullptr);

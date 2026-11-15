@@ -35,13 +35,13 @@ object ImageGen {
         "https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/8587de998f441aac03fdd57a85d2e4cb808c7d64/onnx/model_quantized.onnx",
         "432763a6899ebc418c55f784b98f90565e5fc694c778d2ffcb0294b12f6a7404", 88500985L)
 
-    val QUICK = Model("quick", "Quick", "SDXS-512", "fast, 1 step, 770 MB", listOf(Part("sdxs-512-q8_0.gguf",
+    val QUICK = Model("quick", "Quick", "SDXS-512", "⭐ 3/10 · fastest, 1 step, 770 MB", listOf(Part("sdxs-512-q8_0.gguf",
         "https://huggingface.co/concedo/sdxs-512-tinySDdistilled-GGUF/resolve/3144d898d61492f8382ffcabec055733fc5b2a0e/sdxs-512-tinySDdistilled_Q8_0.gguf",
         "409ab23582ee074c6b9d5395784fc0741b0599fb9d138686c69087c71678eb6a", 682847200L), SAFETY),
         "The model is SDXS-512 (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
         icon = "⚡", steps = 1, single = true)
 
-    val BEST = Model("best", "Best quality", "Z-Image Turbo", "best pictures, slow, 6.5 GB", listOf(
+    val BEST = Model("best", "Best quality", "Z-Image Turbo", "⭐ 8.5/10 · best pictures, ~4 min, 6.5 GB", listOf(
         // Q4_0 rather than Q3_K: newer phones have fast int8 maths for Q4_0, none for Q3_K
         Part("z_image_turbo-Q4_0.gguf",
             "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/c61c0e422dc8b541b7548cf33a4ef8302b0f8085/z_image_turbo-Q4_0.gguf",
@@ -58,7 +58,7 @@ object ImageGen {
     // ---- test models (Nov 2026 shortlist, "Fast local image models" report): which one replaces SDXS as Quick ----
 
     /** FLUX.2-klein 4B (Black Forest Labs, Apache-2.0), Q4_0 by leejet; Qwen3-4B (Apache-2.0) reads the words, FLUX.2 decoder (Apache-2.0). */
-    val KLEIN = Model("klein", "Test", "FLUX.2-klein 4B", "test, 4 steps, 5 GB", listOf(
+    val KLEIN = Model("klein", "Detailed", "FLUX.2-klein 4B", "⭐ 6/10 · ~4 min, 5 GB", listOf(
         Part("flux-2-klein-4b-Q4_0.gguf",
             "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/3b1f5a9dc3abb32238b053aeb3d823c30afdacbd/flux-2-klein-4b-Q4_0.gguf",
             "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4", 2460378560L),
@@ -69,23 +69,24 @@ object ImageGen {
         Part("flux2-vae.safetensors",
             "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/resolve/e7b7dc27f91deacad38e78976d1f2b499d76a294/vae/diffusion_pytorch_model.safetensors",
             "ca70d2202afe6415bdbcb8793ba8cd99fd159cfe6192381504d6c4d3036e0f04", 168120878L), SAFETY),
-        "The model is FLUX.2-klein 4B (Apache 2.0 licence, free for any use).", steps = 4, longPrompt = true)
+        "The model is FLUX.2-klein 4B (Apache 2.0 licence, free for any use).", icon = "🎨", steps = 4, longPrompt = true)
 
     /** DreamShaper 8 LCM (Lykon, CreativeML OpenRAIL-M), Q8_0 GGUF by haven-ai-companion; SDXS was taught by this one. */
-    val DREAM = Model("dreamshaper", "Test", "DreamShaper 8 LCM", "test, 6 steps, 1.9 GB", listOf(Part("DreamShaper8_LCM_q8_0.gguf",
+    val DREAM = Model("dreamshaper", "Fast", "DreamShaper 8 LCM", "⭐ 7/10 · ~2.5 min, 1.9 GB", listOf(Part("DreamShaper8_LCM_q8_0.gguf",
         "https://huggingface.co/haven-ai-companion/dreamshaper8-lcm-gguf/resolve/56ac67e016b599c1eaf5be04e68980ff6bbdfa32/DreamShaper8_LCM_q8_0.gguf",
         "dd06826d1eca711efa38190395a5ee949d0427fc6422c39433358a815e5b066c", 1802206336L), SAFETY),
         "The model is DreamShaper 8 LCM (CreativeML OpenRAIL-M licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
-        steps = 6, sampler = "lcm", single = true)
+        icon = "🚀", steps = 6, sampler = "lcm", single = true)
 
     /** SDXL-Lightning 4-step (ByteDance, CreativeML OpenRAIL++-M), Q4_0 GGUF by mzwing. */
-    val LIGHTNING = Model("lightning", "Test", "SDXL-Lightning", "test, 4 steps, 768 px, 2.7 GB", listOf(Part("sdxl_lightning_4step.q4_0.gguf",
+    val LIGHTNING = Model("lightning", "Test", "SDXL-Lightning", "not rated yet · 768 px, 2.7 GB", listOf(Part("sdxl_lightning_4step.q4_0.gguf",
         "https://huggingface.co/mzwing/SDXL-Lightning-GGUF/resolve/4fe21f71b298e088be341bb6545f6a2df950b5ff/sdxl_lightning_4step.q4_0.gguf",
         "33cc25b6f5dd121ecf3ad28e35eb38cb21427b7794c53527ceafe2dc3b109f4f", 2584858432L), SAFETY),
         "The model is SDXL-Lightning (OpenRAIL++ licence), which asks that it isn't used to harm people, for example no fake pictures of real people meant to deceive.",
         steps = 4, sampler = "euler", scheduler = "sgm_uniform", scale = 1.5f, single = true)
 
-    val MODELS = listOf(QUICK, BEST, KLEIN, DREAM, LIGHTNING)
+    /** Best to worst by Jarrod's test scores (Nov 2026), so the list reads as a ranking. */
+    val MODELS = listOf(BEST, DREAM, KLEIN, LIGHTNING, QUICK)
 
     /** Told about each finished step while a picture is drawn. */
     @Volatile var progressListener: ((Int, Int) -> Unit)? = null
