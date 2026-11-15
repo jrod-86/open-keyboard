@@ -13,10 +13,10 @@ enum class VoiceModel(
     val approxMb: Int,
     val license: String,
 ) {
-    /** Small streaming model that types words while you speak. Required for voice typing. */
+    /** Small streaming model that types words while you speak. */
     STREAMING_EN(
         "Live English (streaming Zipformer)",
-        "Shows words as you speak. Required for voice typing.",
+        "Small and fast. Voice typing needs one of the live models.",
         "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
         listOf(
             "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
@@ -25,6 +25,27 @@ enum class VoiceModel(
             "tokens.txt",
         ),
         73, "Apache-2.0",
+    ),
+
+    /**
+     * Open Keyboard: bigger live models (test 184). Tested in the cloud with truck noise mixed into
+     * speech, words wrong in the live text at 0 dB: small Zipformer 38%, FastConformer 19%, Nemotron 17%.
+     */
+    LIVE_FASTCONFORMER(
+        "Live English, better (NVIDIA FastConformer)",
+        "Live words much closer to right in noise than the small model. Credit: NVIDIA, licensed CC-BY-4.0.",
+        "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8",
+        listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
+        131, "CC-BY-4.0",
+    ),
+
+    LIVE_NEMOTRON(
+        "Live English, best (NVIDIA Nemotron streaming 0.6B)",
+        "Most accurate live words, with capitals and punctuation as you speak. Uses more battery. " +
+                "Credit: NVIDIA, NVIDIA Open Model License.",
+        "csukuangfj/sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14",
+        listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
+        633, "NVIDIA Open Model License",
     ),
 
     /** Accurate English model used to re-check each finished sentence. Default accuracy model. */
@@ -62,6 +83,8 @@ enum class VoiceModel(
     companion object {
         /** Models that can re-check a finished sentence. */
         val accuracyModels = listOf(PARAKEET_EN, WHISPER_SMALL_EN, WHISPER_TURBO)
+        /** Models that show the words while you speak, best first. */
+        val liveModels = listOf(LIVE_NEMOTRON, LIVE_FASTCONFORMER, STREAMING_EN)
     }
 }
 
@@ -82,6 +105,19 @@ object VoicePrefs {
     fun setAccuracyModel(context: Context, model: VoiceModel?) {
         prefs(context).edit().putString(KEY_ACCURACY_MODEL, model?.name ?: NONE).apply()
     }
+
+    /**
+     * The live model to use: the one picked in settings if downloaded, otherwise the best one
+     * downloaded, or null if none is.
+     */
+    fun liveModel(context: Context): VoiceModel? {
+        val stored = prefs(context).getString("live_model", null)
+        VoiceModel.liveModels.firstOrNull { it.name == stored && it.isInstalled(context) }?.let { return it }
+        return VoiceModel.liveModels.firstOrNull { it.isInstalled(context) }
+    }
+    fun pickedLiveModel(context: Context): VoiceModel? =
+        prefs(context).getString("live_model", null)?.let { n -> VoiceModel.liveModels.firstOrNull { it.name == n } }
+    fun setLiveModel(context: Context, model: VoiceModel) = prefs(context).edit().putString("live_model", model.name).apply()
 
     /** Clean up background noise before recognition. On by default. */
     fun noiseReduction(context: Context) = prefs(context).getBoolean("noise_reduction", true)

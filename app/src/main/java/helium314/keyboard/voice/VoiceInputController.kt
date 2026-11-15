@@ -54,14 +54,44 @@ class VoiceInputController(
     private fun listening(on: Boolean) {
         onListeningChanged(on)
         runCatching {
-            if (on && !hasFocus) {
-                hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-                Log.i(TAG, "media paused for voice: $hasFocus")
-            } else if (!on && hasFocus) {
-                audioManager.abandonAudioFocusRequest(focusRequest)
-                hasFocus = false
-                Log.i(TAG, "media handed back")
+            if (on) {
+                main.removeCallbacks(handBack)
+                main.removeCallbacks(nudgePlayer)
+                if (!hasFocus) {
+                    mediaWasPlaying = audioManager.isMusicActive
+                    hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                    Log.i(TAG, "media paused for voice: $hasFocus (was playing: $mediaWasPlaying)")
+                }
+            } else if (hasFocus) {
+                // Open Keyboard: wait until the mic is fully closed and the off chime has played
+                // before handing the sound back. Handing it back while the mic was still open left
+                // podcasts frozen (Jarrod, 16 Nov).
+                main.removeCallbacks(handBack)
+                main.postDelayed(handBack, HAND_BACK_DELAY_MS)
             }
+        }
+    }
+
+    private var mediaWasPlaying = false
+
+    private val handBack = Runnable {
+        if (running || !hasFocus) return@Runnable
+        runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
+        hasFocus = false
+        Log.i(TAG, "media handed back")
+        if (mediaWasPlaying) main.postDelayed(nudgePlayer, 1500)
+    }
+
+    /** Some players don't start again by themselves: if it was playing before the mic and still isn't, press play. */
+    private val nudgePlayer = Runnable {
+        if (running || hasFocus || !mediaWasPlaying) return@Runnable
+        mediaWasPlaying = false
+        if (audioManager.isMusicActive) return@Runnable
+        Log.i(TAG, "media didn't start again by itself, pressing play")
+        runCatching {
+            val now = android.os.SystemClock.uptimeMillis()
+            for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
+                audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(now, now, action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY, 0))
         }
     }
 
@@ -98,7 +128,7 @@ class VoiceInputController(
     fun start() {
         if (running) return
         val missingPermission = ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        if (missingPermission || !VoiceModel.STREAMING_EN.isInstalled(ime)) {
+        if (missingPermission || VoicePrefs.liveModel(ime) == null) {
             Log.i(TAG, "mic not started: permission=${!missingPermission}")
             Toast.makeText(ime, "Set up voice typing first", Toast.LENGTH_SHORT).show()
             ime.startActivity(Intent(ime, VoiceSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -159,6 +189,8 @@ class VoiceInputController(
 
     fun release() {
         cancel()
+        main.removeCallbacks(handBack); main.removeCallbacks(nudgePlayer)
+        if (hasFocus) { runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }; hasFocus = false }
         finalPass.shutdownNow()
         chimes.release()
     }
@@ -469,6 +501,7 @@ class VoiceInputController(
 
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
+        if (VoiceEngine.liveWritesCapitals) return VoiceCommands.punctuate(VoiceSpelling.apply(text, region))
         val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
         return VoiceCommands.punctuate(VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region))
     }
@@ -493,5 +526,7 @@ class VoiceInputController(
         private const val TAG = "VoiceInput"
         /** Voice typing turns itself off after this much silence. */
         private const val SILENCE_TIMEOUT_MS = 30_000L
+        /** Mic closed and off chime played (about 260 ms) before other sound carries on. */
+        private const val HAND_BACK_DELAY_MS = 600L
     }
 }

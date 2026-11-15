@@ -76,6 +76,7 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
     val errors = remember { mutableStateMapOf<VoiceModel, String>() }
     var installedTick by remember { mutableStateOf(0) }
     var accuracy by remember { mutableStateOf(VoicePrefs.accuracyModel(ctx)) }
+    var live by remember { mutableStateOf(VoicePrefs.pickedLiveModel(ctx) ?: VoicePrefs.liveModel(ctx)) }
     var noiseReduction by remember { mutableStateOf(VoicePrefs.noiseReduction(ctx)) }
     var region by remember { mutableStateOf(VoicePrefs.region(ctx)) }
 
@@ -141,6 +142,28 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                         }
                         errors[model]?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     }
+                }
+            }
+
+            Text("Live words", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "This model shows the words while you speak. The bigger ones guess much better in noisy places " +
+                        "like a truck. If the one you pick isn't downloaded, the best downloaded one is used.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            VoiceModel.liveModels.forEach { model ->
+                installedTick.let { }
+                val selected = live == model
+                Row(
+                    Modifier.fillMaxWidth().selectable(selected = selected, onClick = {
+                        live = model
+                        VoicePrefs.setLiveModel(ctx, model)
+                    }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = selected, onClick = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(model.title + if (!model.isInstalled(ctx)) " (not downloaded)" else "")
                 }
             }
 

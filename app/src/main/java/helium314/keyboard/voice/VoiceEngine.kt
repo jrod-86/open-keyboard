@@ -33,6 +33,9 @@ object VoiceEngine {
     const val SAMPLE_RATE = 16000
 
     @Volatile private var online: OnlineRecognizer? = null
+    @Volatile private var onlineModel: VoiceModel? = null
+    /** Whether the live model in use writes capitals and punctuation itself. */
+    val liveWritesCapitals: Boolean get() = onlineModel == VoiceModel.LIVE_NEMOTRON
     @Volatile private var offline: OfflineRecognizer? = null
     @Volatile private var offlineModel: VoiceModel? = null
 
@@ -58,16 +61,19 @@ object VoiceEngine {
 
     @Synchronized
     fun onlineRecognizer(context: Context): OnlineRecognizer {
-        online?.let { return it }
-        val m = VoiceModel.STREAMING_EN
+        val m = VoicePrefs.liveModel(context) ?: VoiceModel.STREAMING_EN
+        if (m == onlineModel) online?.let { return it }
+        online?.release(); online = null; onlineModel = null
         val f = { name: String -> m.file(context, name).absolutePath }
         val modelConfig = OnlineModelConfig().apply {
             transducer = OnlineTransducerModelConfig().apply {
                 encoder = f(m.files[0]); decoder = f(m.files[1]); joiner = f(m.files[2])
             }
             tokens = f(m.files[3])
-            numThreads = 2
+            // the big model needs more of the phone's cores to keep up with speech
+            numThreads = if (m == VoiceModel.LIVE_NEMOTRON) 4 else 2
         }
+        Log.i("VoiceEngine", "live model: ${m.name}")
         val config = OnlineRecognizerConfig().apply {
             featConfig = FeatureConfig(SAMPLE_RATE, 80, 0f)
             this.modelConfig = modelConfig
@@ -80,7 +86,7 @@ object VoiceEngine {
             )
             decodingMethod = "greedy_search"
         }
-        return OnlineRecognizer(null, config).also { online = it }
+        return OnlineRecognizer(null, config).also { online = it; onlineModel = m }
     }
 
     /** The accuracy model chosen in settings, or null if none is chosen or installed. */
@@ -198,7 +204,7 @@ object VoiceEngine {
 
     @Synchronized
     fun release() {
-        online?.release(); online = null
+        online?.release(); online = null; onlineModel = null
         offline?.release(); offline = null; offlineModel = null
         denoiser?.release(); denoiser = null
     }
