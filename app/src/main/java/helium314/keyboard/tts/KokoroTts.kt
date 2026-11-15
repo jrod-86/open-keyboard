@@ -49,6 +49,7 @@ object KokoroTts {
         ModelFile("LICENSE", 11358, "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"),
     )
     val TOTAL_BYTES = FILES.sumOf { it.size }
+    const val RATE = 24000
 
     fun dir(ctx: Context) = File(ctx.filesDir, "tts-models/kokoro-v1")
     fun installed(ctx: Context) = FILES.all { File(dir(ctx), it.name).length() == it.size }

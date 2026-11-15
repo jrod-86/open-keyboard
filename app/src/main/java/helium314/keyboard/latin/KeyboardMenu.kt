@@ -478,7 +478,7 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("Text to speech", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), idOverride = "text to speech") {
+            Item(tr("TTS", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), idOverride = "text to speech") {
                 // bring along what's selected, or everything written in the box
                 var c: Context? = context
                 while (c is android.content.ContextWrapper && c !is LatinIME) c = c.baseContext
