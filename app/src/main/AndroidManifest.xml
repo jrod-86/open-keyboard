@@ -123,6 +123,14 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:exported="false" />
+        <activity android:name="helium314.keyboard.tts.MakeVoiceActivity"
+            android:label="Make a voice"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight"
+            android:taskAffinity="io.github.jrod86.openkeyboard.tts"
+            android:process=":tts"
+            android:windowSoftInputMode="stateHidden|adjustResize"
+            android:exported="false" />
         <activity android:name="helium314.keyboard.media.StickerMakerActivity"
             android:label="Make a sticker"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"

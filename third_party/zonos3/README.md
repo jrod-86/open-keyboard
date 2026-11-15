@@ -14,7 +14,7 @@ Build (NDK 28.0.13004108, Rust with `rustup target add aarch64-linux-android`):
 ```bash
 git clone https://github.com/Zyphra/ZONOS3-Mini && cd ZONOS3-Mini && git checkout 96d9e0ec
 git submodule update --init --depth 1 servers/ggml/ggml third_party/zyphra-textnorm
-git apply /path/to/android-cmake.patch     # lets cargo build textnorm for aarch64-linux-android
+git apply /path/to/android-cmake.patch     # Android changes, see below
 cd servers/ggml
 TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/aarch64-linux-android28-clang \
@@ -28,3 +28,15 @@ $TC/llvm-strip -o libzonos3_server.so build-a86/zonos3-server
 
 Only the ARMv8.6 (i8mm) build is shipped, to keep the APK under GitHub's 100 MB file limit; phones without i8mm get
 Kokoro only.
+
+## Open Keyboard changes (android-cmake.patch)
+
+- CMake lets cargo build zyphra-textnorm for aarch64-linux-android.
+- `zonos3-server encode-reference <zac-encoder.gguf> <ssl-teacher.gguf> --audio clip.npy codes.npy` runs the reference
+  encoder (src/zac-encoder-cli.cpp, built in through src/server/encode-reference.cpp), so "Make a voice" needs no
+  second binary.
+- The encoder's convolutional front end runs in 16 overlapping time chunks (ZAC_FRONT_CHUNKS), which gives identical
+  codes with peak memory down from 5.5 GB to 2.4 GB.
+
+The encoder and teacher the app downloads are q8_0 copies (`quantize-cli <in> <out> q8_0`) kept on this repo's
+`voice-clone-models` branch; see its README.

@@ -24,8 +24,12 @@ object ZonosTts {
     private const val TAG = "ZonosTts"
     const val RATE = 44100
 
-    /** The ten English voices that come with it; [file] is the voice's reference codes in assets/zonos-voices. */
-    class Voice(val id: String, val name: String, val female: Boolean, val flag: String, val about: String, val fun_: Boolean = false)
+    /**
+     * A voice: the ten English ones that come with it (reference codes in assets/zonos-voices/[id].json), or one you
+     * made ([file] holds its codes, see VoiceClones).
+     */
+    class Voice(val id: String, val name: String, val female: Boolean, val flag: String, val about: String, val fun_: Boolean = false,
+                val file: File? = null)
 
     val VOICES = listOf(
         Voice("savannah", "Savannah", true, "🇺🇸", "Clear and friendly"),
@@ -116,6 +120,7 @@ object ZonosTts {
     fun delete(ctx: Context) {
         stop()
         dir(ctx).deleteRecursively()
+        VoiceClones.deleteModels(ctx) // your voices themselves are kept
     }
 
     // ---- the local engine ----
@@ -174,8 +179,12 @@ object ZonosTts {
 
     private val codesCache = mutableMapOf<String, JSONArray>()
     private fun codes(ctx: Context, v: Voice): JSONArray = synchronized(codesCache) {
-        codesCache.getOrPut(v.id) { JSONArray(ctx.assets.open("zonos-voices/${v.id}.json").bufferedReader().readText()) }
+        codesCache.getOrPut(v.id) {
+            if (v.file != null) JSONObject(v.file.readText()).getJSONArray("codes")
+            else JSONArray(ctx.assets.open("zonos-voices/${v.id}.json").bufferedReader().readText())
+        }
     }
+    fun forget(v: Voice) { synchronized(codesCache) { codesCache.remove(v.id) } }
 
     /**
      * Speaks [text] with [v], calling [onChunk] with float samples (44.1 kHz mono) as they arrive. [rate] is speaking

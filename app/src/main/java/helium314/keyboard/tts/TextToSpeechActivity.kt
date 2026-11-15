@@ -41,7 +41,9 @@ import kotlin.concurrent.thread
 
 /** One voice of either engine. */
 class TtsVoice(val engine: String, val id: String, val name: String, val female: Boolean, val badge: String, val about: String,
-               val kokoro: KokoroTts.Voice? = null, val zonos: ZonosTts.Voice? = null)
+               val kokoro: KokoroTts.Voice? = null, val zonos: ZonosTts.Voice? = null) {
+    val custom get() = zonos?.file != null
+}
 
 /**
  * Text to speech tile: type or bring words from the chat, pick an engine (⚡ Kokoro, small and quick, or ✨ Zonos,
@@ -55,7 +57,9 @@ class TextToSpeechActivity : Activity() {
         const val KOKORO = "kokoro"
         const val ZONOS = "zonos"
         val KOKORO_VOICES = KokoroTts.VOICES.map { TtsVoice(KOKORO, it.id, it.name, it.female, if (it.british) "🇬🇧" else "🇺🇸", it.about, kokoro = it) }
-        val ZONOS_VOICES = ZonosTts.VOICES.map { TtsVoice(ZONOS, "z_" + it.id, it.name, it.female, it.flag, it.about, zonos = it) }
+        val ZONOS_VOICES = ZonosTts.VOICES.map { zonosVoice(it) }
+        private fun zonosVoice(v: ZonosTts.Voice) = TtsVoice(ZONOS, "z_" + v.id, v.name, v.female, v.flag, v.about, zonos = v)
+        private const val MAKE_VOICE = 7
         // Zonos: speaking speed as a condition (UTF-8 bytes per second); null = the voice's own pace
         private fun zonosRate(speed: Float): Double? = when { speed < 0.95f -> 11.0; speed > 1.05f -> 18.5; else -> null }
     }
@@ -216,7 +220,8 @@ class TextToSpeechActivity : Activity() {
         warm()
     }
 
-    private fun voicesOf(e: String) = if (e == ZONOS) ZONOS_VOICES else KOKORO_VOICES
+    /** Zonos: the built-in voices, then the ones you made. */
+    private fun voicesOf(e: String) = if (e == ZONOS) ZONOS_VOICES + VoiceClones.list(this).map { zonosVoice(it) } else KOKORO_VOICES
     private fun installed(e: String = engine) = if (e == ZONOS) ZonosTts.installed(this) else KokoroTts.installed(this)
 
     /** Load the engine in the background so the first Speak is quicker. */
@@ -246,19 +251,74 @@ class TextToSpeechActivity : Activity() {
         buildVoices(); refresh(); warm()
     }
 
-    /** Voice cards, three to a row: women first, then men. */
+    /** Voice cards, three to a row: women first, then men; for Zonos, then your voices and "Make a voice". */
     private fun buildVoices() {
         voicesBox.removeAllViews(); voiceCards.clear()
-        for (female in listOf(true, false)) {
-            voicesOf(engine).filter { it.female == female }.chunked(3).forEach { rowVoices ->
-                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                for (i in 0 until 3) {
-                    val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (i > 0) marginStart = dp(8f) }
-                    row.addView(rowVoices.getOrNull(i)?.let { voiceCard(it) } ?: View(this), lp)
-                }
-                voicesBox.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8f) })
+        val all = voicesOf(engine)
+        fun rows(cards: List<View>) = cards.chunked(3).forEach { rowCards ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (i in 0 until 3) {
+                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (i > 0) marginStart = dp(8f) }
+                row.addView(rowCards.getOrNull(i) ?: View(this), lp)
             }
+            voicesBox.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8f) })
         }
+        for (female in listOf(true, false)) rows(all.filter { !it.custom && it.female == female }.map { voiceCard(it) })
+        if (engine == ZONOS) {
+            voicesBox.addView(label("YOUR VOICES"))
+            rows(all.filter { it.custom }.map { voiceCard(it) } + makeVoiceCard())
+        }
+    }
+
+    private fun makeVoiceCard() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        setPadding(dp(6f), dp(10f), dp(6f), dp(10f))
+        background = UiKit.card(this@TextToSpeechActivity, 16f)
+        addView(TextView(context).apply { text = "➕"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); gravity = Gravity.CENTER; setTextColor(textColor) })
+        addView(TextView(context).apply {
+            text = "Make a voice"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; setTextColor(textColor)
+        })
+        addView(TextView(context).apply { text = "Copy one from a clip"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f); gravity = Gravity.CENTER; alpha = 0.8f; setTextColor(textColor) })
+        contentDescription = "Make a voice from a clip"
+        setOnClickListener {
+            if (busy) return@setOnClickListener
+            if (!ZonosTts.installed(this@TextToSpeechActivity)) { toast("Download the Zonos voices first"); return@setOnClickListener }
+            stopPlayback()
+            @Suppress("DEPRECATION")
+            startActivityForResult(Intent(this@TextToSpeechActivity, MakeVoiceActivity::class.java), MAKE_VOICE)
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != MAKE_VOICE) return
+        val id = data?.getStringExtra(MakeVoiceActivity.EXTRA_VOICE)
+        if (resultCode == RESULT_OK && id != null) prefs.edit().putString("voice_$ZONOS", "z_$id").apply()
+        voice = voicesOf(engine).firstOrNull { it.id == prefs.getString("voice_$engine", null) } ?: voicesOf(engine)[0]
+        buildVoices(); refresh(); warm()
+        if (resultCode == RESULT_OK && id != null) preview(voice)
+    }
+
+    /** Long-press one of your voices: rename or delete it. */
+    private fun editVoice(v: TtsVoice) {
+        val z = v.zonos ?: return
+        AlertDialog.Builder(this).setTitle("🎤 ${v.name}")
+            .setItems(arrayOf("Rename", "Delete")) { _, which ->
+                if (which == 0) {
+                    val field = UiKit.field(this, "Name").apply { setText(v.name); setSingleLine() }
+                    AlertDialog.Builder(this).setTitle("Rename").setView(field)
+                        .setPositiveButton("Save") { _, _ ->
+                            field.text.toString().trim().take(24).takeIf { it.isNotEmpty() }?.let { VoiceClones.rename(z, it); buildVoices(); refresh() }
+                        }.setNegativeButton("Cancel", null).show()
+                } else AlertDialog.Builder(this).setMessage("Delete the voice \"${v.name}\"?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        VoiceClones.delete(this, z); previews.remove(v.id)
+                        if (voice.id == v.id) { voice = voicesOf(engine)[0]; prefs.edit().putString("voice_$engine", voice.id).apply() }
+                        buildVoices(); refresh()
+                    }.setNegativeButton("Cancel", null).show()
+            }.show()
     }
 
     private fun label(t: String) = TextView(this).apply {
@@ -270,7 +330,7 @@ class TextToSpeechActivity : Activity() {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
         setPadding(dp(6f), dp(10f), dp(6f), dp(10f))
         addView(TextView(context).apply {
-            text = (if (v.female) "👩 " else "👨 ") + v.badge
+            text = if (v.custom) "🎤" else (if (v.female) "👩 " else "👨 ") + v.badge
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); gravity = Gravity.CENTER
         })
         addView(TextView(context).apply {
@@ -285,6 +345,7 @@ class TextToSpeechActivity : Activity() {
             voice = v; prefs.edit().putString("voice_${v.engine}", v.id).apply(); refresh()
             preview(v)
         }
+        if (v.custom) setOnLongClickListener { if (!busy) editVoice(v); true }
         voiceCards[v.id] = this
     }
 
@@ -434,7 +495,8 @@ class TextToSpeechActivity : Activity() {
         status.text = "Getting ${v.name} ready…"
         thread(name = "tts-preview") {
             runCatching {
-                val hello = "Hi, I'm ${v.name}. I can read your messages out loud."
+                val hello = if (v.custom) "Hi, this is the voice you made. I can read anything you type out loud."
+                else "Hi, I'm ${v.name}. I can read your messages out loud."
                 val a = if (v.engine == ZONOS) {
                     val parts = ArrayList<FloatArray>()
                     ZonosTts.speak(this, hello, v.zonos!!, null, { false }) { parts.add(it) }
@@ -564,6 +626,8 @@ class TextToSpeechActivity : Activity() {
                     "Fenrir, Michael and Puck. ✨ Zonos (ZONOS3-Mini) is bigger (${mb(ZonosTts.TOTAL_BYTES)} MB) and sounds the most natural: " +
                     "Savannah, Imogen (British), Wyatt, Rupert (British) and Cillian (Irish), plus fun voices: Willow whispers, Sakura is anime, " +
                     "Morgana is a witch, Jett is energetic and Thaddeus is an announcer.\n\n" +
+                    "• Make a voice (Zonos): record or pick a 10 to 20 second clip of someone talking and it becomes one of your voices. " +
+                    "Only copy your own voice or someone who said yes. Long-press one of your voices to rename or delete it.\n\n" +
                     "• Speak starts talking after the first sentence is ready, while it works on the rest. Stop ends it.\n\n" +
                     "• Share sends the speech as a sound file to any app (Messenger, WhatsApp, email). Save keeps it in Music › Open Keyboard.\n\n" +
                     "• Everything runs on your phone. Nothing you type is sent anywhere."

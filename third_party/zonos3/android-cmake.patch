@@ -1,0 +1,131 @@
+diff --git a/servers/ggml/CMakeLists.txt b/servers/ggml/CMakeLists.txt
+index 628cecd..4425540 100644
+--- a/servers/ggml/CMakeLists.txt
++++ b/servers/ggml/CMakeLists.txt
+@@ -211,15 +211,21 @@ if (NOT EXISTS ${TEXTNORM_DIR}/Cargo.toml)
+ endif()
+ set(TEXTNORM_TARGET_DIR ${CMAKE_CURRENT_BINARY_DIR}/textnorm)
+ # One cargo profile for every CMake config: the grammars are slow unoptimized and debug info is not needed here.
++set(TEXTNORM_CARGO_TARGET "")
++set(TEXTNORM_PROFILE_DIR release)
++if (ANDROID)
++    set(TEXTNORM_CARGO_TARGET --target aarch64-linux-android)
++    set(TEXTNORM_PROFILE_DIR aarch64-linux-android/release)
++endif()
+ if (WIN32)
+     set(TEXTNORM_LIB ${TEXTNORM_TARGET_DIR}/release/zyphra_textnorm.lib)
+ else()
+-    set(TEXTNORM_LIB ${TEXTNORM_TARGET_DIR}/release/libzyphra_textnorm.a)
++    set(TEXTNORM_LIB ${TEXTNORM_TARGET_DIR}/${TEXTNORM_PROFILE_DIR}/libzyphra_textnorm.a)
+ endif()
+ file(GLOB_RECURSE TEXTNORM_SOURCES CONFIGURE_DEPENDS ${TEXTNORM_DIR}/src/*.rs ${TEXTNORM_DIR}/data/*)
+ add_custom_command(
+     OUTPUT ${TEXTNORM_LIB}
+-    COMMAND ${CARGO} rustc --release --locked --lib -p zyphra-textnorm --features capi --crate-type staticlib
++    COMMAND ${CARGO} rustc --release --locked --lib -p zyphra-textnorm --features capi --crate-type staticlib ${TEXTNORM_CARGO_TARGET}
+         --manifest-path ${TEXTNORM_DIR}/Cargo.toml --target-dir ${TEXTNORM_TARGET_DIR}
+     DEPENDS ${TEXTNORM_SOURCES} ${TEXTNORM_DIR}/Cargo.toml ${TEXTNORM_DIR}/Cargo.lock
+     COMMENT "cargo build zyphra-textnorm"
+@@ -238,7 +244,7 @@ else()
+     set_property(TARGET zyphra-textnorm APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
+ endif()
+ target_link_libraries(zonos3-server-core PUBLIC zyphra-textnorm)
+-add_executable(zonos3-server src/server/main.cpp)
++add_executable(zonos3-server src/server/main.cpp src/server/encode-reference.cpp)
+ target_link_libraries(zonos3-server PRIVATE zonos3-server-core)
+ # --- end HTTP server ---
+ 
+diff --git a/servers/ggml/src/server/encode-reference.cpp b/servers/ggml/src/server/encode-reference.cpp
+new file mode 100644
+index 0000000..662cd3d
+--- /dev/null
++++ b/servers/ggml/src/server/encode-reference.cpp
+@@ -0,0 +1,3 @@
++// Open Keyboard: the reference encoder CLI, built into zonos3-server as its "encode-reference" subcommand.
++#define main zac_encoder_cli_main
++#include "../zac-encoder-cli.cpp"
+diff --git a/servers/ggml/src/server/main.cpp b/servers/ggml/src/server/main.cpp
+index 3b262bf..8d12713 100644
+--- a/servers/ggml/src/server/main.cpp
++++ b/servers/ggml/src/server/main.cpp
+@@ -436,7 +436,11 @@ int zonos3_server_main(int argc, char ** argv, zonos3_server_ctl * ctl) {
+ }
+ 
+ #ifndef ZONOS3_APP_EMBED
++int zac_encoder_cli_main(int argc, char ** argv);
+ int main(int argc, char ** argv) {
++    // Open Keyboard: "zonos3-server encode-reference <zac-encoder> <ssl-teacher> --audio pcm.npy out.npy" turns a
++    // voice clip into reference codes, so one binary does both (keeps the APK small).
++    if (argc > 1 && std::string(argv[1]) == "encode-reference") return zac_encoder_cli_main(argc - 1, argv + 1);
+     return zonos3_server_main(argc, argv, nullptr);
+ }
+ #endif
+diff --git a/servers/ggml/src/zac-encoder.cpp b/servers/ggml/src/zac-encoder.cpp
+index 7e847ef..26811e7 100644
+--- a/servers/ggml/src/zac-encoder.cpp
++++ b/servers/ggml/src/zac-encoder.cpp
+@@ -128,21 +128,50 @@ bool acoustic_lane(const zac_model & m, const float * audio, std::vector<float>
+         return dump(prefix + "." + name, values.data(), g.T(), g.C());
+     };
+     const int N = LANE * INTERNAL_HOP;
+-    if (!g.init(1, N, audio, (size_t) 64 * N)) return false;
+-    if (!g.run([&](auto * c, auto * graph, auto * x) { return conv(c, graph, m, x, "enc.in"); })) return false;
+-    if (!capture("enc.in")) return false;
+-    for (int b = 0; b < 2; ++b) {
+-        const std::string p = "enc.b" + std::to_string(b);
+-        for (int r = 0; r < 3; ++r) {
+-            // Both ResidualUnit operands are BF16 convolution outputs. Unlike
+-            // MOSS layer-scale residuals, this add returns BF16 before Snake.
+-            if (!g.run([&](auto * c, auto * graph, auto * x) {
+-                return bf16(c, residual(c, graph, m, x, p + ".res" + std::to_string(r), r == 0 ? 1 : r == 1 ? 3 : 9));
+-            })) return false;
+-            if (!capture(p + ".res" + std::to_string(r))) return false;
++    // The convolutional front end (enc.in, enc.b0, enc.b1) only looks a few hundred samples around each output, but
++    // at full rate over a whole 20 s lane it needs ~3 GB of scratch. Open Keyboard (phones): without dumps, run it
++    // in overlapping time chunks and keep each chunk's middle, which gives the same output in a fraction of the memory.
++    auto front = [&](encoder_graph & fg, bool dumps) -> bool {
++        if (!fg.run([&](auto * c, auto * graph, auto * x) { return conv(c, graph, m, x, "enc.in"); })) return false;
++        if (dumps && !capture("enc.in")) return false;
++        for (int b = 0; b < 2; ++b) {
++            const std::string p = "enc.b" + std::to_string(b);
++            for (int r = 0; r < 3; ++r) {
++                // Both ResidualUnit operands are BF16 convolution outputs. Unlike
++                // MOSS layer-scale residuals, this add returns BF16 before Snake.
++                if (!fg.run([&](auto * c, auto * graph, auto * x) {
++                    return bf16(c, residual(c, graph, m, x, p + ".res" + std::to_string(r), r == 0 ? 1 : r == 1 ? 3 : 9));
++                })) return false;
++                if (dumps && !capture(p + ".res" + std::to_string(r))) return false;
++            }
++            if (!fg.run([&](auto * c, auto * graph, auto * x) { return conv(c, graph, m, snake(c, graph, m, x, p + ".snake"), p + ".conv", 1, b == 0 ? 2 : 4); })) return false;
++            if (dumps && !capture(p + ".conv")) return false;
++        }
++        return true;
++    };
++    const char * chunk_env = getenv("ZAC_FRONT_CHUNKS");
++    const int chunks = dump ? 1 : std::max(1, chunk_env ? atoi(chunk_env) : 16);
++    if (chunks == 1) {
++        if (!g.init(1, N, audio, (size_t) 64 * N)) return false;
++        if (!front(g, true)) return false;
++    } else {
++        constexpr int DOWN = 8, MARGIN = 4096; // the front end downsamples 2 x 4; MARGIN is far past its reach
++        const int frames = N / DOWN, core = (frames + chunks - 1) / chunks;
++        std::vector<float> joined;
++        int width = 0;
++        for (int f0 = 0; f0 < frames; f0 += core) {
++            const int f1 = std::min(frames, f0 + core);
++            const int s0 = std::max(0, f0 * DOWN - MARGIN), s1 = std::min(N, f1 * DOWN + MARGIN);
++            encoder_graph cg(m);
++            if (!cg.init(1, s1 - s0, audio + s0, (size_t) 64 * (s1 - s0))) return false;
++            if (!front(cg, false)) return false;
++            const std::vector<float> part = cg.host();
++            if (width == 0) { width = cg.C(); joined.assign((size_t) width * frames, 0.0f); }
++            if (cg.C() != width || cg.T() != (s1 - s0) / DOWN) return false;
++            const int skip = (f0 * DOWN - s0) / DOWN;
++            std::copy_n(part.data() + (size_t) skip * width, (size_t) (f1 - f0) * width, joined.data() + (size_t) f0 * width);
+         }
+-        if (!g.run([&](auto * c, auto * graph, auto * x) { return conv(c, graph, m, snake(c, graph, m, x, p + ".snake"), p + ".conv", 1, b == 0 ? 2 : 4); })) return false;
+-        if (!capture(p + ".conv")) return false;
++        if (!g.init(width, frames, joined.data(), (size_t) 32 * N)) return false;
+     }
+     for (int s = 0; s < (int) m.stages.size(); ++s) {
+         const auto & hp = m.stages[s];
