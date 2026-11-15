@@ -692,6 +692,12 @@ class ImageMakerActivity : Activity() {
         glowCard.magic = job.running
         magic.running = job.running
         val mapOn = job.running && job.model !== ImageGen.QUICK
+        // when the picture is done, let the animal reach the 🏁 first, then show the picture
+        if (!job.running && journey.running && job.result != null) {
+            if (!journey.finishing) journey.finish { journey.running = false; show() }
+            magic.running = true; glowCard.magic = true
+            return
+        }
         journey.running = mapOn
         magic.alpha = if (mapOn) 0.45f else 1f
         if (mapOn) journey.update(job.stageIndex, job.step, if (job.total > 0) job.total else if (job.model.steps > 0) job.model.steps else steps, 0 in job.skipped)

@@ -62,6 +62,7 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
             if (field == on) return
             field = on
             if (on) { animal = ANIMALS.random(); pos = 0f; target = 0f; arrivedAt = SystemClock.uptimeMillis() }
+            if (!on) { finishing = false; onFinished = null }
             if (on && isAttachedToWindow) startClock() else stopClock()
             visibility = if (on) VISIBLE else GONE
         }
@@ -94,6 +95,19 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
             else -> (n + 2).toFloat()
         }
         if (t != target) { target = t; if (abs(pos - target) > 3f) pos = target - 1f }
+    }
+
+    /** True while the animal is walking the last bit to the 🏁 after the picture is done. */
+    var finishing = false; private set
+    private var onFinished: (() -> Unit)? = null
+
+    /** The picture is done: walk (quickly) to the finish line, celebrate a moment, then [then]. */
+    fun finish(then: () -> Unit) {
+        if (finishing) return
+        finishing = true; onFinished = then
+        target = (stops.size - 1).toFloat()
+        if (target - pos > 2f) pos = target - 2f
+        if (!isAttachedToWindow || anim == null) { finishing = false; onFinished = null; then() }
     }
 
     private fun build() {
@@ -151,10 +165,14 @@ class JourneyMap(context: Context, private val a1: Int, private val a2: Int, pri
         if (now - lastFrame < 33) return
         lastFrame = now
         if (pos < target) {
-            // walk about one stop a second (faster if far behind)
-            pos = minOf(target, pos + dt * maxOf(1f, (target - pos) * 0.8f))
+            // walk about one stop a second (faster if far behind, and a quick dash to the finish)
+            pos = minOf(target, pos + dt * maxOf(if (finishing) 2.5f else 1f, (target - pos) * 0.8f))
             if (pos >= target) arrivedAt = now
         } else if (pos > target) pos = target
+        if (finishing && pos >= target && now - arrivedAt > 1400) {
+            val then = onFinished; onFinished = null
+            if (then != null) post { then() }
+        }
         invalidate()
     }
 

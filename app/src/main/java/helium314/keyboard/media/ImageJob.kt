@@ -208,7 +208,8 @@ object ImageJob {
             when (st) {
                 "conditioning", "preparing" -> enter(1)
                 "sampling" -> { enter(2); if (all > 1) { step = done.toInt(); total = all.toInt() } }
-                "decoding" -> enter(3)
+                // the engine calls the last stage "vae_decode" (test 170: the map never reached Finishing)
+                "decoding", "vae_decode" -> enter(3)
             }
             Log.i("ImageMaker", "stage $st $done/$all after ${(System.currentTimeMillis() - startedAt) / 1000}s")
             changed(app)
