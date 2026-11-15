@@ -215,6 +215,12 @@ class ImageMakerActivity : Activity() {
     private lateinit var queueValue: TextView
     private lateinit var seedValue: TextView
     private lateinit var galleryGrid: LinearLayout
+    /** Hold a picture to start picking several (Jarrod, test 175): these are the picked ones, by file name. */
+    private val picked = linkedSetOf<String>()
+    private var picking = false
+    private lateinit var pickBar: LinearLayout
+    private lateinit var pickCount: TextView
+    private val pickMarks = mutableListOf<Triple<ImageView, TextView, Gallery.Item>>()
     private var galleryShown = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -438,6 +444,22 @@ class ImageMakerActivity : Activity() {
             setPadding(dp(4f), pad * 3 / 2, 0, pad / 2)
         }
         root.addView(galleryTitle)
+        // shown while picking several pictures: how many, select all, delete, cancel
+        pickBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
+            setPadding(dp(12f), dp(6f), dp(6f), dp(6f))
+            background = UiKit.rounded(this@ImageMakerActivity, 16f, cardColor, lineColor)
+        }
+        pickCount = TextView(this).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(theme.text) }
+        pickBar.addView(pickCount, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        for ((label, act) in listOf<Pair<String, () -> Unit>>("☑️ All" to ::pickAll, "🗑️ Delete" to ::deletePicked, "✕" to ::stopPicking)) {
+            pickBar.addView(TextView(this).apply {
+                text = label; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(theme.text); gravity = Gravity.CENTER
+                setPadding(dp(12f), dp(8f), dp(12f), dp(8f))
+                setOnClickListener { act() }
+            })
+        }
+        root.addView(pickBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8f) })
         galleryGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(galleryGrid)
 
@@ -862,7 +884,10 @@ class ImageMakerActivity : Activity() {
         galleryShown = key
         galleryTitle.text = if (items.isEmpty()) "🖼️ Your pictures" else "🖼️ Your pictures (${items.size})"
         galleryGrid.removeAllViews()
+        pickMarks.clear()
+        picked.retainAll(items.map { it.file.name }.toSet())
         if (items.isEmpty()) {
+            stopPicking()
             galleryGrid.addView(TextView(this).apply {
                 text = "Pictures you make show up here."; alpha = 0.6f; setPadding(dp(4f), 0, 0, 0); setTextColor(theme.text)
             })
@@ -879,10 +904,17 @@ class ImageMakerActivity : Activity() {
                     val img = ImageView(this).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true
                         background = UiKit.rounded(this@ImageMakerActivity, 12f, cardColor)
-                        setOnClickListener { viewGalleryItem(item) }
-                        setOnLongClickListener { galleryMenu(item); true }
+                        setOnClickListener { if (picking) togglePick(item) else viewGalleryItem(item) }
+                        setOnLongClickListener { if (!picking) { picking = true; picked.clear() }; togglePick(item); true }
                     }
                     cell.addView(img, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                    // the tick in the corner while picking
+                    val mark = TextView(this).apply {
+                        gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(Color.WHITE)
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }
+                    cell.addView(mark, android.widget.FrameLayout.LayoutParams(dp(26f), dp(26f), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6f), dp(6f), 0) })
+                    pickMarks.add(Triple(img, mark, item))
                     cells.add(img to item)
                 }
                 row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -892,6 +924,7 @@ class ImageMakerActivity : Activity() {
             }
             galleryGrid.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = gap })
         }
+        showPicks()
         // small copies, read off the main thread
         thread(name = "image-maker-gallery") {
             for ((img, item) in cells) {
@@ -949,6 +982,53 @@ class ImageMakerActivity : Activity() {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(send, "Export picture"))
         }.onFailure { Toast.makeText(this, "Couldn't export it", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun togglePick(item: Gallery.Item) {
+        val n = item.file.name
+        if (!picked.add(n)) picked.remove(n)
+        if (picked.isEmpty()) picking = false
+        showPicks()
+    }
+
+    private fun pickAll() {
+        val all = Gallery.items(this).map { it.file.name }
+        if (picked.size == all.size) picked.clear() else picked.addAll(all)
+        if (picked.isEmpty()) picking = false
+        showPicks()
+    }
+
+    private fun stopPicking() { picking = false; picked.clear(); if (::pickBar.isInitialized) showPicks() }
+
+    private fun deletePicked() {
+        val chosen = Gallery.items(this).filter { it.file.name in picked }
+        if (chosen.isEmpty()) return
+        val n = chosen.size
+        AlertDialog.Builder(this)
+            .setMessage("Delete ${if (n == 1) "this picture" else "these $n pictures"} from your gallery? This can't be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                chosen.forEach { it.delete() }
+                stopPicking(); loadGallery()
+                Toast.makeText(this, if (n == 1) "Deleted 1 picture" else "Deleted $n pictures", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Ticks on the picked pictures, dims the rest, and shows the bar with how many are picked. */
+    private fun showPicks() {
+        pickBar.visibility = if (picking) View.VISIBLE else View.GONE
+        pickCount.text = "${picked.size} selected"
+        for ((img, mark, item) in pickMarks) {
+            val on = item.file.name in picked
+            mark.visibility = if (picking) View.VISIBLE else View.GONE
+            mark.text = if (on) "✓" else ""
+            mark.background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(if (on) purple else Color.argb(90, 0, 0, 0)); setStroke(dp(2f), Color.WHITE)
+            }
+            img.alpha = if (picking && !on) 0.55f else 1f
+            img.scaleX = if (on) 0.92f else 1f; img.scaleY = img.scaleX
+        }
     }
 
     private fun galleryMenu(item: Gallery.Item) {
