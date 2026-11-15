@@ -743,13 +743,15 @@ class ImageMakerActivity : Activity() {
     private fun pickSeed(anchor: View) {
         val fixed = prefs.getBoolean("seed_fixed", false)
         val last = prefs.getLong("last_seed", -1L)
-        val rows = mutableListOf(Triple("🎲", "Random", "A different picture every time"))
-        if (last >= 0) rows.add(Triple("📌", "Keep the last picture's seed", "Seed $last · same words give the same picture"))
-        rows.add(Triple("✏️", "Type a seed", if (fixed) "Now: ${prefs.getLong("seed", 0L)}" else "Any whole number"))
-        sheet(anchor, rows, if (!fixed) 0 else -1) { i ->
-            when {
-                i == 0 -> { prefs.edit().putBoolean("seed_fixed", false).apply(); refresh() }
-                i == 1 && last >= 0 -> { prefs.edit().putBoolean("seed_fixed", true).putLong("seed", last).apply(); refresh() }
+        // 📌 Fixed is always offered: it keeps the last picture's seed, or picks one now if nothing has been drawn yet
+        val keep = if (fixed) prefs.getLong("seed", 0L) else if (last >= 0) last else Random.nextLong(0, 1_000_000_000L)
+        val rows = listOf(Triple("🎲", "Random", "A different picture every time"),
+            Triple("📌", "Fixed", (if (!fixed && last >= 0) "Keep the last picture's seed, $keep" else "Seed $keep") + " · same words give the same picture"),
+            Triple("✏️", "Type a seed", "Any whole number"))
+        sheet(anchor, rows, if (fixed) 1 else 0) { i ->
+            when (i) {
+                0 -> { prefs.edit().putBoolean("seed_fixed", false).apply(); refresh() }
+                1 -> { prefs.edit().putBoolean("seed_fixed", true).putLong("seed", keep).apply(); refresh() }
                 else -> {
                     val box = EditText(this).apply {
                         setText(if (fixed) prefs.getLong("seed", 0L).toString() else ""); inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -999,7 +1001,7 @@ Quick makes a picture in seconds, but it's simple. Z-Image Turbo makes much bett
 Adds a look to your words. There are over 40, most popular first: Photorealistic, Cinematic, Anime, Cyberpunk, Logo, Oil painting and more. For a logo, put the name in "quotes", e.g. a coffee shop logo with the name "Bean There".
 
 🎲 Seed
-The seed is the starting point for a picture. 🎲 Random gives a different picture every time. 📌 Fixed gives the same picture again for the same words, model, style and shape. That's handy for comparing models, or for changing one word and seeing what changes. "Keep the last picture's seed" fixes the seed of a picture you liked.
+The seed is the starting point for a picture. 🎲 Random gives a different picture every time. 📌 Fixed gives the same picture again for the same words, model, style and shape. That's handy for comparing models, or for changing one word and seeing what changes. 📌 Fixed straight after a picture you liked keeps that picture's seed.
 
 ⬛ Shape
 The picture's shape: Square, Phone (9:16), Wide (16:9), Portrait, Landscape, Photo, Card, Cinema, or ✏️ Custom for any shape you like. Every shape takes about the same time.
