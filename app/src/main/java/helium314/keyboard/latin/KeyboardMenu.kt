@@ -514,7 +514,6 @@ object KeyboardMenu {
             keyItem(tr("Floating", R.string.ok_tile_floating), ToolbarKey.FLOATING),
             keyItem(tr("Text editing", R.string.ok_tile_text_editing), ToolbarKey.DPAD),
             keyItem(tr("Clipboard", R.string.ok_tile_clipboard), ToolbarKey.CLIPBOARD),
-            keyItem(tr("Emoji", R.string.ok_tile_emoji), ToolbarKey.EMOJI),
             keyItem(tr("Undo", R.string.ok_tile_undo), ToolbarKey.UNDO),
             keyItem(tr("Redo", R.string.ok_tile_redo), ToolbarKey.REDO),
             keyItem(tr("Numbers", R.string.ok_tile_numbers), ToolbarKey.NUMPAD),

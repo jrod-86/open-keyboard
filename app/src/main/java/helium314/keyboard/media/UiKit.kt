@@ -16,10 +16,23 @@ object UiKit {
 
     fun night(ctx: Context) = (ctx.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
-    fun cardColor(ctx: Context) = if (night(ctx)) Color.rgb(36, 37, 42) else Color.rgb(242, 243, 247)
-    fun lineColor(ctx: Context) = if (night(ctx)) Color.rgb(64, 66, 74) else Color.rgb(216, 218, 226)
+
+    /** The 🎨 theme of the screen [ctx] belongs to, if that screen has one ([Themed]). */
+    fun theme(ctx: Context): ImageTheme? {
+        var c: Context? = ctx
+        while (c != null) {
+            if (c is Themed) return c.pageTheme
+            c = (c as? android.content.ContextWrapper)?.baseContext
+        }
+        return null
+    }
+    /** The two accent colours: the screen's theme, or purple and blue. */
+    fun a1(ctx: Context) = theme(ctx)?.a1 ?: PURPLE
+    fun a2(ctx: Context) = theme(ctx)?.a2 ?: ACCENT
+    fun cardColor(ctx: Context) = theme(ctx)?.card ?: if (night(ctx)) Color.rgb(36, 37, 42) else Color.rgb(242, 243, 247)
+    fun lineColor(ctx: Context) = theme(ctx)?.line ?: if (night(ctx)) Color.rgb(64, 66, 74) else Color.rgb(216, 218, 226)
     fun card(ctx: Context, radiusDp: Float = 16f) = rounded(ctx, radiusDp, cardColor(ctx), lineColor(ctx))
-    fun shine(ctx: Context, radiusDp: Float) = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(PURPLE, ACCENT)).apply {
+    fun shine(ctx: Context, radiusDp: Float) = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(a1(ctx), a2(ctx))).apply {
         cornerRadius = dp(ctx, radiusDp).toFloat()
     }
 
@@ -28,7 +41,7 @@ object UiKit {
         this.text = text; setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f); typeface = android.graphics.Typeface.DEFAULT_BOLD
         setPadding(0, dp(ctx, 6f), 0, 0)
         addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-            (v as TextView).paint.shader = android.graphics.LinearGradient(0f, 0f, v.width.toFloat(), 0f, PURPLE, ACCENT, android.graphics.Shader.TileMode.CLAMP)
+            (v as TextView).paint.shader = android.graphics.LinearGradient(0f, 0f, v.width.toFloat(), 0f, a1(ctx), a2(ctx), android.graphics.Shader.TileMode.CLAMP)
         }
     }
 
@@ -44,6 +57,7 @@ object UiKit {
     fun chip(ctx: Context, text: String, onClick: () -> Unit) = Button(ctx).apply {
         this.text = text; isAllCaps = false; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); stateListAnimator = null
         background = card(ctx, 22f); setPadding(dp(ctx, 6f), 0, dp(ctx, 6f), 0)
+        theme(ctx)?.let { setTextColor(it.text) }
         setOnClickListener { onClick() }
     }
 
@@ -72,13 +86,13 @@ object UiKit {
 
     fun primary(ctx: Context, text: String, onClick: () -> Unit) = Button(ctx).apply {
         this.text = text; isAllCaps = false; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        background = rounded(ctx, 24f, ACCENT); stateListAnimator = null
+        background = rounded(ctx, 24f, a2(ctx)); stateListAnimator = null
         setOnClickListener { onClick() }
     }
 
     fun outline(ctx: Context, text: String, onClick: () -> Unit) = Button(ctx).apply {
-        this.text = text; isAllCaps = false; setTextColor(ACCENT); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        background = rounded(ctx, 22f, Color.TRANSPARENT, ACCENT); stateListAnimator = null
+        this.text = text; isAllCaps = false; setTextColor(a2(ctx)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        background = rounded(ctx, 22f, Color.TRANSPARENT, a2(ctx)); stateListAnimator = null
         setPadding(dp(ctx, 8f), 0, dp(ctx, 8f), 0)
         setOnClickListener { onClick() }
     }
@@ -87,5 +101,6 @@ object UiKit {
         this.hint = hint; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         val p = dp(ctx, 14f); setPadding(p, p * 3 / 4, p, p * 3 / 4)
         background = card(ctx, 14f)
+        theme(ctx)?.let { setTextColor(it.text); setHintTextColor((it.text and 0x00FFFFFF) or 0x80000000.toInt()) }
     }
 }

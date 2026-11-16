@@ -32,6 +32,8 @@ import android.widget.TextView
 import android.widget.Toast
 import helium314.keyboard.latin.utils.fitAboveKeyboard
 import helium314.keyboard.media.UiKit
+import helium314.keyboard.media.ImageThemes
+import helium314.keyboard.media.Themed
 import java.io.File
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -49,7 +51,9 @@ class TtsVoice(val engine: String, val id: String, val name: String, val female:
  * Text to speech tile: type or bring words from the chat, pick an engine (⚡ Kokoro, small and quick, or ✨ Zonos,
  * the most natural) and a voice, hear it, share or save it.
  */
-class TextToSpeechActivity : Activity() {
+class TextToSpeechActivity : Activity(), Themed {
+    /** 🎨 this screen's own theme, same picker as Local Image (Jarrod, test 191); Make a voice uses it too. */
+    override val pageTheme by lazy { ImageThemes.current(this, ImageThemes.night(this), ImageThemes.KEY_TTS) }
     companion object {
         const val EXTRA_TEXT = "text"
         private const val TAG = "TextToSpeech"
@@ -94,7 +98,7 @@ class TextToSpeechActivity : Activity() {
     private val previews = mutableMapOf<String, FloatArray>()
 
     private val night get() = UiKit.night(this)
-    private val textColor get() = if (night) Color.WHITE else Color.rgb(28, 28, 32)
+    private val textColor get() = pageTheme.text
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,6 +111,7 @@ class TextToSpeechActivity : Activity() {
 
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(UiKit.shinyTitle(this, "🔊 Text to speech"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(ImageThemes.button(this, ImageThemes.KEY_TTS))
         head.addView(TextView(this).apply {
             text = "ℹ️"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(8f), dp(8f), dp(8f), dp(4f))
             contentDescription = "How it works"; setOnClickListener { showHelp() }
@@ -200,7 +205,7 @@ class TextToSpeechActivity : Activity() {
         root.addView(status)
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
-            progressTintList = android.content.res.ColorStateList.valueOf(UiKit.PURPLE)
+            progressTintList = android.content.res.ColorStateList.valueOf(pageTheme.a1)
         }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -214,6 +219,7 @@ class TextToSpeechActivity : Activity() {
         root.addView(credit)
 
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
+        ImageThemes.applyPage(this, root, pageTheme)
         setContentView(scroll)
         scroll.fitAboveKeyboard(includeTop = true)
         refresh()
@@ -322,7 +328,7 @@ class TextToSpeechActivity : Activity() {
     }
 
     private fun label(t: String) = TextView(this).apply {
-        text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = android.graphics.Typeface.DEFAULT_BOLD; alpha = 0.6f
+        text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = android.graphics.Typeface.DEFAULT_BOLD; alpha = 0.6f; setTextColor(textColor)
         letterSpacing = 0.08f; setPadding(dp(4f), dp(18f), 0, dp(8f))
     }
 
