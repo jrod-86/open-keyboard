@@ -83,7 +83,9 @@ object WritingTools {
     private class Action(val label: String, val instruction: String)
     private val actions = listOf(
         Action("Shorter", "Make it shorter and simpler, keeping the key points."),
-        Action("Longer", "Make it longer, adding a bit more detail and feeling. Keep the same meaning and tone."),
+        // Jarrod: "Longer" turned one line into a whole story. Now: a little longer, same message, nothing made up.
+        Action("Longer", "Make it a little longer by expanding on the writer's own idea, saying the same thing more fully. It is a message, not a story: " +
+            "do not invent events, places, feelings or details that are not in the text. Keep the same meaning, tone and point of view."),
         Action("Friendlier", "Rewrite it to sound warmer and friendlier. Keep it about the same length."),
         Action("Professional", "Rewrite it to sound clear, polite and professional."),
         Action("Spelling/grammar", "Fix the spelling, grammar and punctuation. Keep the meaning, wording and tone the same."),
@@ -351,9 +353,17 @@ object WritingTools {
                     engine.startFresh()
                     engine.setSystemPrompt(SYSTEM)
                     val out = StringBuilder()
-                    val maxTokens = if (action.label == "Longer") (source.length + 200).coerceIn(200, 900) else (source.length / 2 + 64).coerceIn(64, 768)
-                    engine.sendUserPrompt("${action.instruction}\n\nText:\n$source", maxTokens).collect { out.append(it) }
-                    clean(out.toString())
+                    val words = source.trim().split(Regex("\\s+")).size
+                    val instruction = if (action.label == "Longer")
+                        action.instruction + " Use about ${(words * 2).coerceIn(words + 8, words + 60)} words at most."
+                    else action.instruction
+                    // a token is about 4 characters; Longer gets room for roughly double, the rest about the same length
+                    val maxTokens = if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
+                    engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { out.append(it) }
+                    val c = clean(out.toString())
+                    // ran out of room mid-sentence: end at the last full sentence
+                    val end = c.indexOfLast { it == '.' || it == '!' || it == '?' }
+                    if (action.label == "Longer" && end > 0 && end < c.length - 1 && c.last() !in ".!?…\"')") c.substring(0, end + 1) else c
                 }
                 if (result.isBlank()) { toast(context, "Couldn't come up with anything, try again"); return@launch }
                 withContext(Dispatchers.Main) { replace(ime, selected.isNotEmpty(), before, after, source, result) }
