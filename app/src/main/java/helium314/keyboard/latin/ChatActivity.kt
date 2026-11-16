@@ -127,19 +127,18 @@ class ChatActivity : Activity(), Themed {
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(iconButton("☰", "Your chats") { openDrawer() }.apply { setTextColor(t.text) })
         head.addView(UiKit.shinyTitle(this, "💬 Chat"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(iconButton("🙂", "Face style") { pickFace() })
+        head.addView(iconButton("🙂", "Show or hide the picture") { toggleFace() })
         head.addView(iconButton("➕", "New chat") { newChat() })
         head.addView(ImageThemes.button(this, ImageThemes.KEY_CHAT))
         head.addView(iconButton("ℹ️", "About Chat") { showHelp() })
         root.addView(head)
 
-        // the talking face: its mouth follows the voice (Jarrod's idea)
+        // the character's picture: it bounces and glows with the voice (Jarrod's pictures, test 209)
         face = TalkingFace(this, t.a1, t.a2, t.card) { speaker.level() }.apply {
             visibility = if (showFace) View.VISIBLE else View.GONE
-            style = TalkingFace.Style.entries.firstOrNull { it.name == prefs.getString("face_style", null) } ?: TalkingFace.Style.CARTOON
-            setOnClickListener { pickFace() }
+            setOnClickListener { changePersonality() }
         }
-        root.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150f)).apply { topMargin = dp(2f) })
+        root.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(170f)).apply { topMargin = dp(2f) })
         personaChip = chip("") { changePersonality() }
         root.addView(personaChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4f) })
         wakeNote = TextView(this).apply {
@@ -421,10 +420,35 @@ class ChatActivity : Activity(), Themed {
 
     private fun pickPersonality(title: String, onPick: (ChatPersonality) -> Unit) {
         val all = ChatPersonalities.ALL
-        val labels = all.map { "${it.emoji}  ${it.name}${if (it.cheeky) "  (cheeky)" else ""}\n      ${it.about}" }
+        // each with their picture (test 209)
+        val adapter = object : android.widget.BaseAdapter() {
+            override fun getCount() = all.size
+            override fun getItem(i: Int) = all[i]
+            override fun getItemId(i: Int) = i.toLong()
+            override fun getView(i: Int, convert: View?, parent: ViewGroup?): View {
+                val c = all[i]
+                val row = (convert as? LinearLayout) ?: LinearLayout(this@ChatActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+                    addView(android.widget.ImageView(context).apply {
+                        scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                        clipToOutline = true
+                        outlineProvider = object : android.view.ViewOutlineProvider() {
+                            override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12f).toFloat()) }
+                        }
+                    }, LinearLayout.LayoutParams(dp(56f), dp(56f)))
+                    addView(TextView(context).apply { setPadding(dp(14f), 0, 0, 0); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) },
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                }
+                (row.getChildAt(0) as android.widget.ImageView).setImageResource(c.avatar)
+                val who = when (ChatPersonalities.female(c)) { true -> "female voice"; false -> "male voice"; null -> "any voice" }
+                (row.getChildAt(1) as TextView).text = "${c.emoji} ${c.name}${if (c.cheeky) "  (cheeky)" else ""}\n${c.about} · $who"
+                return row
+            }
+        }
         AlertDialog.Builder(this)
             .setTitle(title)
-            .setItems(labels.toTypedArray()) { _, which -> onPick(all[which]) }
+            .setAdapter(adapter) { _, which -> onPick(all[which]) }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -567,27 +591,18 @@ class ChatActivity : Activity(), Themed {
         }.show()
     }
 
-    /** 🙂 the face's look, or no face. */
-    private fun pickFace() {
-        val styles = TalkingFace.Style.entries
-        val labels = styles.map { it.label } + "🚫 No face"
-        val cur = if (!showFace) styles.size else styles.indexOf(face.style)
-        AlertDialog.Builder(this).setTitle("Face")
-            .setSingleChoiceItems(labels.toTypedArray(), cur) { d, which ->
-                if (which == styles.size) { showFace = false; face.visibility = View.GONE }
-                else {
-                    showFace = true; face.visibility = View.VISIBLE
-                    face.style = styles[which]; prefs.edit().putString("face_style", styles[which].name).apply()
-                }
-                d.dismiss()
-            }.setNegativeButton("Close", null).show()
+    /** 🙂 shows or hides the character's picture (more room for the chat). */
+    private fun toggleFace() {
+        showFace = !showFace
+        face.visibility = if (showFace) View.VISIBLE else View.GONE
     }
 
-    /** The "who you're chatting with" chip, and the face's cheeky eyebrows. */
+    /** The "who you're chatting with" chip, their picture, and their voice. */
     private fun refreshPersonality() {
         val p = personality
         personaChip.text = "${p.emoji} ${p.name} ▾"
-        face.cheeky = p.cheeky
+        face.avatar = p.avatar
+        refreshChips()
     }
 
     // ---- views ----
@@ -716,10 +731,21 @@ class ChatActivity : Activity(), Themed {
 
     // ---- voice ----
 
+    /** The voices that suit this character: female ones for the women, male for the men, any for the robots. */
+    private fun voicesFor(p: ChatPersonality): List<TtsVoice> {
+        val all = ChatSpeaker.voices(this)
+        val female = ChatPersonalities.female(p) ?: return all
+        return all.filter { it.female == female }.ifEmpty { all }
+    }
+
+    /** Each character keeps their own voice; until one is picked, a fitting one (robots get different ones each). */
     private fun currentVoice(): TtsVoice? {
-        val voices = ChatSpeaker.voices(this)
+        val p = personality
+        val voices = voicesFor(p)
         if (voices.isEmpty()) return null
-        return voices.firstOrNull { it.id == prefs.getString("voice", null) } ?: voices[0]
+        voices.firstOrNull { it.id == prefs.getString("voice_" + p.id, null) }?.let { return it }
+        val builtIn = voices.filter { !it.custom }.ifEmpty { voices }
+        return builtIn[ChatPersonalities.ALL.indexOf(p).coerceAtLeast(0) % builtIn.size]
     }
 
     private fun toggleSpeak() {
@@ -730,7 +756,7 @@ class ChatActivity : Activity(), Themed {
     }
 
     private fun pickVoice() {
-        val voices = ChatSpeaker.voices(this)
+        val voices = voicesFor(personality)
         if (voices.isEmpty()) { noVoices(); return }
         val cur = currentVoice()
         val labels = voices.map { v ->
@@ -738,14 +764,14 @@ class ChatActivity : Activity(), Themed {
             "${v.badge} ${v.name} · ${if (v.custom) "your voice" else v.about} ($engine)"
         }
         AlertDialog.Builder(this)
-            .setTitle("Chat voice")
+            .setTitle("${personality.name}'s voice")
             .setSingleChoiceItems(labels.toTypedArray(), voices.indexOf(cur)) { d, which ->
-                prefs.edit().putString("voice", voices[which].id).apply()
+                prefs.edit().putString("voice_" + personality.id, voices[which].id).apply()
                 speakOn = true
                 d.dismiss()
                 refreshChips()
                 val v = voices[which]
-                speaker.begin(v); speaker.add(if (v.custom) "Hi! This is the voice you made. Let's chat." else "Hi, I'm ${v.name}. Let's chat!")
+                speaker.begin(v); speaker.add(if (v.custom) "Hi! This is the voice you made. Let's chat." else "Hi, I'm ${personality.name}. Let's chat!")
                 speaker.finish { updateSendButton() }
                 updateSendButton()
             }
@@ -820,7 +846,8 @@ class ChatActivity : Activity(), Themed {
                 "• Type, or tap the keyboard's mic and talk.\n" +
                 "• 🔊 Talks: reads its answers out loud. Tap the voice to pick one from the TTS tile, including voices you made.\n" +
                 "• Tap the keyboard's mic to talk to it. Or tap 🎙️ Hands-free: talk, say \"send\", it answers, then listens again. It is off whenever Chat opens.\n" +
-                "• 🙂 (or tap the face) picks its look: Cartoon, Matrix, Robot screen or Neon, or no face. Its mouth moves with the voice.\n" +
+                "• Tap the picture (or the name under it) to chat with someone else. Each one has their own story and voice: the " +
+                "women talk with female voices, the men with male ones, the robots with either. 🙂 hides or shows the picture.\n" +
                 "• Tap the name under the face to change personality: 11 friendly ones and 4 cheeky ones (Gremlin, Grumpy, Roaster, Diva).\n" +
                 "• ➕ starts a new chat. ☰ shows your old chats (hold one to rename or delete it).\n" +
                 "• Long-press a message to copy it or hear it again.\n\n" +
