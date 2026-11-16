@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,6 +40,31 @@ object SmartCompose {
     private var pending: Runnable? = null
     @Volatile private var forText: String? = null
     @Volatile private var suggestion: String? = null
+
+    /**
+     * Voice sessions running. Open Keyboard: while the mic is on, smart compose stays quiet. Logs of
+     * 17 Nov: a guess started loading the writing model (1.1 GB) just before the mic was tapped, and
+     * the three models fighting over the processor held back the first words for 13 seconds instead of 3.
+     */
+    private val voiceSessions = java.util.concurrent.atomic.AtomicInteger(0)
+    private val quietForVoice get() = voiceSessions.get() > 0
+
+    /** The mic turned on: drop any guess being worked out, and don't start new ones. */
+    fun pauseForVoice() {
+        voiceSessions.incrementAndGet()
+        main.post {
+            pending?.let { main.removeCallbacks(it) }
+            pending = null
+        }
+        if (job?.isActive == true) Log.i(TAG, "voice typing started, stopping the guess")
+        job?.cancel()
+        forText = null; suggestion = null
+    }
+
+    /** A voice session has finished (its last sentence is written). */
+    fun resumeAfterVoice() {
+        voiceSessions.updateAndGet { (it - 1).coerceAtLeast(0) }
+    }
 
     /** Called whenever the text or cursor changes. */
     fun onTextChanged(ime: LatinIME) {
@@ -76,7 +102,7 @@ object SmartCompose {
     }
 
     private fun start(ime: LatinIME) {
-        if (!allowed(ime)) return
+        if (quietForVoice || !allowed(ime)) return
         val before = textBefore(ime) ?: return
         if (before == forText) return // already guessed (or guessing) for this text
         forText = null; suggestion = null
@@ -91,6 +117,9 @@ object SmartCompose {
         job = scope.launch {
             try {
                 val out = WritingTools.withEngine(ime) { engine ->
+                    // loading the model can't be stopped part way; if the mic came on meanwhile, stop here
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    if (quietForVoice) throw kotlinx.coroutines.CancellationException("voice typing")
                     engine.startFresh()
                     engine.setSystemPrompt(SYSTEM)
                     val sb = StringBuilder()

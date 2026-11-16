@@ -45,6 +45,10 @@ object VoiceEngine {
 
     /** For the lag log. */
     val loaded: Boolean get() = online != null || offline != null
+    /** Whether the live model is already in memory (for the timing log). */
+    val liveLoaded: Boolean get() = online != null
+    /** Whether the accuracy model is already in memory (for the timing log). */
+    val accuracyLoaded: Boolean get() = offline != null
 
     @Synchronized fun begin() { users++; lastUsed = android.os.SystemClock.uptimeMillis() }
     @Synchronized fun end() { users = (users - 1).coerceAtLeast(0); lastUsed = android.os.SystemClock.uptimeMillis() }
