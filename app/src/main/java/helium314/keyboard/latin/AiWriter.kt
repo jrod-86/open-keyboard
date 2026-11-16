@@ -51,7 +51,7 @@ object AiWriter {
 
     /** Colour the ✨ button and the keyboard's top line take while writer mode is on. */
     const val ON_COLOR = 0xFFB388FF.toInt()
-    const val TILE_ID = "ai writer"
+    const val TILE_ID = "Writing help" // its tile lights up while writer mode is on
     private const val GLOW_TAG = "ai-writer-glow"
 
     /**
@@ -91,8 +91,6 @@ object AiWriter {
         writerOn -> "Turn writer mode off"
         else -> "Turn writer mode on"
     }
-    /** Name on the grid tile / top bar button. */
-    fun tileLabel(ctx: Context) = if (mode(ctx) == Mode.WRITER && writerOn) "Writer mode: on" else "Write for me"
 
     private fun ime(context: Context): LatinIME? {
         var c: Context? = context
