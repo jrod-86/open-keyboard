@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -82,7 +83,9 @@ object WritingTools {
     private class Action(val label: String, val instruction: String)
     private val actions = listOf(
         Action("Shorter", "Make it shorter and simpler, keeping the key points."),
-        Action("Longer", "Make it longer, adding a bit more detail and feeling. Keep the same meaning and tone."),
+        // Jarrod: "Longer" turned one line into a whole story. Now: a little longer, same message, nothing made up.
+        Action("Longer", "Make it a little longer by expanding on the writer's own idea, saying the same thing more fully. It is a message, not a story: " +
+            "do not invent events, places, feelings or details that are not in the text. Keep the same meaning, tone and point of view."),
         Action("Friendlier", "Rewrite it to sound warmer and friendlier. Keep it about the same length."),
         Action("Professional", "Rewrite it to sound clear, polite and professional."),
         Action("Spelling/grammar", "Fix the spelling, grammar and punctuation. Keep the meaning, wording and tone the same."),
@@ -91,6 +94,15 @@ object WritingTools {
         Action("More loving", "Rewrite it to sound more loving and affectionate, keeping the same message."),
         Action("Casual", "Rewrite it to sound relaxed and casual, like a text to a friend."),
         Action("Add emojis", "Add a few fitting emojis to it. Do not change the words."),
+        // Jarrod (test 196): a cheeky, ruder teasing one, and a rhyming poem
+        Action("Teasing", "Rewrite it to be cheeky and a bit rude, with a playful teasing tone, like friends ribbing each other. " +
+            "Keep the same message. No slurs and nothing truly hurtful."),
+        // small models rhyme badly unless told exactly how, with an example; the answer is also checked (see rhymes())
+        Action("Rhyme", "Rewrite it as a short poem in rhyming couplets that says the same thing: 2 or 4 short lines, " +
+            "each on its own line. Lines 1 and 2 MUST end with words that rhyme, and so must lines 3 and 4 " +
+            "(rhymes sound the same at the end, like day/way, night/light, you/too, fun/done). " +
+            "Example: \"Can't wait to see you\" becomes \"I count the hours till we meet,\nseeing you will be so sweet.\" " +
+            "No title, no story."),
     )
 
     private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
@@ -336,7 +348,7 @@ object WritingTools {
         val after = ic.getTextAfterCursor(8000, 0)?.toString().orEmpty()
         val source = selected.ifEmpty { before + after }
         if (source.isBlank()) { toast(context, "Write something first"); return }
-        toast(context, "Working on it…")
+        showBusy(action.label)
         unloadJob?.cancel()
         scope.launch {
             try {
@@ -350,9 +362,28 @@ object WritingTools {
                     engine.startFresh()
                     engine.setSystemPrompt(SYSTEM)
                     val out = StringBuilder()
-                    val maxTokens = if (action.label == "Longer") (source.length + 200).coerceIn(200, 900) else (source.length / 2 + 64).coerceIn(64, 768)
-                    engine.sendUserPrompt("${action.instruction}\n\nText:\n$source", maxTokens).collect { out.append(it) }
-                    clean(out.toString())
+                    val words = source.trim().split(Regex("\\s+")).size
+                    val instruction = if (action.label == "Longer")
+                        action.instruction + " Use about ${(words * 2).coerceIn(words + 8, words + 60)} words at most."
+                    else action.instruction
+                    // a token is about 4 characters; Longer gets room for roughly double, the rest about the same length
+                    val maxTokens = if (action.label == "Rhyme") (source.length + 120).coerceIn(120, 500)
+                        else if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
+                    engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { out.append(it) }
+                    var c = clean(out.toString())
+                    // Rhyme: try again (up to 2 more times) if the line endings don't actually rhyme
+                    var tries = 1
+                    while (action.label == "Rhyme" && tries < 3 && !rhymes(c)) {
+                        tries++
+                        engine.startFresh()
+                        engine.setSystemPrompt(SYSTEM)
+                        val again = StringBuilder()
+                        engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { again.append(it) }
+                        c = clean(again.toString())
+                    }
+                    // ran out of room mid-sentence: end at the last full sentence
+                    val end = c.indexOfLast { it == '.' || it == '!' || it == '?' }
+                    if (action.label == "Longer" && end > 0 && end < c.length - 1 && c.last() !in ".!?…\"')") c.substring(0, end + 1) else c
                 }
                 if (result.isBlank()) { toast(context, "Couldn't come up with anything, try again"); return@launch }
                 withContext(Dispatchers.Main) { replace(ime, selected.isNotEmpty(), before, after, source, result) }
@@ -360,8 +391,78 @@ object WritingTools {
                 Log.w(TAG, "writing help failed", e)
                 toast(context, if (e is UnsatisfiedLinkError) "Writing help needs a 64-bit phone" else "Writing help didn't work: ${e.message}")
             } finally {
+                main.post { hideBusy() }
                 scheduleUnload(context)
             }
+        }
+    }
+
+    private const val BUSY_TAG = "writing-help-busy"
+    private var busyAnim: android.animation.Animator? = null
+
+    /**
+     * While writing help works: a ✨ "Shorter…" pill at the top of the keyboard with a light that keeps
+     * sweeping across, so it's clear something is happening. Goes away once the text is replaced (or it fails).
+     */
+    private fun showBusy(label: String) {
+        val wrapper = helium314.keyboard.keyboard.KeyboardSwitcher.getInstance().wrapperView ?: return
+        wrapper.findViewWithTag<View>(BUSY_TAG)?.let { wrapper.removeView(it) }
+        val ctx = wrapper.context
+        val colors = Settings.getValues().mColors
+        val accent = AiWriter.ON_COLOR
+        val box = FrameLayout(ctx).apply { tag = BUSY_TAG; isClickable = false }
+        val pill = TextView(ctx).apply {
+            text = "✨ $label…"
+            setTextColor(colors.get(ColorType.KEY_TEXT))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(dp(ctx, 16f), dp(ctx, 6f), dp(ctx, 16f), dp(ctx, 6f))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(ctx, 16f).toFloat()
+                setColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 240))
+                setStroke(dp(ctx, 2f), accent)
+            }
+        }
+        box.addView(pill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(ctx, 8f) })
+        val track = FrameLayout(ctx)
+        box.addView(track, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 3f), Gravity.TOP))
+        val sweep = View(ctx).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0x007C4DFF, accent, 0xFFFF80AB.toInt(), accent, 0x007C4DFF))
+        }
+        val w = wrapper.width.takeIf { it > 0 } ?: ctx.resources.displayMetrics.widthPixels
+        track.addView(sweep, FrameLayout.LayoutParams(w / 3, ViewGroup.LayoutParams.MATCH_PARENT))
+        wrapper.addView(box, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+        val anims = android.animation.AnimatorSet().apply {
+            playTogether(
+                android.animation.ObjectAnimator.ofFloat(sweep, View.TRANSLATION_X, -w / 3f, w.toFloat()).apply {
+                    duration = 1100; repeatCount = android.animation.ValueAnimator.INFINITE
+                },
+                android.animation.ObjectAnimator.ofFloat(pill, View.ALPHA, 1f, 0.55f).apply {
+                    duration = 700; repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                },
+            )
+        }
+        busyAnim?.cancel()
+        busyAnim = anims
+        anims.start()
+    }
+
+    private fun hideBusy() {
+        val wrapper = helium314.keyboard.keyboard.KeyboardSwitcher.getInstance().wrapperView ?: return
+        val box = wrapper.findViewWithTag<View>(BUSY_TAG) ?: return
+        busyAnim?.cancel(); busyAnim = null
+        box.animate().alpha(0f).setDuration(200).withEndAction { wrapper.removeView(box) }.start()
+    }
+
+    /** Rough rhyme check: each pair of lines (1+2, 3+4…) ends in words whose last 2 letters match. */
+    private fun rhymes(poem: String): Boolean {
+        val ends = poem.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            .map { line -> line.split(Regex("\\s+")).last().lowercase().filter { it.isLetter() } }
+        if (ends.size < 2) return false
+        return ends.chunked(2).filter { it.size == 2 }.all { (a, b) ->
+            a.length >= 2 && b.length >= 2 && a != b && a.takeLast(2) == b.takeLast(2)
         }
     }
 
