@@ -79,15 +79,16 @@ class VoiceInputController(
         runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
         hasFocus = false
         Log.i(TAG, "media handed back")
-        if (mediaWasPlaying) main.postDelayed(nudgePlayer, 1500)
+        if (mediaWasPlaying) main.postDelayed(nudgePlayer, 1000)
     }
 
-    /** Some players don't start again by themselves: if it was playing before the mic and still isn't, press play. */
+    /** Some players don't start again by themselves: if it was playing before the mic, press play. */
     private val nudgePlayer = Runnable {
         if (running || hasFocus || !mediaWasPlaying) return@Runnable
         mediaWasPlaying = false
-        if (audioManager.isMusicActive) return@Runnable
-        Log.i(TAG, "media didn't start again by itself, pressing play")
+        // Open Keyboard: always press play (it never pauses, unlike play/pause). The "is music playing" check said
+        // yes while the podcast was still paused (17 Nov logs), so it was never pressed and Jarrod had to restart it.
+        Log.i(TAG, "pressing play so the media carries on (music active: ${audioManager.isMusicActive})")
         runCatching {
             val now = android.os.SystemClock.uptimeMillis()
             for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
