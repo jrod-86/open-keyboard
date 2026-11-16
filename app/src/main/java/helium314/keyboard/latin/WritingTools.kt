@@ -172,12 +172,13 @@ object WritingTools {
 
     /** The model Chat uses: Better writer when it's downloaded (it chats much better), otherwise Quick. */
     fun chatModel(ctx: Context): Model? {
-        val wanted = if (llmPrefs(ctx).getString(PREF_CHAT_MODEL, BETTER.id) == QUICK.id) QUICK else BETTER
+        // kept in Chat's own settings file: Chat runs in its own process, and two processes writing one file clash
+        val wanted = if (ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).getString(PREF_CHAT_MODEL, BETTER.id) == QUICK.id) QUICK else BETTER
         return wanted.takeIf { isReady(ctx, it) } ?: listOf(BETTER, QUICK).firstOrNull { isReady(ctx, it) }
     }
     private const val PREF_CHAT_MODEL = "open_keyboard_chat_model"
     /** Chat's own pick: Better (smarter, slower) or Quick (about twice as fast, simpler). */
-    fun chooseChatModel(ctx: Context, m: Model) { llmPrefs(ctx).edit().putString(PREF_CHAT_MODEL, m.id).apply() }
+    fun chooseChatModel(ctx: Context, m: Model) { ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).edit().putString(PREF_CHAT_MODEL, m.id).apply() }
 
     /**
      * Loads Chat's model as soon as the screen opens, so the slow part (several seconds, and the phone tidying memory

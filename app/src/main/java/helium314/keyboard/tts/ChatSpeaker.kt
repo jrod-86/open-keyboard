@@ -46,6 +46,12 @@ class ChatSpeaker(context: Context) {
         /** Words for the ear: no emojis, markdown stars or hashes. */
         fun forSpeech(text: String): String = text
             .replace(Regex("[*_#`~]+"), "")
+            // "breeze—perfect" was read as one unknown word and skipped
+            .replace(Regex("\\s*[—–]\\s*"), ", ")
+            .replace('’', '\'')
+            // the word list has no "how's", "what's"…: say them in full
+            .replace(Regex("(?i)\\b(how|what|where|who|when|why|there|here|that|it|he|she|everything|nothing|something)'s\\b")) { it.groupValues[1] + " is" }
+            .replace(Regex("(?i)\\blet's\\b"), "let us")
             .replace(Regex("[\\uD800-\\uDFFF]|[\\u2600-\\u27BF]|[\\uFE0F\\u200D]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -171,15 +177,30 @@ class ChatSpeaker(context: Context) {
             }
             thread(name = "chat-voice-play") {
                 var frames = 0L
+                // Speech is made while the chat model is still writing, and they share the phone's processor, so the
+                // voice can fall behind and stutter (test 200 logs: "underrun"). So it waits until there's a little
+                // speech in hand before playing, and again whenever it ran dry, giving clean pauses instead of choppy words.
+                val pending = ArrayList<FloatArray>()
+                var pendingFrames = 0
+                var ended = false
+                fun ranDry(t: AudioTrack?) = t == null || frames - runCatching { t.playbackHeadPosition.toLong() }.getOrDefault(0L) <= rate / 20
                 try {
-                    while (!stopped) {
+                    while (!stopped && !ended) {
                         val chunk = audio.take()
-                        if (chunk === END || stopped) break
-                        val samples = chunk as FloatArray
+                        if (chunk === END || stopped) ended = true
+                        else { pending.add(chunk as FloatArray); pendingFrames += chunk.size }
+                        val need = if (track == null) rate * 3 / 2 else rate // 1.5 s to start, 1 s after running dry
+                        if (!ended && pendingFrames < need && ranDry(track)) continue
+                        if (pending.isEmpty()) continue
                         val t = track ?: open()
-                        measure(samples)
-                        if (runCatching { t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING) }.getOrDefault(-1) < 0) break
-                        frames += samples.size
+                        var failed = false
+                        for (samples in pending) {
+                            measure(samples)
+                            if (runCatching { t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING) }.getOrDefault(-1) < 0) { failed = true; break }
+                            frames += samples.size
+                        }
+                        pending.clear(); pendingFrames = 0
+                        if (failed) break
                     }
                     track?.let { t ->
                         val until = System.currentTimeMillis() + 4000

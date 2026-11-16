@@ -56,12 +56,19 @@ class ChatActivity : Activity(), Themed {
         private const val TAG = "Chat"
         /** Put on the message box: smart compose leaves it alone, and the keyboard knows when to start the mic. */
         const val CHAT_OPTION = "io.github.jrod86.openkeyboard.chat"
-        @Volatile private var autoMic = false
+        /** Chat runs in its own process (test 201), so "start the mic" travels to the keyboard in the box's options, with a time. */
+        private const val LISTEN = ";listen="
+        @Volatile private var lastListen = ""
 
         /** Called when the keyboard opens on a field: true once, for Chat's box in talk mode, to start the mic. */
         fun takeAutoMic(editorInfo: EditorInfo?): Boolean {
-            if (!autoMic || editorInfo?.privateImeOptions != CHAT_OPTION) return false
-            autoMic = false
+            val opts = editorInfo?.privateImeOptions ?: return false
+            if (!opts.startsWith(CHAT_OPTION + LISTEN)) return false
+            val stamp = opts.substringAfter(LISTEN)
+            val at = stamp.toLongOrNull() ?: return false
+            // only once per request, and only right after it was made
+            if (stamp == lastListen || System.currentTimeMillis() - at > 5000) return false
+            lastListen = stamp
             return true
         }
 
@@ -715,7 +722,7 @@ class ChatActivity : Activity(), Themed {
             toast("Talk mode on: talk, then say \"send\". It answers out loud and listens again.")
             if (job?.isActive != true && !speaker.speaking) listen()
         } else {
-            autoMic = false
+            input.privateImeOptions = CHAT_OPTION
         }
         refreshChips()
     }
@@ -723,11 +730,12 @@ class ChatActivity : Activity(), Themed {
     /** Opens the keyboard on the message box with the mic already listening. */
     private fun listen() {
         if (destroyed || !visible || WritingTools.chatModel(this) == null) return
-        autoMic = true
         input.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        // the mic starts when the keyboard opens, so close it first if it's already up
+        // the mic starts when the keyboard opens on the box with a fresh "listen" stamp, so close it first if it's up
         imm.hideSoftInputFromWindow(input.windowToken, 0)
+        input.privateImeOptions = CHAT_OPTION + LISTEN + System.currentTimeMillis()
+        imm.restartInput(input)
         input.postDelayed({ if (!destroyed) { input.requestFocus(); imm.showSoftInput(input, 0) } }, 250)
     }
 

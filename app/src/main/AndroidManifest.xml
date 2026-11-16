@@ -153,6 +153,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:taskAffinity="io.github.jrod86.openkeyboard.chat"
+            android:process=":chat"
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:exported="false" />

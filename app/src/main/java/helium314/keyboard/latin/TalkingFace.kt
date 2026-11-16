@@ -75,7 +75,8 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
     private fun cartoon(canvas: Canvas, now: Long) {
         val cx = box.centerX(); val cy = box.centerY()
         // soft glow behind the head
-        p.shader = RadialGradient(cx, cy, box.width() * 0.7f, intArrayOf(blend(card, a1, 0.35f), card), null, Shader.TileMode.CLAMP)
+        shaders()
+        p.shader = glowShader
         canvas.drawRect(box, p); p.shader = null
         // slowly floating bubbles in the background
         for (i in 0 until 9) {
@@ -89,7 +90,7 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
         }
         p.alpha = 255
         val r = box.width() * 0.36f
-        p.shader = LinearGradient(cx - r, cy - r, cx + r, cy + r, a1, a2, Shader.TileMode.CLAMP)
+        p.shader = headShader
         canvas.drawCircle(cx, cy, r, p); p.shader = null
 
         val ink = Color.rgb(35, 30, 45)
@@ -253,7 +254,8 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
     // ---------- 🌆 neon outline on a synthwave grid ----------
 
     private fun neon(canvas: Canvas, now: Long) {
-        p.shader = LinearGradient(0f, box.top, 0f, box.bottom, Color.rgb(20, 6, 40), Color.rgb(60, 10, 70), Shader.TileMode.CLAMP)
+        shaders()
+        p.shader = neonShader
         canvas.drawRect(box, p); p.shader = null
         val w = box.width(); val cx = box.centerX(); val cy = box.centerY()
         // sun and moving floor grid
@@ -283,6 +285,23 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
             if (mouth < 0.06f) { rect.set(cx - mw, my - r * 0.18f, cx + mw, my + r * 0.06f); canvas.drawArc(rect, 20f, 140f, false, stroke) }
             else { rect.set(cx - mw, my - mh / 2, cx + mw, my + mh / 2); canvas.drawOval(rect, stroke) }
         }
+    }
+
+    // Shaders are made once per size, not every frame: each new one is a native allocation, and while the chat model
+    // loads those make the screen wait for the memory clean-up (test 200 logs: 7.5 s freeze).
+    private var glowShader: Shader? = null
+    private var headShader: Shader? = null
+    private var neonShader: Shader? = null
+    private var shadersFor = 0f
+
+    private fun shaders() {
+        val key = box.left * 7919f + box.width()
+        if (key == shadersFor && glowShader != null) return
+        shadersFor = key
+        val cx = box.centerX(); val cy = box.centerY(); val r = box.width() * 0.36f
+        glowShader = RadialGradient(cx, cy, box.width() * 0.7f, intArrayOf(blend(card, a1, 0.35f), card), null, Shader.TileMode.CLAMP)
+        headShader = LinearGradient(cx - r, cy - r, cx + r, cy + r, a1, a2, Shader.TileMode.CLAMP)
+        neonShader = LinearGradient(0f, box.top, 0f, box.bottom, Color.rgb(20, 6, 40), Color.rgb(60, 10, 70), Shader.TileMode.CLAMP)
     }
 
     private fun blend(a: Int, b: Int, t: Float) = Color.rgb(
