@@ -83,6 +83,7 @@ class ChatSpeaker(context: Context) {
     fun finish(onDone: () -> Unit) {
         val s = session ?: run { onDone(); return }
         s.onDone = onDone
+        s.allText = true
         s.sentences.put(END)
     }
 
@@ -115,6 +116,8 @@ class ChatSpeaker(context: Context) {
         @Volatile var stopped = false
         @Volatile var finishedPlaying = false
         @Volatile var onDone: (() -> Unit)? = null
+        /** The chat model has finished writing: the voice has the processor to itself again. */
+        @Volatile var allText = false
         private val rate = if (voice.engine == TextToSpeechActivity.ZONOS) ZonosTts.RATE else KokoroTts.RATE
         @Volatile private var track: AudioTrack? = null
         /** Loudness of every 1/50 s written to the track, so the face can follow the frame being heard. */
@@ -187,14 +190,25 @@ class ChatSpeaker(context: Context) {
                 val pending = ArrayList<FloatArray>()
                 var pendingFrames = 0
                 var ended = false
+                var dryRuns = 0
+                var wasPlaying = false
                 fun ranDry(t: AudioTrack?) = t == null || frames - runCatching { t.playbackHeadPosition.toLong() }.getOrDefault(0L) <= rate / 20
                 try {
                     while (!stopped && !ended) {
                         val chunk = audio.take()
                         if (chunk === END || stopped) ended = true
                         else { pending.add(chunk as FloatArray); pendingFrames += chunk.size }
-                        val need = if (track == null) rate * 3 / 2 else rate // 1.5 s to start, 1 s after running dry
-                        if (!ended && pendingFrames < need && ranDry(track)) continue
+                        val dry = ranDry(track)
+                        if (dry && wasPlaying) { dryRuns++; wasPlaying = false }
+                        // Test 207: a long story was written and spoken at once, and the voice kept running dry. While the
+                        // model is still writing, each time it runs dry it waits for a bigger lead (3 s, 6 s, 10 s) so it
+                        // then speaks in long smooth stretches; once the writing is done the voice catches up quickly.
+                        val need = when {
+                            track == null -> rate * 3 / 2 // 1.5 s to start
+                            allText -> rate // 1 s
+                            else -> rate * minOf(10, 3 * dryRuns.coerceAtLeast(1))
+                        }
+                        if (!ended && pendingFrames < need && dry) continue
                         if (pending.isEmpty()) continue
                         val t = track ?: open()
                         var failed = false
@@ -204,6 +218,7 @@ class ChatSpeaker(context: Context) {
                             frames += samples.size
                         }
                         pending.clear(); pendingFrames = 0
+                        wasPlaying = true
                         if (failed) break
                     }
                     track?.let { t ->
