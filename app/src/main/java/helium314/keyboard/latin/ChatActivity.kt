@@ -47,7 +47,7 @@ import java.util.UUID
 /**
  * 💬 Chat tile: casual, just-for-fun chatting with the writing model that runs on the phone (Better writer when it's
  * downloaded, else Quick). Type or talk (the keyboard's voice typing), and it can answer out loud with any TTS voice.
- * Talk mode makes it hands-free: after each answer the mic comes back on, say "send" when you've finished.
+ * The mic only ever starts when you tap it (Jarrod, test 204: no hands-free Talk mode).
  */
 class ChatActivity : Activity(), Themed {
     override val pageTheme by lazy { ImageThemes.current(this, ImageThemes.night(this), ImageThemes.KEY_CHAT) }
@@ -105,9 +105,9 @@ class ChatActivity : Activity(), Themed {
     private var showFace: Boolean
         get() = prefs.getBoolean("face", true)
         set(v) { prefs.edit().putBoolean("face", v).apply() }
-    private var talkMode: Boolean
-        get() = prefs.getBoolean("talk_mode", false)
-        set(v) { prefs.edit().putBoolean("talk_mode", v).apply() }
+    // Jarrod (test 203): the mic must never turn itself on, so Talk mode (mic back on after each answer) is gone
+    private val talkMode: Boolean
+        get() = false
 
     private val t get() = pageTheme
 
@@ -147,10 +147,10 @@ class ChatActivity : Activity(), Themed {
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4f), 0, dp(6f)) }
         speakChip = chip("") { toggleSpeak() }
         voiceChip = chip("") { pickVoice() }
-        talkChip = chip("") { toggleTalk() }
+        talkChip = chip("") { }
         chips.addView(speakChip, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { marginEnd = dp(4f) })
         chips.addView(voiceChip, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { marginStart = dp(2f); marginEnd = dp(2f) })
-        chips.addView(talkChip, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { marginStart = dp(4f) })
+        // (no Talk mode chip any more)
         root.addView(chips)
 
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(4f), 0, dp(8f)) }
@@ -734,18 +734,6 @@ class ChatActivity : Activity(), Themed {
             .show()
     }
 
-    private fun toggleTalk() {
-        talkMode = !talkMode
-        if (talkMode) {
-            if (currentVoice() != null) speakOn = true
-            toast("Talk mode on: talk, then say \"send\". It answers out loud and listens again.")
-            if (job?.isActive != true && !speaker.speaking) listen()
-        } else {
-            input.privateImeOptions = CHAT_OPTION
-        }
-        refreshChips()
-    }
-
     /** Opens the keyboard on the message box with the mic already listening. */
     private fun listen() {
         if (destroyed || !visible || WritingTools.chatModel(this) == null) return
@@ -779,7 +767,7 @@ class ChatActivity : Activity(), Themed {
                 "as the big online AIs: expect wrong facts and silly answers.\n\n" +
                 "• Type, or tap the keyboard's mic and talk.\n" +
                 "• 🔊 Talks: reads its answers out loud. Tap the voice to pick one from the TTS tile, including voices you made.\n" +
-                "• 🎙️ Talk mode: hands-free. Talk, then say \"send\". It answers out loud, then listens again.\n" +
+                "• Tap the keyboard's mic to talk to it; the mic only ever turns on when you tap it.\n" +
                 "• 🙂 (or tap the face) picks its look: Cartoon, Matrix, Robot screen or Neon, or no face. Its mouth moves with the voice.\n" +
                 "• Tap the name under the face to change personality: 11 friendly ones and 4 cheeky ones (Gremlin, Grumpy, Roaster, Diva).\n" +
                 "• ➕ starts a new chat. ☰ shows your old chats (hold one to rename or delete it).\n" +
