@@ -847,6 +847,7 @@ public class LatinIME extends InputMethodService implements
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
         KeyboardMenu.INSTANCE.setKeepToolbar(false);
         LagWatch.INSTANCE.start(); // Open Keyboard: notes short freezes in the log (Bug report > logs)
+        if (mVoiceInput != null) mVoiceInput.prepare(); // Open Keyboard: voice model ready before the mic is tapped
         super.onStartInputView(editorInfo, restarting);
         mClipboardHistoryManager.refresh();
 

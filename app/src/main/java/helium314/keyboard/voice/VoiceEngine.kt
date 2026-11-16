@@ -45,6 +45,10 @@ object VoiceEngine {
 
     /** For the lag log. */
     val loaded: Boolean get() = online != null || offline != null
+    /** Whether the live model is already in memory (for the timing log). */
+    val liveLoaded: Boolean get() = online != null
+    /** Whether the accuracy model is already in memory (for the timing log). */
+    val accuracyLoaded: Boolean get() = offline != null
 
     @Synchronized fun begin() { users++; lastUsed = android.os.SystemClock.uptimeMillis() }
     @Synchronized fun end() { users = (users - 1).coerceAtLeast(0); lastUsed = android.os.SystemClock.uptimeMillis() }
@@ -57,6 +61,22 @@ object VoiceEngine {
         Log.i("VoiceEngine", "voice models not used for a while, freeing their memory")
         release()
     }
+
+    /**
+     * Open Keyboard: loads the live model in the background when the keyboard opens, so tapping the mic
+     * starts writing straight away instead of after a 2-3 s load (Jarrod, 17 Nov: "3 to 5 seconds before it
+     * starts"). Counts as a use, so the usual 5 minute idle rule frees it again. Returns true if it loaded.
+     */
+    fun preloadLive(context: Context): Boolean {
+        if (online != null && onlineModel == VoicePrefs.liveModel(context)) { touch(); return false }
+        val t = android.os.SystemClock.uptimeMillis()
+        runCatching { onlineRecognizer(context) }.onFailure { Log.e("VoiceEngine", "preload failed", it); return false }
+        touch()
+        Log.i("VoiceEngine", "live model ready ahead of the mic (${android.os.SystemClock.uptimeMillis() - t} ms)")
+        return true
+    }
+
+    @Synchronized private fun touch() { lastUsed = android.os.SystemClock.uptimeMillis() }
 
     @Synchronized
     fun onlineRecognizer(context: Context): OnlineRecognizer {

@@ -67,6 +67,10 @@ object VoicePrefs {
     fun liveModel(context: Context): VoiceModel? = VoiceModel.LIVE_NEMOTRON.takeIf { it.isInstalled(context) }
 
     /** Clean up background noise before recognition. On by default. */
+    /** When voice typing was last started (wall clock), so the keyboard only gets it ready for people who use it. */
+    fun lastUsed(context: Context) = prefs(context).getLong("last_used", 0L)
+    fun markUsed(context: Context) = prefs(context).edit().putLong("last_used", System.currentTimeMillis()).apply()
+
     fun noiseReduction(context: Context) = prefs(context).getBoolean("noise_reduction", true)
     fun setNoiseReduction(context: Context, on: Boolean) = prefs(context).edit().putBoolean("noise_reduction", on).apply()
 
