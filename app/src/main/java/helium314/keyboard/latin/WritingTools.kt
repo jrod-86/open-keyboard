@@ -81,16 +81,16 @@ object WritingTools {
 
     private class Action(val label: String, val instruction: String)
     private val actions = listOf(
-        Action("Spelling/grammar", "Fix the spelling, grammar and punctuation. Keep the meaning, wording and tone the same."),
+        Action("Shorter", "Make it shorter and simpler, keeping the key points."),
+        Action("Longer", "Make it longer, adding a bit more detail and feeling. Keep the same meaning and tone."),
         Action("Friendlier", "Rewrite it to sound warmer and friendlier. Keep it about the same length."),
         Action("Professional", "Rewrite it to sound clear, polite and professional."),
-        Action("Shorter", "Make it shorter and simpler, keeping the key points."),
+        Action("Spelling/grammar", "Fix the spelling, grammar and punctuation. Keep the meaning, wording and tone the same."),
         Action("Clearer", "Rewrite it so it is clearer and easier to read."),
-        Action("Add emojis", "Add a few fitting emojis to it. Do not change the words."),
-        Action("Longer", "Make it longer, adding a bit more detail and feeling. Keep the same meaning and tone."),
         Action("Funnier", "Rewrite it to be funnier and more playful, keeping the same message."),
         Action("More loving", "Rewrite it to sound more loving and affectionate, keeping the same message."),
         Action("Casual", "Rewrite it to sound relaxed and casual, like a text to a friend."),
+        Action("Add emojis", "Add a few fitting emojis to it. Do not change the words."),
     )
 
     private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
