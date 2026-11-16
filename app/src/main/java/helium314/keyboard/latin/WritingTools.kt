@@ -94,6 +94,11 @@ object WritingTools {
         Action("More loving", "Rewrite it to sound more loving and affectionate, keeping the same message."),
         Action("Casual", "Rewrite it to sound relaxed and casual, like a text to a friend."),
         Action("Add emojis", "Add a few fitting emojis to it. Do not change the words."),
+        // Jarrod (test 196): a cheeky, ruder teasing one, and a rhyming poem
+        Action("Teasing", "Rewrite it to be cheeky and a bit rude, with a playful teasing tone, like friends ribbing each other. " +
+            "Keep the same message. No slurs and nothing truly hurtful."),
+        Action("Rhyme", "Rewrite it as a short rhyming poem that says the same thing. Put each line on its own line. " +
+            "Do not add a title or invent a story."),
     )
 
     private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
@@ -358,7 +363,8 @@ object WritingTools {
                         action.instruction + " Use about ${(words * 2).coerceIn(words + 8, words + 60)} words at most."
                     else action.instruction
                     // a token is about 4 characters; Longer gets room for roughly double, the rest about the same length
-                    val maxTokens = if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
+                    val maxTokens = if (action.label == "Rhyme") (source.length + 120).coerceIn(120, 500)
+                        else if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
                     engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { out.append(it) }
                     val c = clean(out.toString())
                     // ran out of room mid-sentence: end at the last full sentence
