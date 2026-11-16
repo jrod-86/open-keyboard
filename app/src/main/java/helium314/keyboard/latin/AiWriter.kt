@@ -49,11 +49,41 @@ object AiWriter {
     private var lastResult: String? = null
     private var autoMic = false
 
+    /** Colour the ✨ button and the keyboard's top line take while writer mode is on. */
+    const val ON_COLOR = 0xFFB388FF.toInt()
+    const val TILE_ID = "Writing help" // its tile lights up while writer mode is on
+    private const val GLOW_TAG = "ai-writer-glow"
+
+    /**
+     * Shows that writer mode is on: the ✨ button on the top bar lights up, and a glowing line runs
+     * along the top of the keyboard (for people who don't keep the button on the bar).
+     */
+    fun showIndicators() {
+        val wrapper = helium314.keyboard.keyboard.KeyboardSwitcher.getInstance().wrapperView ?: return
+        val on = writerOn
+        (wrapper.rootView?.findViewWithTag<View>("item:$TILE_ID") as? android.widget.ImageView)?.let { b ->
+            if (on) b.setColorFilter(ON_COLOR)
+            else { b.clearColorFilter(); helium314.keyboard.latin.settings.Settings.getValues().mColors.setColor(b, ColorType.TOOL_BAR_KEY) }
+        }
+        val glow = wrapper.findViewWithTag<View>(GLOW_TAG)
+        if (!on) { glow?.let { wrapper.removeView(it) }; return }
+        if (glow != null) { glow.bringToFront(); return }
+        val ctx = wrapper.context
+        val h = (3 * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(2)
+        val line = View(ctx).apply {
+            tag = GLOW_TAG
+            isClickable = false
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0x007C4DFF, ON_COLOR, 0xFFFF80AB.toInt(), ON_COLOR, 0x007C4DFF))
+        }
+        wrapper.addView(line, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h, android.view.Gravity.TOP))
+    }
+
     fun mode(ctx: Context): Mode =
         if (ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE).getString(PREF_MODE, "box") == "writer") Mode.WRITER else Mode.BOX
     fun setMode(ctx: Context, m: Mode) {
         ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE).edit().putString(PREF_MODE, if (m == Mode.WRITER) "writer" else "box").apply()
-        if (m == Mode.BOX) writerOn = false
+        if (m == Mode.BOX) { writerOn = false; main.post { showIndicators() } }
     }
 
     fun buttonLabel(ctx: Context) = when {
@@ -61,8 +91,6 @@ object AiWriter {
         writerOn -> "Turn writer mode off"
         else -> "Turn writer mode on"
     }
-    /** Name on the grid tile / top bar button. */
-    fun tileLabel(ctx: Context) = if (mode(ctx) == Mode.WRITER && writerOn) "Writer mode: on" else "Write for me"
 
     private fun ime(context: Context): LatinIME? {
         var c: Context? = context
@@ -92,6 +120,7 @@ object AiWriter {
                 lastResult = null
                 toast(context, if (writerOn) "✨ Writer mode on: type or say what you want, then press Enter" else "Writer mode off", writerOn)
                 ime(context)?.setNeutralSuggestionStrip()
+                showIndicators()
             }
         }
     }
@@ -237,6 +266,7 @@ object AiWriter {
             writerOn = false; lastResult = null
             toast(ime, "Writer mode off")
             ime.setNeutralSuggestionStrip()
+            showIndicators()
         }
         return binding.root
     }

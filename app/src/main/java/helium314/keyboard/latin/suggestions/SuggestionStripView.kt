@@ -200,6 +200,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             button.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
             setupKey(button, colors)
             if (!b.tint) button.clearColorFilter()
+            if (b.id == helium314.keyboard.latin.AiWriter.TILE_ID && helium314.keyboard.latin.AiWriter.writerOn)
+                button.setColorFilter(helium314.keyboard.latin.AiWriter.ON_COLOR) // writer mode is on
             button.setOnClickListener { b.action() }
             toolbar.addView(button, b.position.coerceIn(0, toolbar.childCount))
         }
