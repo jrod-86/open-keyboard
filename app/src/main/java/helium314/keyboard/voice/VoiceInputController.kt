@@ -470,6 +470,10 @@ class VoiceInputController(
         val noLead = finalText.isEmpty() || finalText[0] in ",.!?;:…)\n"
         val piece = (if (noLead) "" else lead()) + finalText
         ic.commitText(piece, 1)
+        // Open Keyboard: we just wrote into the box, so it can't have been emptied by the app. Asking the app
+        // inside this batch edit gets the text from before it (Claude app, 17 Nov logs): the first sentence into
+        // an empty box looked like "the app sent the message" and the mic turned itself off.
+        lastClearCheck = android.os.SystemClock.uptimeMillis()
         committed.addLast(piece)
         if (committed.size > 20) committed.removeFirst()
         needsLeadingSpace = !(finalText.endsWith("\n") || finalText.endsWith("("))
@@ -495,6 +499,7 @@ class VoiceInputController(
         val after = ic.getTextAfterCursor(1, 0) ?: return false
         if (before.isNotEmpty() || after.isNotEmpty()) return false
         val wasRunning = running
+        Log.i(TAG, "voice stopped: the text box was emptied (app sent the message)")
         running = false
         sessionId++
         pending.clear(); current = ""; wrote = false; needsLeadingSpace = false
