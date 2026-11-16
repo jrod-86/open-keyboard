@@ -30,6 +30,13 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
     var thinking = false
     /** Mischievous personalities get raised, angled eyebrows. */
     var cheeky = false
+    /**
+     * Holds still while the AI loads (test 202 logs): every animation frame also makes the message box work out
+     * where its cursor is for the keyboard, which needs a little memory, and while 1-3 GB of model arrives the phone
+     * makes the screen wait for every such bit. That held up the screen, and the keyboard waiting on it.
+     */
+    var paused = false
+        set(v) { field = v; if (!v) invalidate() }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
@@ -67,7 +74,7 @@ class TalkingFace(context: Context, private val a1: Int, private val a2: Int, pr
         // smooth while talking, thinking or animating its background; idle cartoon only needs to blink
         // every style has a moving background; 30 fps is plenty when nothing is talking
         val busy = target > 0f || mouth > 0.01f || thinking
-        if (isShown) { if (busy) postInvalidateOnAnimation() else postInvalidateDelayed(33) }
+        if (isShown && !paused) { if (busy) postInvalidateOnAnimation() else postInvalidateDelayed(33) }
     }
 
     // ---------- 😊 cartoon ----------

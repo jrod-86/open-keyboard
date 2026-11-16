@@ -173,7 +173,9 @@ object WritingTools {
     /** The model Chat uses: Better writer when it's downloaded (it chats much better), otherwise Quick. */
     fun chatModel(ctx: Context): Model? {
         // kept in Chat's own settings file: Chat runs in its own process, and two processes writing one file clash
-        val wanted = if (ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).getString(PREF_CHAT_MODEL, BETTER.id) == QUICK.id) QUICK else BETTER
+        // Quick by default (test 203): Better plus voice typing and a voice is more memory than the phone likes, so
+        // Android kept closing and reopening things, and every reopen loaded the model again
+        val wanted = if (ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).getString(PREF_CHAT_MODEL, QUICK.id) == BETTER.id) BETTER else QUICK
         return wanted.takeIf { isReady(ctx, it) } ?: listOf(BETTER, QUICK).firstOrNull { isReady(ctx, it) }
     }
     private const val PREF_CHAT_MODEL = "open_keyboard_chat_model"

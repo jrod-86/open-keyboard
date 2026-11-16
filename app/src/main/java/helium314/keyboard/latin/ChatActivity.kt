@@ -198,10 +198,11 @@ class ChatActivity : Activity(), Themed {
         super.onResume()
         // load the model while you read, not when you send
         WritingTools.warmChat(applicationContext,
-            onLoading = { if (!destroyed) wakeNote.visibility = View.VISIBLE },
+            onLoading = { if (!destroyed) { wakeNote.visibility = View.VISIBLE; face.paused = true } },
             onReady = {
                 if (destroyed) return@warmChat
                 wakeNote.visibility = View.GONE
+                face.paused = false
                 if (listenWhenReady) { listenWhenReady = false; listen() }
             })
         refreshModelCard()
@@ -245,6 +246,8 @@ class ChatActivity : Activity(), Themed {
         list.addView(bubble(messages.last()))
         val reply = Msg(false, "")
         val view = bubble(reply, thinking = true)
+        // sent while the AI is still loading: say so, rather than a "…" that looks stuck (Jarrod, test 202)
+        if (wakeNote.visibility == View.VISIBLE) setBubbleText(view, "⏳ Waking up, I'll answer in a moment…")
         list.addView(view)
         scrollDown()
         if (talkMode) hideKeyboard() // stops the mic while it answers and talks
