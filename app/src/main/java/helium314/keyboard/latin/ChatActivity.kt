@@ -601,7 +601,7 @@ class ChatActivity : Activity(), Themed {
     private fun refreshPersonality() {
         val p = personality
         personaChip.text = "${p.emoji} ${p.name} ▾"
-        face.avatar = p.avatar
+        face.show(p.id, p.avatar)
         refreshChips()
     }
 
