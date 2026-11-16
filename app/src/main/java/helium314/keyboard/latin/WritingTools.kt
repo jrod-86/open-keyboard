@@ -97,8 +97,12 @@ object WritingTools {
         // Jarrod (test 196): a cheeky, ruder teasing one, and a rhyming poem
         Action("Teasing", "Rewrite it to be cheeky and a bit rude, with a playful teasing tone, like friends ribbing each other. " +
             "Keep the same message. No slurs and nothing truly hurtful."),
-        Action("Rhyme", "Rewrite it as a short rhyming poem that says the same thing. Put each line on its own line. " +
-            "Do not add a title or invent a story."),
+        // small models rhyme badly unless told exactly how, with an example; the answer is also checked (see rhymes())
+        Action("Rhyme", "Rewrite it as a short poem in rhyming couplets that says the same thing: 2 or 4 short lines, " +
+            "each on its own line. Lines 1 and 2 MUST end with words that rhyme, and so must lines 3 and 4 " +
+            "(rhymes sound the same at the end, like day/way, night/light, you/too, fun/done). " +
+            "Example: \"Can't wait to see you\" becomes \"I count the hours till we meet,\nseeing you will be so sweet.\" " +
+            "No title, no story."),
     )
 
     private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
@@ -366,7 +370,17 @@ object WritingTools {
                     val maxTokens = if (action.label == "Rhyme") (source.length + 120).coerceIn(120, 500)
                         else if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
                     engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { out.append(it) }
-                    val c = clean(out.toString())
+                    var c = clean(out.toString())
+                    // Rhyme: try again (up to 2 more times) if the line endings don't actually rhyme
+                    var tries = 1
+                    while (action.label == "Rhyme" && tries < 3 && !rhymes(c)) {
+                        tries++
+                        engine.startFresh()
+                        engine.setSystemPrompt(SYSTEM)
+                        val again = StringBuilder()
+                        engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { again.append(it) }
+                        c = clean(again.toString())
+                    }
                     // ran out of room mid-sentence: end at the last full sentence
                     val end = c.indexOfLast { it == '.' || it == '!' || it == '?' }
                     if (action.label == "Longer" && end > 0 && end < c.length - 1 && c.last() !in ".!?…\"')") c.substring(0, end + 1) else c
@@ -440,6 +454,16 @@ object WritingTools {
         val box = wrapper.findViewWithTag<View>(BUSY_TAG) ?: return
         busyAnim?.cancel(); busyAnim = null
         box.animate().alpha(0f).setDuration(200).withEndAction { wrapper.removeView(box) }.start()
+    }
+
+    /** Rough rhyme check: each pair of lines (1+2, 3+4…) ends in words whose last 2 letters match. */
+    private fun rhymes(poem: String): Boolean {
+        val ends = poem.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            .map { line -> line.split(Regex("\\s+")).last().lowercase().filter { it.isLetter() } }
+        if (ends.size < 2) return false
+        return ends.chunked(2).filter { it.size == 2 }.all { (a, b) ->
+            a.length >= 2 && b.length >= 2 && a != b && a.takeLast(2) == b.takeLast(2)
+        }
     }
 
     /** Frees the memory the model uses once writing help hasn't been used for a while. */
