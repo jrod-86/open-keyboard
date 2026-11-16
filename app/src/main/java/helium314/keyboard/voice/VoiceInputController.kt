@@ -412,6 +412,8 @@ class VoiceInputController(
         if (appClearedBox()) return
         pending.removeFirst()
         if (finalText.isBlank()) { render(); return } // only noise in that sentence
+        // "write a birthday message for my wife": the AI writer writes it instead
+        if (helium314.keyboard.latin.AiWriter.fromVoice(ime, finalText)) { if (running) stop(); render(); return }
         val ic = ic() ?: return
         ic.beginBatchEdit()
         val noLead = finalText.isEmpty() || finalText[0] in ",.!?;:…)\n"

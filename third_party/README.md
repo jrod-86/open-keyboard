@@ -13,8 +13,9 @@
 - `app/libs/llama-android.aar`: llama.cpp (MIT) `examples/llama.android` library, built from source at
   https://github.com/ggml-org/llama.cpp commit 8ca5a8008b57aa39f2601546c0d07912045080a5 with
   `third_party/llama-android-open-keyboard.patch` applied (fresh chat per request, offline translator for encoder-decoder models, minSdk 28, arm64 only),
-  using `./gradlew :lib:assembleRelease`. The writing model (Qwen2.5-1.5B-Instruct GGUF, Apache-2.0)
-  is downloaded on the phone from Hugging Face and checked against its SHA-256.
+  using `./gradlew :lib:assembleRelease`. The writing models (Qwen2.5-1.5B-Instruct GGUF "Quick", and optional Qwen3-4B-Instruct-2507 GGUF "Better writer"
+  from unsloth/Qwen3-4B-Instruct-2507-GGUF, both Apache-2.0)
+  are downloaded on the phone from Hugging Face and checked against its SHA-256.
   Khmer translation uses MADLAD-400 3B MT (Google, Apache-2.0) as the GGUF q4_k_m conversion at
   https://huggingface.co/mtsdurica/madlad400-3b-mt-Q4_K_M-GGUF (commit 7f55e827), downloaded on the phone
   on first use and checked against its SHA-256.

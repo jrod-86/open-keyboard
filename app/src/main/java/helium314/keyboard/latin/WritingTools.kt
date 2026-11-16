@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.security.MessageDigest
 
@@ -43,10 +44,28 @@ import java.security.MessageDigest
  */
 object WritingTools {
     private const val TAG = "WritingTools"
-    private const val MODEL_URL = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/" +
-        "91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    private const val MODEL_SHA256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
-    private const val MODEL_SIZE = 1_117_320_736L
+    /** A writing model: Quick (small, fast) or Better writer (bigger, warmer writing). Both Apache-2.0. */
+    class Model(val id: String, val label: String, val url: String, val sha256: String, val size: Long, val fileName: String, val sizeText: String)
+    val QUICK = Model("quick", "Quick",
+        "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e", 1_117_320_736L,
+        "qwen2.5-1.5b-instruct-q4_k_m.gguf", "1.1 GB")
+    // Qwen3 4B Instruct 2507 (Apache-2.0), Unsloth's GGUF conversion
+    val BETTER = Model("better", "Better writer",
+        "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597", 2_497_281_120L,
+        "qwen3-4b-instruct-2507-q4_k_m.gguf", "2.5 GB")
+    private val models = listOf(QUICK, BETTER)
+    private const val PREF_MODEL = "open_keyboard_llm_model"
+    private var loadedPath: String? = null
+
+    private fun llmPrefs(ctx: Context) = ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE)
+    /** The model picked in Writing help (Quick unless changed). */
+    fun chosen(ctx: Context): Model = models.firstOrNull { it.id == llmPrefs(ctx).getString(PREF_MODEL, QUICK.id) } ?: QUICK
+    fun choose(ctx: Context, m: Model) { llmPrefs(ctx).edit().putString(PREF_MODEL, m.id).apply() }
+    /** The model that will actually run: the chosen one, or the other if only that one is downloaded. */
+    private fun active(ctx: Context): Model? = chosen(ctx).takeIf { isReady(ctx, it) } ?: models.firstOrNull { isReady(ctx, it) }
+
     private const val PREF_DOWNLOAD_ID = "open_keyboard_llm_download_id"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -70,10 +89,11 @@ object WritingTools {
         Action("Add emojis", "Add a few fitting emojis to it. Do not change the words."),
     )
 
-    private fun modelFile(ctx: Context) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/qwen2.5-1.5b-instruct-q4_k_m.gguf")
-    private fun isReady(ctx: Context) = modelFile(ctx).length() == MODEL_SIZE
-    private fun downloadRunning(ctx: Context): Boolean {
-        val id = ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE).getLong(PREF_DOWNLOAD_ID, -1)
+    private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
+    private fun isReady(ctx: Context, m: Model) = modelFile(ctx, m).length() == m.size
+    private fun downloadKey(m: Model) = if (m === QUICK) PREF_DOWNLOAD_ID else PREF_DOWNLOAD_ID + "_" + m.id
+    private fun downloadRunning(ctx: Context, m: Model): Boolean {
+        val id = llmPrefs(ctx).getLong(downloadKey(m), -1)
         if (id < 0) return false
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return false
         dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
@@ -84,26 +104,55 @@ object WritingTools {
         return false
     }
 
-    private fun startDownload(ctx: Context) {
-        val file = modelFile(ctx)
+    private fun startDownload(ctx: Context, m: Model) {
+        val file = modelFile(ctx, m)
         file.parentFile?.mkdirs()
         file.delete()
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return
-        val request = DownloadManager.Request(Uri.parse(MODEL_URL))
-            .setTitle("Open Keyboard writing model")
-            .setDescription("About 1.1 GB, needed once for offline writing help")
+        val request = DownloadManager.Request(Uri.parse(m.url))
+            .setTitle("Open Keyboard writing model (${m.label})")
+            .setDescription("About ${m.sizeText}, needed once for offline writing help")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationUri(Uri.fromFile(file))
         val id = dm.enqueue(request)
-        ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE).edit().putLong(PREF_DOWNLOAD_ID, id).apply()
-        toast(ctx, "Downloading the writing model (about 1.1 GB). You'll get a notification when it's done.")
+        llmPrefs(ctx).edit().putLong(downloadKey(m), id).apply()
+        toast(ctx, "Downloading the ${m.label} model (about ${m.sizeText}). You'll get a notification when it's done.")
     }
 
     /** True when the writing model is downloaded and checked, so smart compose can use it. */
     fun modelReady(ctx: Context): Boolean {
-        val f = modelFile(ctx)
-        return isReady(ctx) && File(f.path + ".ok").let { it.exists() && it.lastModified() >= f.lastModified() }
+        val m = active(ctx) ?: return false
+        val f = modelFile(ctx, m)
+        return File(f.path + ".ok").let { it.exists() && it.lastModified() >= f.lastModified() }
     }
+
+    /** True when some writing model is downloaded, so the AI writer can run. */
+    fun anyDownloaded(ctx: Context) = active(ctx) != null
+
+    /**
+     * Runs one request on the writing model and returns the reply, streaming pieces to [onPiece].
+     * Waits if writing help is busy. Returns null if no model is downloaded or the download is damaged.
+     */
+    suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, onPiece: (String) -> Unit = {}): String? {
+        unloadJob?.cancel()
+        try {
+            return lock.withLock {
+                val m = active(ctx) ?: return@withLock null
+                if (!verified(modelFile(ctx, m), m)) { toast(ctx, "The ${m.label} model download was damaged. Please download it again."); return@withLock null }
+                val engine = engine(ctx)
+                engine.startFresh()
+                engine.setSystemPrompt(system)
+                val out = StringBuilder()
+                engine.sendUserPrompt(prompt, maxTokens).collect { out.append(it); onPiece(out.toString()) }
+                out.toString()
+            }
+        } finally {
+            scheduleUnload(ctx)
+        }
+    }
+
+    /** Lets Undo in Writing help take back text the AI writer put in. */
+    fun rememberForUndo(original: String, result: String) { undoText = original; undoResult = result }
 
     /** Runs [block] with the loaded model, or returns null if writing help is busy right now. */
     suspend fun <T> withEngine(ctx: Context, block: suspend (InferenceEngine) -> T): T? {
@@ -117,7 +166,7 @@ object WritingTools {
         }
     }
 
-    private fun verified(file: File): Boolean {
+    private fun verified(file: File, m: Model): Boolean {
         val marker = File(file.path + ".ok")
         if (marker.exists() && marker.lastModified() >= file.lastModified()) return true
         val md = MessageDigest.getInstance("SHA-256")
@@ -125,7 +174,7 @@ object WritingTools {
             val buf = ByteArray(1 shl 20)
             while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n) }
         }
-        val ok = md.digest().joinToString("") { "%02x".format(it) } == MODEL_SHA256
+        val ok = md.digest().joinToString("") { "%02x".format(it) } == m.sha256
         if (ok) marker.writeText("ok") else file.delete()
         return ok
     }
@@ -193,26 +242,62 @@ object WritingTools {
         top.addView(pill("✕") { KeyboardMenu.hide() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(context, 6f) })
         column.addView(top)
 
+        fun row(vararg pills: TextView) = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            pills.forEach { addView(it, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(dp(context, 3f), dp(context, 4f), dp(context, 3f), dp(context, 4f))
+            }) }
+        }
+        fun heading(s: String) = TextView(context).apply {
+            this.text = s
+            setTextColor(text)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(context, 3f), dp(context, 10f), 0, dp(context, 2f))
+        }
+        val ready = anyDownloaded(context)
+
+        // AI writer: write something new from a request
+        column.addView(heading("✨ Write something new"))
+        if (ready) column.addView(row(pill(if (AiWriter.mode(context) == AiWriter.Mode.WRITER && AiWriter.writerOn) "Turn writer mode off" else AiWriter.buttonLabel(context), true) {
+            AiWriter.start(context)
+        }))
+        val mode = AiWriter.mode(context)
+        column.addView(row(
+            pill("Talk box", mode == AiWriter.Mode.BOX) { AiWriter.setMode(context, AiWriter.Mode.BOX); show(context) },
+            pill("Writer mode", mode == AiWriter.Mode.WRITER) { AiWriter.setMode(context, AiWriter.Mode.WRITER); show(context) },
+        ))
+        column.addView(note(when (mode) {
+            AiWriter.Mode.BOX -> "Talk box: say or type what you want, check it, then tap Insert."
+            AiWriter.Mode.WRITER -> "Writer mode: once it's on, type or say your request in the message box and press Enter. " +
+                "The AI swaps it for the message. Press Enter again to send."
+        } + " Any time, you can also say \"write a birthday message for my wife\" while voice typing, or type /write and your request."))
+
+        // model choice
+        column.addView(heading("AI model"))
+        val chosen = chosen(context)
+        column.addView(row(*models.map { m ->
+            pill(m.label + (if (isReady(context, m)) "" else " (${m.sizeText})"), m === chosen) { choose(context, m); show(context) }
+        }.toTypedArray()))
         when {
-            isReady(context) -> {
-                actions.chunked(2).forEach { pair ->
-                    val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                    pair.forEach { a ->
-                        row.addView(pill(a.label, a === actions[0]) { KeyboardMenu.hide(); run(context, a) },
-                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                                setMargins(dp(context, 3f), dp(context, 4f), dp(context, 3f), dp(context, 4f))
-                            })
-                    }
-                    column.addView(row)
-                }
-                column.addView(note("Works on what you wrote, or on the selected text. Runs on your phone; nothing is sent anywhere."))
-            }
-            downloadRunning(context) -> column.addView(note("The writing model is downloading (about 1.1 GB). Check the notification for progress, then open this again."))
+            isReady(context, chosen) -> column.addView(note(if (chosen === BETTER) "Better writer: warmer, more natural writing. Takes a bit longer (about 10 to 15 seconds for a message)."
+                else "Quick: fast (a few seconds), but its writing is a bit plain. Try Better writer for messages that matter."))
+            downloadRunning(context, chosen) -> column.addView(note("The ${chosen.label} model is downloading (about ${chosen.sizeText}). Check the notification for progress, then open this again."))
             else -> {
-                column.addView(note("Writing help runs a small AI model on your phone, so your text stays private. " +
-                    "It needs a one-time download of about 1.1 GB (Wi-Fi recommended)."))
-                column.addView(pill("Download the writing model", true) { KeyboardMenu.hide(); startDownload(context) })
+                column.addView(note("Writing help runs an AI model on your phone, so your text stays private. " +
+                    "${chosen.label} needs a one-time download of about ${chosen.sizeText} (Wi-Fi recommended)." +
+                    if (ready) " Until then the other model is used." else ""))
+                column.addView(pill("Download ${chosen.label}", true) { KeyboardMenu.hide(); startDownload(context, chosen) })
             }
+        }
+
+        // fix up what you already wrote
+        if (ready) {
+            column.addView(heading("Fix up what you wrote"))
+            actions.chunked(2).forEach { pair ->
+                column.addView(row(*pair.map { a -> pill(a.label, false) { KeyboardMenu.hide(); run(context, a) } }.toTypedArray()))
+            }
+            column.addView(note("Works on what you wrote, or on the selected text. Runs on your phone; nothing is sent anywhere."))
         }
         KeyboardMenu.showOverlay(root)
     }
@@ -221,7 +306,13 @@ object WritingTools {
         val engine = AiChat.getInferenceEngine(ctx.applicationContext)
         val state = engine.state.first { it !is InferenceEngine.State.Uninitialized && it !is InferenceEngine.State.Initializing }
         if (state is InferenceEngine.State.Error) engine.cleanUp()
-        if (engine.state.value !is InferenceEngine.State.ModelReady) engine.loadModel(modelFile(ctx).absolutePath)
+        val path = modelFile(ctx, active(ctx) ?: QUICK).absolutePath
+        // switched between Quick and Better writer: load the other one
+        if (engine.state.value is InferenceEngine.State.ModelReady && loadedPath != path) {
+            engine.cleanUp()
+            withTimeoutOrNull(10_000) { engine.state.first { it is InferenceEngine.State.Initialized } }
+        }
+        if (engine.state.value !is InferenceEngine.State.ModelReady) { engine.loadModel(path); loadedPath = path }
         return engine
     }
 
@@ -246,8 +337,9 @@ object WritingTools {
         scope.launch {
             try {
                 val result = lock.withLock {
-                    if (!verified(modelFile(context))) {
-                        toast(context, "The writing model download was damaged. Please download it again.")
+                    val m = active(context) ?: return@launch
+                    if (!verified(modelFile(context, m), m)) {
+                        toast(context, "The ${m.label} model download was damaged. Please download it again.")
                         return@launch
                     }
                     val engine = engine(context)
