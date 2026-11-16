@@ -199,6 +199,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             button.setImageDrawable(b.icon)
             button.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
             setupKey(button, colors)
+            button.isActivated = true // full-brightness colour like the other bar keys (not activated = dimmer shade)
             if (!b.tint) button.clearColorFilter()
             if (b.id == helium314.keyboard.latin.AiWriter.TILE_ID && helium314.keyboard.latin.AiWriter.writerOn)
                 button.setColorFilter(helium314.keyboard.latin.AiWriter.ON_COLOR) // writer mode is on
@@ -229,6 +230,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         copy.setImageDrawable(last.drawable)
         copy.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
         setupKey(copy, colors)
+        // the bar keys get their on/off shade a moment later; the right-hand copy follows the key it copies
+        copy.isActivated = last.isActivated || last.tag !is ToolbarKey
+        postDelayed({ copy.isActivated = last.isActivated }, 100)
         if (last.colorFilter == null) copy.clearColorFilter()
         copy.isVisible = last.isVisible
         copy.setOnClickListener { last.performClick() }

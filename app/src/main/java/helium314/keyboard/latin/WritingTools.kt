@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -336,7 +337,7 @@ object WritingTools {
         val after = ic.getTextAfterCursor(8000, 0)?.toString().orEmpty()
         val source = selected.ifEmpty { before + after }
         if (source.isBlank()) { toast(context, "Write something first"); return }
-        toast(context, "Working on it…")
+        showBusy(action.label)
         unloadJob?.cancel()
         scope.launch {
             try {
@@ -360,9 +361,69 @@ object WritingTools {
                 Log.w(TAG, "writing help failed", e)
                 toast(context, if (e is UnsatisfiedLinkError) "Writing help needs a 64-bit phone" else "Writing help didn't work: ${e.message}")
             } finally {
+                main.post { hideBusy() }
                 scheduleUnload(context)
             }
         }
+    }
+
+    private const val BUSY_TAG = "writing-help-busy"
+    private var busyAnim: android.animation.Animator? = null
+
+    /**
+     * While writing help works: a ✨ "Shorter…" pill at the top of the keyboard with a light that keeps
+     * sweeping across, so it's clear something is happening. Goes away once the text is replaced (or it fails).
+     */
+    private fun showBusy(label: String) {
+        val wrapper = helium314.keyboard.keyboard.KeyboardSwitcher.getInstance().wrapperView ?: return
+        wrapper.findViewWithTag<View>(BUSY_TAG)?.let { wrapper.removeView(it) }
+        val ctx = wrapper.context
+        val colors = Settings.getValues().mColors
+        val accent = AiWriter.ON_COLOR
+        val box = FrameLayout(ctx).apply { tag = BUSY_TAG; isClickable = false }
+        val pill = TextView(ctx).apply {
+            text = "✨ $label…"
+            setTextColor(colors.get(ColorType.KEY_TEXT))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(dp(ctx, 16f), dp(ctx, 6f), dp(ctx, 16f), dp(ctx, 6f))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(ctx, 16f).toFloat()
+                setColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 240))
+                setStroke(dp(ctx, 2f), accent)
+            }
+        }
+        box.addView(pill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(ctx, 8f) })
+        val track = FrameLayout(ctx)
+        box.addView(track, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 3f), Gravity.TOP))
+        val sweep = View(ctx).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0x007C4DFF, accent, 0xFFFF80AB.toInt(), accent, 0x007C4DFF))
+        }
+        val w = wrapper.width.takeIf { it > 0 } ?: ctx.resources.displayMetrics.widthPixels
+        track.addView(sweep, FrameLayout.LayoutParams(w / 3, ViewGroup.LayoutParams.MATCH_PARENT))
+        wrapper.addView(box, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+        val anims = android.animation.AnimatorSet().apply {
+            playTogether(
+                android.animation.ObjectAnimator.ofFloat(sweep, View.TRANSLATION_X, -w / 3f, w.toFloat()).apply {
+                    duration = 1100; repeatCount = android.animation.ValueAnimator.INFINITE
+                },
+                android.animation.ObjectAnimator.ofFloat(pill, View.ALPHA, 1f, 0.55f).apply {
+                    duration = 700; repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                },
+            )
+        }
+        busyAnim?.cancel()
+        busyAnim = anims
+        anims.start()
+    }
+
+    private fun hideBusy() {
+        val wrapper = helium314.keyboard.keyboard.KeyboardSwitcher.getInstance().wrapperView ?: return
+        val box = wrapper.findViewWithTag<View>(BUSY_TAG) ?: return
+        busyAnim?.cancel(); busyAnim = null
+        box.animate().alpha(0f).setDuration(200).withEndAction { wrapper.removeView(box) }.start()
     }
 
     /** Frees the memory the model uses once writing help hasn't been used for a while. */
