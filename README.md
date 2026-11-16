@@ -6,7 +6,7 @@ the catalog.
 
 | Pack | Artist | Licence |
 | --- | --- | --- |
-| Yellow Emoji Story, Tuxedo Cat (animated) | jrod | CC0-1.0 |
+| Yellow Emoji Story, Tuxedo Cat (animated), Test (Yellow Emoji, animated) | jrod | CC0-1.0 |
 
 To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in `catalog.json`.
 
@@ -16,3 +16,7 @@ To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in
 ## Tuxedo Cat (animated)
 64 animated tuxedo cat stickers (animated WebP) made by jrod for Open Keyboard. CC0 (public domain).
 GIF copies in `tuxedo-cat-animated-alt/` are fetched one at a time for apps that flatten animated WebP (Messenger).
+
+## Test (Yellow Emoji, animated)
+96 animated yellow emoji stickers (animated WebP) made by jrod for Open Keyboard, as a test pack. CC0 (public domain).
+GIF copies in `test-yellow-emoji-alt/` are fetched one at a time for apps that flatten animated WebP (Messenger).

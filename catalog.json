@@ -2,6 +2,21 @@
  "version": 1,
  "packs": [
   {
+   "id": "test-yellow-emoji",
+   "name": "Test",
+   "author": "jrod",
+   "license": "CC0",
+   "source": "https://github.com/jrod-86/open-keyboard",
+   "credit": "",
+   "count": 96,
+   "featured": true,
+   "icon": "test-yellow-emoji-icon.png",
+   "zip": "test-yellow-emoji.zip",
+   "alt": "test-yellow-emoji-alt/",
+   "size": 59986102,
+   "version": 1
+  },
+  {
    "id": "tuxedo-cat-animated",
    "name": "Tuxedo Cat",
    "author": "jrod",
