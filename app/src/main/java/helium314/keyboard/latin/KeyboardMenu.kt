@@ -503,6 +503,8 @@ object KeyboardMenu {
             },
             Item(tr("My info", R.string.ok_tile_my_info), plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
             Item(tr("Writing help", R.string.ok_tile_writing_help), plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai)) { WritingTools.show(context) },
+            Item(AiWriter.tileLabel(context).also { tr("Write for me", R.string.ok_tile_ai_writer) }, plugin = "writing", icon = ownIcon(R.drawable.ic_menu_ai_writer),
+                idOverride = "ai writer") { AiWriter.start(context) },
             Item(tr("Scan text", R.string.ok_tile_scan_text), plugin = "scan", icon = ownIcon(R.drawable.ic_menu_scan)) {
                 hide()
                 runCatching {

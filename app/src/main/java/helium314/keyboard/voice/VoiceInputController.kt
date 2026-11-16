@@ -54,14 +54,44 @@ class VoiceInputController(
     private fun listening(on: Boolean) {
         onListeningChanged(on)
         runCatching {
-            if (on && !hasFocus) {
-                hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-                Log.i(TAG, "media paused for voice: $hasFocus")
-            } else if (!on && hasFocus) {
-                audioManager.abandonAudioFocusRequest(focusRequest)
-                hasFocus = false
-                Log.i(TAG, "media handed back")
+            if (on) {
+                main.removeCallbacks(handBack)
+                main.removeCallbacks(nudgePlayer)
+                if (!hasFocus) {
+                    mediaWasPlaying = audioManager.isMusicActive
+                    hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                    Log.i(TAG, "media paused for voice: $hasFocus (was playing: $mediaWasPlaying)")
+                }
+            } else if (hasFocus) {
+                // Open Keyboard: wait until the mic is fully closed and the off chime has played
+                // before handing the sound back. Handing it back while the mic was still open left
+                // podcasts frozen (Jarrod, 16 Nov).
+                main.removeCallbacks(handBack)
+                main.postDelayed(handBack, HAND_BACK_DELAY_MS)
             }
+        }
+    }
+
+    private var mediaWasPlaying = false
+
+    private val handBack = Runnable {
+        if (running || !hasFocus) return@Runnable
+        runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
+        hasFocus = false
+        Log.i(TAG, "media handed back")
+        if (mediaWasPlaying) main.postDelayed(nudgePlayer, 1500)
+    }
+
+    /** Some players don't start again by themselves: if it was playing before the mic and still isn't, press play. */
+    private val nudgePlayer = Runnable {
+        if (running || hasFocus || !mediaWasPlaying) return@Runnable
+        mediaWasPlaying = false
+        if (audioManager.isMusicActive) return@Runnable
+        Log.i(TAG, "media didn't start again by itself, pressing play")
+        runCatching {
+            val now = android.os.SystemClock.uptimeMillis()
+            for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
+                audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(now, now, action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY, 0))
         }
     }
 
@@ -98,7 +128,7 @@ class VoiceInputController(
     fun start() {
         if (running) return
         val missingPermission = ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        if (missingPermission || !VoiceModel.STREAMING_EN.isInstalled(ime)) {
+        if (missingPermission || VoicePrefs.liveModel(ime) == null) {
             Log.i(TAG, "mic not started: permission=${!missingPermission}")
             Toast.makeText(ime, "Set up voice typing first", Toast.LENGTH_SHORT).show()
             ime.startActivity(Intent(ime, VoiceSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -159,6 +189,8 @@ class VoiceInputController(
 
     fun release() {
         cancel()
+        main.removeCallbacks(handBack); main.removeCallbacks(nudgePlayer)
+        if (hasFocus) { runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }; hasFocus = false }
         finalPass.shutdownNow()
         chimes.release()
     }
@@ -228,6 +260,35 @@ class VoiceInputController(
         var lastSpeechAt = android.os.SystemClock.uptimeMillis()
         // optional copy of the whole session for tuning (at most 3 minutes)
         val keep = if (VoicePrefs.keepRecording(ime)) java.io.ByteArrayOutputStream() else null
+        // Open Keyboard: the speech detector decides where sentences start and end (see VoiceEngine)
+        val vad = VoiceEngine.newSpeechDetector(ime)
+        val vadWindow = FloatArray(VoiceEngine.VAD_WINDOW)
+        var vadFill = 0
+        var fed = 0L // samples heard so far this session
+        var segmentStart = 0L // where [segment] starts, counted the same way
+        val pad = VoiceEngine.SAMPLE_RATE * 3 / 10 // keep 0.3 s either side of the speech
+
+        /** Hands every sentence the detector has finished to the accurate model. */
+        fun takeDetectedSentences(partial: String) {
+            if (vad == null) return
+            var text = partial
+            var lastEnd = segmentStart
+            while (!vad.empty()) {
+                val s = vad.front(); vad.pop()
+                val from = (s.start - pad - segmentStart).coerceIn(0L, segment.size.toLong()).toInt()
+                val to = (s.start + s.samples.size + pad - segmentStart).coerceIn(from.toLong(), segment.size.toLong()).toInt()
+                endSentence(session, text, segment.slice(from, to))
+                text = "" // the live text all goes with the first sentence
+                lastEnd = s.start + s.samples.size
+            }
+            recognizer.reset(stream)
+            // keep what came after the sentence, in case the next one has already begun
+            val keepFrom = (lastEnd - segmentStart).coerceIn(0L, segment.size.toLong()).toInt()
+            segment = SampleBuffer().also { it.add(segment.slice(keepFrom, segment.size)) }
+            segmentStart = fed - segment.size
+            lastPartial = ""
+        }
+
         try {
             while (running && session == sessionId) {
                 val n = record.read(chunk, 0, chunk.size)
@@ -237,6 +298,7 @@ class VoiceInputController(
                     for (i in 0 until n) { keep.write(chunk[i].toInt() and 0xff); keep.write(chunk[i].toInt() shr 8 and 0xff) }
                 stream.acceptWaveform(samples, VoiceEngine.SAMPLE_RATE)
                 segment.add(samples)
+                fed += n
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
                 val partial = recognizer.getResult(stream).text.trim()
                 if (partial.isNotEmpty()) lastSpeechAt = android.os.SystemClock.uptimeMillis()
@@ -244,7 +306,26 @@ class VoiceInputController(
                     lastPartial = partial
                     main.post { if (session == sessionId) showPartial(partial) }
                 }
-                if (recognizer.isEndpoint(stream)) {
+                if (vad != null) {
+                    var finished = false
+                    for (x in samples) {
+                        vadWindow[vadFill++] = x
+                        if (vadFill == vadWindow.size) {
+                            vad.acceptWaveform(vadWindow)
+                            vadFill = 0
+                            if (!vad.empty()) finished = true
+                        }
+                    }
+                    if (finished) takeDetectedSentences(partial)
+                    else if (!vad.isSpeechDetected() && segment.size > VoiceEngine.SAMPLE_RATE * 3) {
+                        // nobody talking: forget old background noise, but keep the last second
+                        // (the detector notices speech a little after it starts)
+                        val keepFrom = segment.size - VoiceEngine.SAMPLE_RATE
+                        segment = SampleBuffer().also { it.add(segment.slice(keepFrom, segment.size)) }
+                        segmentStart = fed - segment.size
+                        if (partial.isEmpty()) recognizer.reset(stream)
+                    }
+                } else if (recognizer.isEndpoint(stream)) {
                     if (partial.isNotEmpty()) endSentence(session, partial, segment.toArray())
                     recognizer.reset(stream)
                     segment = SampleBuffer()
@@ -260,7 +341,12 @@ class VoiceInputController(
             stream.inputFinished()
             while (recognizer.isReady(stream)) recognizer.decode(stream)
             val last = recognizer.getResult(stream).text.trim()
-            if (last.isNotEmpty() && session == sessionId) endSentence(session, last, segment.toArray())
+            if (vad != null && session == sessionId) {
+                if (vadFill > 0) vad.acceptWaveform(vadWindow.copyOf(vadFill))
+                vad.flush()
+                if (!vad.empty()) takeDetectedSentences(last)
+                else main.post { if (session == sessionId) showPartial("") } // only noise was heard
+            } else if (last.isNotEmpty() && session == sessionId) endSentence(session, last, segment.toArray())
             else main.post { if (session == sessionId) showPartial("") }
         } catch (e: Throwable) {
             Log.e(TAG, "voice input failed", e)
@@ -270,6 +356,7 @@ class VoiceInputController(
             suppressor?.release()
             record.release()
             stream.release()
+            vad?.release()
             if (keep != null) runCatching { writeWav(VoicePrefs.lastRecording(ime), keep.toByteArray()) }
             val handedOver = onFinal {
                 VoiceEngine.end()
@@ -324,6 +411,9 @@ class VoiceInputController(
         if (pending.isEmpty()) return
         if (appClearedBox()) return
         pending.removeFirst()
+        if (finalText.isBlank()) { render(); return } // only noise in that sentence
+        // "write a birthday message for my wife": the AI writer writes it instead
+        if (helium314.keyboard.latin.AiWriter.fromVoice(ime, finalText)) { if (running) stop(); render(); return }
         val ic = ic() ?: return
         ic.beginBatchEdit()
         val noLead = finalText.isEmpty() || finalText[0] in ",.!?;:…)\n"
@@ -413,6 +503,7 @@ class VoiceInputController(
 
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
+        if (VoiceEngine.liveWritesCapitals) return VoiceCommands.punctuate(VoiceSpelling.apply(text, region))
         val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
         return VoiceCommands.punctuate(VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region))
     }
@@ -422,18 +513,22 @@ class VoiceInputController(
     /** Grows as audio arrives, so a whole sentence can be handed to the accuracy model. */
     private class SampleBuffer {
         private var data = FloatArray(VoiceEngine.SAMPLE_RATE * 5)
-        private var size = 0
+        private var count = 0
         fun add(samples: FloatArray) {
-            if (size + samples.size > data.size) data = data.copyOf(maxOf(data.size * 2, size + samples.size))
-            System.arraycopy(samples, 0, data, size, samples.size)
-            size += samples.size
+            if (count + samples.size > data.size) data = data.copyOf(maxOf(data.size * 2, count + samples.size))
+            System.arraycopy(samples, 0, data, count, samples.size)
+            count += samples.size
         }
-        fun toArray(): FloatArray = data.copyOf(size)
+        fun toArray(): FloatArray = data.copyOf(count)
+        val size get() = count
+        fun slice(from: Int, to: Int): FloatArray = data.copyOfRange(from, to)
     }
 
     companion object {
         private const val TAG = "VoiceInput"
         /** Voice typing turns itself off after this much silence. */
         private const val SILENCE_TIMEOUT_MS = 30_000L
+        /** Mic closed and off chime played (about 260 ms) before other sound carries on. */
+        private const val HAND_BACK_DELAY_MS = 600L
     }
 }

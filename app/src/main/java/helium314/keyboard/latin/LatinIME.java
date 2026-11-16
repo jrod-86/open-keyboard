@@ -966,6 +966,12 @@ public class LatinIME extends InputMethodService implements
                 currentSettingsValues.mGestureTrailEnabled,
                 currentSettingsValues.mGestureFloatingPreviewTextEnabled);
 
+        // Open Keyboard: the AI writer's talk box starts listening straight away
+        if (AiWriter.INSTANCE.takeAutoMic(editorInfo)) {
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
+            }, 400);
+        }
         CommandPlugins.INSTANCE.refresh(this, false, null);
         McpServers.INSTANCE.refresh(this, false, null);
         // Open Keyboard: an app plugin's answer is typed over the text it was given
@@ -1341,6 +1347,10 @@ public class LatinIME extends InputMethodService implements
             mInputLogic.resyncAfterVoiceInput(st, en);
             return kotlin.Unit.INSTANCE;
         };
+        // Open Keyboard: writer mode, Enter turns the request in the box into the message
+        if (event.getKeyCode() != KeyCode.VOICE_INPUT && event.getCodePoint() == Constants.CODE_ENTER && AiWriter.INSTANCE.onEnter(this)) {
+            return;
+        }
         // Open Keyboard: fancy text styles letters as they're typed
         if (event.getKeyCode() != KeyCode.VOICE_INPUT && FancyText.INSTANCE.handle(getCurrentInputConnection(), event.getCodePoint(),
                 event.getKeyCode() == KeyCode.DELETE, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; }, shortcutResync)) {
@@ -1436,6 +1446,12 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         // Open Keyboard: "/" commands and "= sum" show their answer as a chip
+        final View writer = AiWriter.INSTANCE.chip(this, mSuggestionStripView);
+        if (writer != null) {
+            mSuggestionStripView.setExternalSuggestionView(writer, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
         final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
         if (slash != null) {
             mSuggestionStripView.setExternalSuggestionView(slash, false);
@@ -1558,6 +1574,12 @@ public class LatinIME extends InputMethodService implements
     public void setNeutralSuggestionStrip() {
         final SettingsValues currentSettings = mSettings.getCurrent();
         if (hasSuggestionStripView() && onEvaluateInputViewShown()) {
+            final View writer = AiWriter.INSTANCE.chip(this, mSuggestionStripView);
+            if (writer != null) {
+                mSuggestionStripView.setExternalSuggestionView(writer, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
             final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
             if (slash != null) {
                 mSuggestionStripView.setExternalSuggestionView(slash, false);
