@@ -84,6 +84,8 @@ class ChatActivity : Activity(), Themed {
     private lateinit var speaker: ChatSpeaker
     private val messages = ArrayList<Msg>()
     private lateinit var personaChip: TextView
+    private lateinit var wakeNote: TextView
+    private var listenWhenReady = false
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
@@ -134,6 +136,12 @@ class ChatActivity : Activity(), Themed {
         root.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150f)).apply { topMargin = dp(2f) })
         personaChip = chip("") { changePersonality() }
         root.addView(personaChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4f) })
+        wakeNote = TextView(this).apply {
+            text = "⏳ Waking up… (a few seconds, the phone is loading the AI)"
+            gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setTextColor(t.text); alpha = 0.75f
+            setPadding(0, dp(4f), 0, 0); visibility = View.GONE
+        }
+        root.addView(wakeNote)
 
         // voice controls: read answers out loud, which voice, hands-free talk mode
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4f), 0, dp(6f)) }
@@ -182,12 +190,20 @@ class ChatActivity : Activity(), Themed {
         rebuild()
         refreshPersonality()
         refreshChips()
-        if (talkMode && WritingTools.chatModel(this) != null) input.postDelayed({ listen() }, 300)
+        // talk mode: the mic waits until the AI has loaded (talking during the load made everything stutter, test 201)
+        listenWhenReady = talkMode && WritingTools.chatModel(this) != null
     }
 
     override fun onResume() {
         super.onResume()
-        WritingTools.warmChat(applicationContext) // load the model while you read, not when you send
+        // load the model while you read, not when you send
+        WritingTools.warmChat(applicationContext,
+            onLoading = { if (!destroyed) wakeNote.visibility = View.VISIBLE },
+            onReady = {
+                if (destroyed) return@warmChat
+                wakeNote.visibility = View.GONE
+                if (listenWhenReady) { listenWhenReady = false; listen() }
+            })
         refreshModelCard()
         refreshChips()
     }

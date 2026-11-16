@@ -52,6 +52,10 @@ class ChatSpeaker(context: Context) {
             // the word list has no "how's", "what's"…: say them in full
             .replace(Regex("(?i)\\b(how|what|where|who|when|why|there|here|that|it|he|she|everything|nothing|something)'s\\b")) { it.groupValues[1] + " is" }
             .replace(Regex("(?i)\\blet's\\b"), "let us")
+            // "autumn's" isn't in the word list either, but sounds just like "autumns"
+            .replace(Regex("(\\w)'s\\b"), "$1s")
+            // quotes stuck to a word ("“error”") made it unknown
+            .replace(Regex("[“”„\"«»]"), "")
             .replace(Regex("[\\uD800-\\uDFFF]|[\\u2600-\\u27BF]|[\\uFE0F\\u200D]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()

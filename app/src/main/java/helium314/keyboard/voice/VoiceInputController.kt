@@ -433,6 +433,12 @@ class VoiceInputController(
      */
     private fun appClearedBox(): Boolean {
         if (!wrote) return false
+        // Asking the app is a round trip to its screen thread, done for every live word update. When the app is busy
+        // (Chat loading its model, test 201 logs) each ask waited up to 2 s and froze the keyboard, so ask at most
+        // twice a second: a cleared box is still noticed within half a second.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastClearCheck < 500) return false
+        lastClearCheck = now
         val ic = ic() ?: return false
         val before = ic.getTextBeforeCursor(1, 0) ?: return false
         val after = ic.getTextAfterCursor(1, 0) ?: return false
@@ -448,6 +454,7 @@ class VoiceInputController(
     }
 
     private val committed = ArrayDeque<String>()
+    private var lastClearCheck = 0L
 
     /** Spoken commands: "delete that", "send", "stop listening", "clear all". */
     private fun runAction(action: VoiceCommands.Action) {

@@ -184,15 +184,16 @@ object WritingTools {
      * Loads Chat's model as soon as the screen opens, so the slow part (several seconds, and the phone tidying memory
      * while 2-3 GB arrive) happens while you're still reading, not when you send (test 199 felt sluggish).
      */
-    fun warmChat(ctx: Context) {
+    fun warmChat(ctx: Context, onLoading: () -> Unit = {}, onReady: () -> Unit = {}) {
         val m = chatModel(ctx) ?: return
         unloadJob?.cancel()
         scope.launch {
-            if (!lock.tryLock()) return@launch
+            if (!lock.tryLock()) { main.post(onReady); return@launch }
             try {
                 val path = modelFile(ctx, m).absolutePath
                 val e = AiChat.getInferenceEngine(ctx.applicationContext)
                 if (e.state.value is InferenceEngine.State.ModelReady && loadedPath == path) return@launch
+                main.post(onLoading)
                 if (!verified(modelFile(ctx, m), m)) return@launch
                 engine(ctx, m)
             } catch (e: Throwable) {
@@ -200,6 +201,7 @@ object WritingTools {
             } finally {
                 lock.unlock()
                 scheduleUnload(ctx, CHAT_KEEP_MS)
+                main.post(onReady)
             }
         }
     }
