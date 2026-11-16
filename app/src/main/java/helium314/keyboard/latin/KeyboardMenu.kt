@@ -498,7 +498,8 @@ object KeyboardMenu {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.StickerMakerActivity::class.java)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        // its own task, so Back goes to the app you were in, not the keyboard's settings (test 192)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
                 }
             },
             Item(tr("My info", R.string.ok_tile_my_info), plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
@@ -523,7 +524,9 @@ object KeyboardMenu {
             Item(tr("Bug report", R.string.ok_tile_bug_report), ownIcon(R.drawable.ic_menu_feedback)) {
                 hide()
                 context.startActivity(android.content.Intent(context, FeedbackActivity::class.java)
-                    .putExtra(FeedbackActivity.EXTRA_BUG, true).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    .putExtra(FeedbackActivity.EXTRA_BUG, true)
+                    // its own task, so Back goes to the app you were in, not the keyboard's settings (test 192)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
             },
             Item(tr("Switch keyboard", R.string.ok_tile_switch_keyboard), ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
