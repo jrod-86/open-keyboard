@@ -2,18 +2,18 @@
  "version": 1,
  "packs": [
   {
-   "id": "test-yellow-emoji",
-   "name": "Test",
+   "id": "yellow-moods",
+   "name": "Yellow Moods",
    "author": "jrod",
    "license": "CC0",
    "source": "https://github.com/jrod-86/open-keyboard",
    "credit": "",
-   "count": 96,
+   "count": 65,
    "featured": true,
-   "icon": "test-yellow-emoji-icon.png",
-   "zip": "test-yellow-emoji.zip",
-   "alt": "test-yellow-emoji-alt/",
-   "size": 59986102,
+   "icon": "yellow-moods-icon.png",
+   "zip": "yellow-moods.zip",
+   "alt": "yellow-moods-alt/",
+   "size": 41008605,
    "version": 1
   },
   {
@@ -30,19 +30,6 @@
    "alt": "tuxedo-cat-animated-alt/",
    "size": 49518108,
    "version": 3
-  },
-  {
-   "id": "yellow-emoji-story",
-   "name": "Yellow Emoji Story",
-   "author": "jrod",
-   "license": "CC0",
-   "source": "https://github.com/jrod-86/open-keyboard",
-   "credit": "",
-   "count": 96,
-   "featured": true,
-   "icon": "yellow-emoji-story-icon.png",
-   "zip": "yellow-emoji-story.zip",
-   "size": 3106585
   }
  ]
 }
