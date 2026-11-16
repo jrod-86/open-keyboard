@@ -527,9 +527,32 @@ public class LatinIME extends InputMethodService implements
         AutocorrectMemory.INSTANCE.removeSavedWords(this); // feature dropped (test 116): undo what it saved
         mHandler.onCreate();
         mReceiver.register(this);
+        androidx.core.content.ContextCompat.registerReceiver(this, mChatListenReceiver,
+                new android.content.IntentFilter(ChatActivity.LISTEN_ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
 
         StatsUtils.onCreate(mSettings.getCurrent(), mRichImm);
     }
+
+    /**
+     * Open Keyboard: Chat's Hands-free asks for the mic (Chat runs in its own process). If the keyboard is up on Chat's
+     * box the mic starts now, else the keyboard shows itself there and starts it when it opens (test 206: asking the
+     * phone to show the keyboard from Chat didn't work, so the mic never came on).
+     */
+    private final android.content.BroadcastReceiver mChatListenReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final EditorInfo ei = getCurrentInputEditorInfo();
+            if (!ChatActivity.Companion.isChatBox(ei)) { Log.i(TAG, "chat asked for the mic, but its box isn't focused"); return; }
+            ChatActivity.Companion.askListen();
+            if (isInputViewShown()) {
+                if (ChatActivity.Companion.takeAutoMic(ei) && mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
+                Log.i(TAG, "chat hands-free: mic on");
+            } else {
+                Log.i(TAG, "chat hands-free: showing the keyboard for the mic");
+                requestShowSelf(0);
+            }
+        }
+    };
 
     private void loadSettings() {
         final Locale locale = mRichImm.getCurrentSubtypeLocale();
@@ -641,6 +664,7 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onDestroy() {
+        try { unregisterReceiver(mChatListenReceiver); } catch (Exception ignored) { }
         mVoiceInput.release();
         VoiceEngine.INSTANCE.release();
         mClipboardHistoryManager.onDestroy();
@@ -968,7 +992,7 @@ public class LatinIME extends InputMethodService implements
 
         AiWriter.INSTANCE.showIndicators(); // writer mode: glowing line and lit ✨ button
         // Open Keyboard: the AI writer's talk box starts listening straight away
-        if (AiWriter.INSTANCE.takeAutoMic(editorInfo)) {
+        if (AiWriter.INSTANCE.takeAutoMic(editorInfo) || ChatActivity.Companion.takeAutoMic(editorInfo)) {
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
             }, 400);

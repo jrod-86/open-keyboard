@@ -45,6 +45,7 @@ object ImageThemes {
     const val KEY_STICKER = "theme_sticker_maker"
     const val KEY_TTS = "theme_tts"
     const val KEY_BUG = "theme_bug_report"
+    const val KEY_CHAT = "theme_chat"
 
     fun index(c: Context, key: String = KEY_IMAGE) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).getInt(key, 0).coerceIn(0, ALL.size - 1)
     fun set(c: Context, i: Int, key: String = KEY_IMAGE) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).edit().putInt(key, i).apply()

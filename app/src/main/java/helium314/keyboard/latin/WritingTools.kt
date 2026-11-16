@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -106,9 +107,9 @@ object WritingTools {
     )
 
     private fun modelFile(ctx: Context, m: Model) = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "llm/${m.fileName}")
-    private fun isReady(ctx: Context, m: Model) = modelFile(ctx, m).length() == m.size
+    fun isReady(ctx: Context, m: Model) = modelFile(ctx, m).length() == m.size
     private fun downloadKey(m: Model) = if (m === QUICK) PREF_DOWNLOAD_ID else PREF_DOWNLOAD_ID + "_" + m.id
-    private fun downloadRunning(ctx: Context, m: Model): Boolean {
+    fun downloadRunning(ctx: Context, m: Model): Boolean {
         val id = llmPrefs(ctx).getLong(downloadKey(m), -1)
         if (id < 0) return false
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return false
@@ -120,7 +121,7 @@ object WritingTools {
         return false
     }
 
-    private fun startDownload(ctx: Context, m: Model) {
+    fun startDownload(ctx: Context, m: Model) {
         val file = modelFile(ctx, m)
         file.parentFile?.mkdirs()
         file.delete()
@@ -166,6 +167,93 @@ object WritingTools {
             scheduleUnload(ctx)
         }
     }
+
+    /** The Chat conversation the model is holding in its memory right now (null = none). */
+    @Volatile private var chatInModel: String? = null
+
+    /** The model Chat uses: Better writer when it's downloaded (it chats much better), otherwise Quick. */
+    fun chatModel(ctx: Context): Model? {
+        // kept in Chat's own settings file: Chat runs in its own process, and two processes writing one file clash
+        // Quick by default (test 203): Better plus voice typing and a voice is more memory than the phone likes, so
+        // Android kept closing and reopening things, and every reopen loaded the model again
+        val wanted = if (ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).getString(PREF_CHAT_MODEL, QUICK.id) == BETTER.id) BETTER else QUICK
+        return wanted.takeIf { isReady(ctx, it) } ?: listOf(BETTER, QUICK).firstOrNull { isReady(ctx, it) }
+    }
+    private const val PREF_CHAT_MODEL = "open_keyboard_chat_model"
+    /** Chat's own pick: Better (smarter, slower) or Quick (about twice as fast, simpler). */
+    fun chooseChatModel(ctx: Context, m: Model) { ctx.getSharedPreferences("chat", Context.MODE_PRIVATE).edit().putString(PREF_CHAT_MODEL, m.id).apply() }
+
+    /**
+     * Loads Chat's model as soon as the screen opens, so the slow part (several seconds, and the phone tidying memory
+     * while 2-3 GB arrive) happens while you're still reading, not when you send (test 199 felt sluggish).
+     */
+    fun warmChat(ctx: Context, onLoading: () -> Unit = {}, onReady: () -> Unit = {}) {
+        val m = chatModel(ctx) ?: return
+        unloadJob?.cancel()
+        scope.launch {
+            if (!lock.tryLock()) { main.post(onReady); return@launch }
+            try {
+                val path = modelFile(ctx, m).absolutePath
+                val e = AiChat.getInferenceEngine(ctx.applicationContext)
+                if (e.state.value is InferenceEngine.State.ModelReady && loadedPath == path) return@launch
+                main.post(onLoading)
+                if (!verified(modelFile(ctx, m), m)) return@launch
+                engine(ctx, m)
+            } catch (e: Throwable) {
+                Log.w(TAG, "chat warm-up failed", e)
+            } finally {
+                lock.unlock()
+                scheduleUnload(ctx, CHAT_KEEP_MS)
+                main.post(onReady)
+            }
+        }
+    }
+
+    /**
+     * One turn of the Chat tile. The model keeps the conversation [chatId] in its memory between turns, so only the
+     * new message has to be read. If something else used the model meanwhile (writing help, smart compose) or it was
+     * unloaded, the chat starts again from [system], which then holds the earlier messages ([history]).
+     */
+    suspend fun chatTurn(ctx: Context, chatId: String, system: String, history: String, message: String, maxTokens: Int,
+                         pace: (suspend () -> Unit)? = null, onPiece: (String) -> Unit): String? {
+        unloadJob?.cancel()
+        try {
+            return lock.withLock {
+                val m = chatModel(ctx) ?: return@withLock null
+                if (!verified(modelFile(ctx, m), m)) { toast(ctx, "The ${m.label} model download was damaged. Please download it again."); return@withLock null }
+                val had = chatInModel
+                justLoaded = false
+                val engine = engine(ctx, m) // clears chatInModel
+                val continuing = had == chatId && engine.state.value is InferenceEngine.State.ModelReady && loadedPath == modelFile(ctx, m).absolutePath && !justLoaded
+                justLoaded = false
+                if (!continuing) {
+                    engine.startFresh()
+                    engine.setSystemPrompt(if (history.isBlank()) system else "$system\n\n$history")
+                }
+                val out = StringBuilder()
+                var pieces = 0
+                // no buffer: when [pace] waits, the model really stops writing (by default it ran 64 words ahead)
+                engine.sendUserPrompt(message, maxTokens).buffer(0).collect {
+                    pieces++; out.append(it); onPiece(out.toString())
+                    pace?.invoke()
+                }
+                // finished by itself (not cut off at the length limit): the model now holds this conversation properly
+                if (pieces < maxTokens - 2) chatInModel = chatId
+                out.toString()
+            }
+        } finally {
+            scheduleUnload(ctx, CHAT_KEEP_MS)
+        }
+    }
+
+    /** Forget the chat held in the model (New chat). */
+    fun forgetChat() { chatInModel = null }
+
+    /** Chat closed: free the model's memory after the usual short wait instead of Chat's longer one. */
+    fun chatClosed(ctx: Context) { if (!lock.isLocked) scheduleUnload(ctx) }
+
+    private const val CHAT_KEEP_MS = 5 * 60_000L
+    private var justLoaded = false
 
     /** Lets Undo in Writing help take back text the AI writer put in. */
     fun rememberForUndo(original: String, result: String) { undoText = original; undoResult = result }
@@ -318,17 +406,19 @@ object WritingTools {
         KeyboardMenu.showOverlay(root)
     }
 
-    private suspend fun engine(ctx: Context): InferenceEngine {
+    private suspend fun engine(ctx: Context, model: Model? = null): InferenceEngine {
+        // anyone using the model starts their own conversation, so Chat's one is no longer in its memory
+        chatInModel = null
         val engine = AiChat.getInferenceEngine(ctx.applicationContext)
         val state = engine.state.first { it !is InferenceEngine.State.Uninitialized && it !is InferenceEngine.State.Initializing }
         if (state is InferenceEngine.State.Error) engine.cleanUp()
-        val path = modelFile(ctx, active(ctx) ?: QUICK).absolutePath
+        val path = modelFile(ctx, model ?: active(ctx) ?: QUICK).absolutePath
         // switched between Quick and Better writer: load the other one
         if (engine.state.value is InferenceEngine.State.ModelReady && loadedPath != path) {
             engine.cleanUp()
             withTimeoutOrNull(10_000) { engine.state.first { it is InferenceEngine.State.Initialized } }
         }
-        if (engine.state.value !is InferenceEngine.State.ModelReady) { engine.loadModel(path); loadedPath = path }
+        if (engine.state.value !is InferenceEngine.State.ModelReady) { engine.loadModel(path); loadedPath = path; justLoaded = true }
         return engine
     }
 
@@ -473,10 +563,10 @@ object WritingTools {
         lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() } }
     }
 
-    private fun scheduleUnload(context: Context) {
+    private fun scheduleUnload(context: Context, after: Long = 90_000) {
         unloadJob?.cancel()
         unloadJob = scope.launch {
-            delay(90_000)
+            delay(after)
             lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() } }
         }
     }

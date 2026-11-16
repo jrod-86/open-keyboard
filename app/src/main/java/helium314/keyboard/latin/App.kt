@@ -36,7 +36,8 @@ class App : Application() {
         // Open Keyboard: the TTS screens (":tts") only need crash reports. Running the rest of the keyboard
         // set-up there too meant two processes writing the same settings file, so a setting changed
         // in the keyboard could be put back to its old value after using TTS.
-        if (process.endsWith(":tts")) return
+        // Chat (":chat", test 201) is the same: its model load stalled the keyboard for seconds when they shared a process
+        if (process.endsWith(":tts") || process.endsWith(":chat")) return
         NativeCrashes.collect(this)
 
         val scope = CoroutineScope(Dispatchers.Default)

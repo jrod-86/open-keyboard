@@ -371,13 +371,21 @@ class VoiceInputController(
 
     /** Moves the spoken sentence to the waiting list and asks the accuracy model for its version. */
     private fun endSentence(session: Int, streamingText: String, audio: FloatArray) {
+        // Chat's box (Hands-free): "how are you today, send" sends, even said without a pause before "send" (test 206)
+        val chatBox = helium314.keyboard.latin.ChatActivity.isChatBox(ime.currentInputEditorInfo)
+        val saidSend = chatBox && VoiceCommands.endsWithSend(streamingText)
+        if (saidSend && VoiceCommands.withoutSend(streamingText).isBlank()) {
+            main.post { if (session == sessionId) { current = ""; render() } }
+            onFinal { main.post { if (session == sessionId) runAction(VoiceCommands.Action.SEND) } }
+            return
+        }
         VoiceCommands.action(streamingText)?.let { action ->
             main.post { if (session == sessionId) { current = ""; render() } }
             // run after the sentences before it have been written
             onFinal { main.post { if (session == sessionId) runAction(action) } }
             return
         }
-        val shown = formatStreaming(streamingText)
+        val shown = formatStreaming(if (saidSend) VoiceCommands.withoutSend(streamingText) else streamingText)
         main.post {
             if (session != sessionId) return@post
             pending.addLast(shown); current = ""
@@ -386,11 +394,19 @@ class VoiceInputController(
         onFinal {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
-            val english = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
+            var heard = final?.takeIf { it.isNotBlank() } ?: shown
+            // the accuracy model may hear the "send" the live one missed, or the other way round
+            val send = chatBox && (saidSend || VoiceCommands.endsWithSend(heard))
+            if (chatBox) heard = VoiceCommands.withoutSend(heard)
+            val english = VoiceCommands.punctuate(VoiceSpelling.apply(heard, VoicePrefs.region(ime)))
             val to = translateTo
             val text = if (to == null) english
                 else helium314.keyboard.latin.TranslatePanel.translateBlocking(ime, english, "en", to) ?: english
-            main.post { if (session == sessionId) commitOldest(text) }
+            main.post {
+                if (session != sessionId) return@post
+                commitOldest(text)
+                if (send) runAction(VoiceCommands.Action.SEND)
+            }
         }
     }
 
@@ -433,6 +449,12 @@ class VoiceInputController(
      */
     private fun appClearedBox(): Boolean {
         if (!wrote) return false
+        // Asking the app is a round trip to its screen thread, done for every live word update. When the app is busy
+        // (Chat loading its model, test 201 logs) each ask waited up to 2 s and froze the keyboard, so ask at most
+        // twice a second: a cleared box is still noticed within half a second.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastClearCheck < 500) return false
+        lastClearCheck = now
         val ic = ic() ?: return false
         val before = ic.getTextBeforeCursor(1, 0) ?: return false
         val after = ic.getTextAfterCursor(1, 0) ?: return false
@@ -448,6 +470,7 @@ class VoiceInputController(
     }
 
     private val committed = ArrayDeque<String>()
+    private var lastClearCheck = 0L
 
     /** Spoken commands: "delete that", "send", "stop listening", "clear all". */
     private fun runAction(action: VoiceCommands.Action) {
