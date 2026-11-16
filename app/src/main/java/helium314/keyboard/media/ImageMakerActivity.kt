@@ -1053,36 +1053,8 @@ class ImageMakerActivity : Activity() {
             .show()
     }
 
-    /** 🎨 theme picker: a grid of tiles, each a tiny preview of this screen in that theme. */
-    private fun pickTheme() {
-        val cur = ImageThemes.index(this)
-        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14f), dp(6f), dp(14f), dp(6f)) }
-        var dlg: AlertDialog? = null
-        ImageThemes.ALL.indices.chunked(3).forEach { rowIdx ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            for (k in 0 until 3) {
-                val i = rowIdx.getOrNull(k)
-                val cell = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-                if (i != null) {
-                    val t = if (i == 0) ImageThemes.current(this, night).let { d -> ImageTheme("Phone default", d.a1, d.a2, d.bg, d.card, d.line, d.text) } else ImageThemes.ALL[i]
-                    cell.addView(ThemePreview(this, t, i == cur), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                    cell.addView(TextView(this).apply {
-                        text = (if (i == 0) "📱 " else "") + ImageThemes.ALL[i].name; gravity = Gravity.CENTER
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setPadding(0, dp(4f), 0, 0)
-                        if (i == cur) typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    })
-                    cell.setOnClickListener { dlg?.dismiss(); if (i != cur) { ImageThemes.set(this, i); recreate() } }
-                }
-                row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(5f); marginEnd = dp(5f) })
-            }
-            grid.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12f) })
-        }
-        dlg = AlertDialog.Builder(this)
-            .setTitle("🎨 Themes")
-            .setView(ScrollView(this).apply { addView(grid) })
-            .setNegativeButton("Close", null)
-            .show()
-    }
+    /** 🎨 theme picker (shared with Sticker maker, TTS and Bug report). */
+    private fun pickTheme() = ImageThemes.pick(this)
 
     private fun openSettings() {
         val labels = Gallery.LIMITS.map { it.second }.toTypedArray()

@@ -27,13 +27,17 @@ import android.widget.TextView
 import android.widget.Toast
 import helium314.keyboard.latin.utils.fitAboveKeyboard
 import helium314.keyboard.media.UiKit
+import helium314.keyboard.media.ImageThemes
+import helium314.keyboard.media.Themed
 import kotlin.concurrent.thread
 
 /**
  * "Make a voice": record or pick a short clip of someone talking, tick that it's yours or you have permission, name
  * it, and it becomes one of your Zonos voices (everything on the phone, see VoiceClones).
  */
-class MakeVoiceActivity : Activity() {
+class MakeVoiceActivity : Activity(), Themed {
+    /** Follows the TTS screen's 🎨 theme. */
+    override val pageTheme by lazy { ImageThemes.current(this, ImageThemes.night(this), ImageThemes.KEY_TTS) }
     companion object {
         const val EXTRA_VOICE = "voice"
         private const val TAG = "MakeVoice"
@@ -120,7 +124,7 @@ class MakeVoiceActivity : Activity() {
         root.addView(status)
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
-            progressTintList = android.content.res.ColorStateList.valueOf(UiKit.PURPLE)
+            progressTintList = android.content.res.ColorStateList.valueOf(pageTheme.a1)
         }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -128,6 +132,7 @@ class MakeVoiceActivity : Activity() {
         root.addView(remove, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44f)).apply { topMargin = pad * 2 })
 
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
+        ImageThemes.applyPage(this, root, pageTheme)
         setContentView(scroll)
         scroll.fitAboveKeyboard(includeTop = true)
         refresh()

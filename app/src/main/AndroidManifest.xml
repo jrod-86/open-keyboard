@@ -138,6 +138,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
+            android:taskAffinity="io.github.jrod86.openkeyboard.stickermaker"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
         <activity android:name="helium314.keyboard.latin.AiWriterActivity"
@@ -176,6 +177,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
         <activity android:name="helium314.keyboard.latin.FeedbackActivity"
             android:label="Bug report"
             android:theme="@style/platformActivityTheme"
+            android:taskAffinity="io.github.jrod86.openkeyboard.bugreport"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 

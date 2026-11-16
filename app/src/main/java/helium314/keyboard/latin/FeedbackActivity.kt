@@ -30,12 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import helium314.keyboard.latin.utils.Theme
+import androidx.compose.ui.unit.sp
 
 /**
  * "Feedback" tile: ask the developer for a feature or report a bug. Sending opens a ready-filled
@@ -46,20 +45,57 @@ class FeedbackActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val startWithBug = intent.getBooleanExtra(EXTRA_BUG, false)
-        setContent { Theme { Screen(startWithBug) } }
+        // 🎨 this screen's own theme, same picker as Local Image (Jarrod, test 191)
+        val t = helium314.keyboard.media.ImageThemes.current(this, helium314.keyboard.media.ImageThemes.night(this), helium314.keyboard.media.ImageThemes.KEY_BUG)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !t.dark; isAppearanceLightNavigationBars = !t.dark
+        }
+        window.decorView.setBackgroundColor(t.bg)
+        setContent { androidx.compose.material3.MaterialTheme(colorScheme = colorsOf(t)) { Screen(startWithBug, t) } }
+    }
+
+    /** Compose colours from a 🎨 theme: accents for buttons and chips, page/card/line/text for the rest. */
+    private fun colorsOf(t: helium314.keyboard.media.ImageTheme): androidx.compose.material3.ColorScheme {
+        fun c(v: Int) = androidx.compose.ui.graphics.Color(v)
+        val text = c(t.text); val bg = c(t.bg); val card = c(t.card); val a1 = c(t.a1)
+        val chosen = androidx.compose.ui.graphics.lerp(bg, a1, 0.28f)
+        val base = if (t.dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+        return base.copy(
+            primary = a1, onPrimary = androidx.compose.ui.graphics.Color.White, primaryContainer = chosen, onPrimaryContainer = text,
+            secondary = c(t.a2), onSecondary = androidx.compose.ui.graphics.Color.White, secondaryContainer = chosen, onSecondaryContainer = text,
+            background = bg, onBackground = text, surface = bg, onSurface = text,
+            surfaceVariant = card, onSurfaceVariant = text.copy(alpha = 0.75f),
+            surfaceContainer = card, surfaceContainerLow = card, surfaceContainerHigh = card, surfaceContainerHighest = card, surfaceContainerLowest = bg,
+            outline = text.copy(alpha = 0.45f), outlineVariant = c(t.line),
+        )
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @androidx.compose.runtime.Composable
-    private fun Screen(startWithBug: Boolean) {
-        var bug by remember { mutableStateOf(startWithBug) }
-        var title by remember { mutableStateOf("") }
-        var details by remember { mutableStateOf("") }
-        var steps by remember { mutableStateOf("") }
-        var includePhone by remember { mutableStateOf(true) }
+    private fun Screen(startWithBug: Boolean, t: helium314.keyboard.media.ImageTheme) {
+        // kept when a new 🎨 theme reopens the screen
+        var bug by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(startWithBug) }
+        var title by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+        var details by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+        var steps by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+        var includePhone by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
         Scaffold(
             contentWindowInsets = WindowInsets.safeDrawing,
-            topBar = { TopAppBar(title = { Text("Bug report & ideas") }) },
+            topBar = {
+                TopAppBar(
+                    title = {
+                        // title in the theme's two accent colours, like Local Image
+                        Text("Bug report & ideas", style = MaterialTheme.typography.titleLarge.copy(
+                            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(t.a1), androidx.compose.ui.graphics.Color(t.a2))),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                    },
+                    actions = {
+                        androidx.compose.material3.TextButton(onClick = { helium314.keyboard.media.ImageThemes.pick(this@FeedbackActivity, helium314.keyboard.media.ImageThemes.KEY_BUG) }) {
+                            Text("🎨", fontSize = 22.sp)
+                        }
+                    },
+                )
+            },
         ) { padding ->
             Column(
                 Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
