@@ -584,7 +584,7 @@ object KeyboardMenu {
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
-                if (item.tint) setColorFilter(textColor)
+                if (item.tint) setColorFilter(if (item.id == AiWriter.TILE_ID && AiWriter.writerOn) AiWriter.ON_COLOR else textColor)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
             if (item.bigIcon) {
