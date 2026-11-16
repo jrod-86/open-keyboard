@@ -66,6 +66,7 @@ class ChatActivity : Activity(), Themed {
         }
 
         private const val MAX_REPLY_TOKENS = 220
+        private val REFUSAL = Regex("(?i)\\b(can(no|')?t|unable to|not able to) (assist|help) (you )?with (that|this)|as an ai,? i (don't|do not|can't|cannot)")
         /** Hands-free on a new chat: they say hello first, then the mic opens (Jarrod, test 205). */
         private const val GREETING = "(The user has just opened the chat and will talk to you out loud. Say hello and introduce " +
             "yourself in your own style, in one or two short sentences, and ask them something.)"
@@ -268,12 +269,16 @@ class ChatActivity : Activity(), Themed {
         face.thinking = true
         job = scope.launch {
             updateSendButton()
-            val out = withContext(Dispatchers.Default) {
+            var attempt = 0
+            suspend fun ask(message: String, hist: String) = withContext(Dispatchers.Default) {
+                val mine = ++attempt
                 runCatching {
-                    WritingTools.chatTurn(applicationContext, chat.id, systemPrompt(), history, text, MAX_REPLY_TOKENS) { soFar ->
+                    WritingTools.chatTurn(applicationContext, chat.id, systemPrompt(), hist, message, MAX_REPLY_TOKENS) { soFar ->
                         view.post {
-                            if (destroyed || finished) return@post
+                            if (destroyed || finished || mine != attempt) return@post
                             val shown = tidy(soFar)
+                            // a "Sorry, I can't assist with that" is asked again below, so don't show or say it
+                            if (isRefusal(shown)) return@post
                             if (shown.isNotEmpty()) { reply.text = shown; setBubbleText(view, shown); scrollDown() }
                             // say each finished sentence while the next one is being written
                             if (voice != null) {
@@ -285,6 +290,17 @@ class ChatActivity : Activity(), Themed {
                         }
                     }
                 }.onFailure { Log.w(TAG, "chat turn failed", it) }.getOrNull()
+            }
+            var out = ask(text, history)
+            // The small model sometimes answers harmless chat ("what's it like over there?") with an assistant-style
+            // refusal, then copies it every turn (Jarrod, test 206). Ask once more, fresh, without the refusals.
+            if (out != null && isRefusal(tidy(out)) && !destroyed) {
+                Log.i(TAG, "refused harmless chat, asking again")
+                WritingTools.forgetChat()
+                spokenTo = 0
+                out = ask("$text\n\n(Friendly casual chat: answer in character, playfully, and make up fun details about yourself if you need to.)",
+                    historyText(excludeLast = !greeting))
+                if (out != null && isRefusal(tidy(out))) out = null.also { WritingTools.forgetChat() }
             }
             finished = true
             face.thinking = false
@@ -354,22 +370,28 @@ class ChatActivity : Activity(), Themed {
         val day = SimpleDateFormat("EEEE d MMMM yyyy", Locale.ENGLISH).format(now)
         val time = SimpleDateFormat("h:mm a", Locale.ENGLISH).format(now)
         val p = personality
-        return "${p.style} You live inside the Open Keyboard app as a small AI that runs offline on the user's phone, made for casual chat and fun. " +
-            "Stay in character the whole time. Keep answers short (one to three sentences) unless the user asks for more, like texting: " +
+        return "${p.style} ${ChatPersonalities.soul(p)} You live inside the Open Keyboard app as a small AI that runs offline on the user's phone, made for casual chat and fun. " +
+            "This is a friendly pretend chat, not a work task: when asked about yourself, your day, how you're going or what it's like where " +
+            "you are, play along in character and invent fun little details about your life inside the phone. Never answer ordinary chat " +
+            "with \"I can't assist with that\". Stay in character the whole time. Keep answers short (one to three sentences) unless the user asks for jokes, a story or more, like texting: " +
             "no lists, no headings, no markdown, at most one emoji. Sometimes ask a question back. You can't go online, look things up or do anything " +
             "on the phone. If you don't know something, say so (in character) instead of making it up. It is $day, $time."
     }
 
     /** The last few messages, for when the model starts this chat again (it was freed, or writing help used it). */
-    private fun historyText(): String {
-        if (messages.isEmpty()) return ""
-        val recent = messages.takeLast(HISTORY_MESSAGES)
+    private fun historyText(excludeLast: Boolean = false): String {
+        // earlier refusals are left out: the model would copy them
+        val recent = (if (excludeLast) messages.dropLast(1) else messages).filterNot { !it.me && isRefusal(it.text) }.takeLast(HISTORY_MESSAGES)
+        if (recent.isEmpty()) return ""
         val sb = StringBuilder("The conversation so far (continue it naturally):\n")
         for (m in recent) sb.append(if (m.me) "User: " else "You: ").append(m.text.take(500).replace('\n', ' ')).append('\n')
         return sb.toString().trimEnd()
     }
 
     private val personality get() = ChatPersonalities.byId(chat.personality)
+
+    /** The assistant-style brush-off small models give to ordinary chat. */
+    private fun isRefusal(s: String) = s.length < 160 && REFUSAL.containsMatchIn(s)
 
     /** ➕ New chat: pick who to talk to first. */
     private fun newChat() {
