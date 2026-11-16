@@ -494,6 +494,14 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
+            Item(tr("Chat", R.string.ok_tile_chat), ownIcon(R.drawable.ic_menu_chat), idOverride = "chat") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, ChatActivity::class.java)
+                        // its own task, so Back goes to the app you were in (like Sticker maker, test 192)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Chat couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
+            },
             Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), idOverride = "sticker maker") {
                 hide()
                 runCatching {

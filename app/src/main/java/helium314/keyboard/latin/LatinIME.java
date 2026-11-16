@@ -968,7 +968,7 @@ public class LatinIME extends InputMethodService implements
 
         AiWriter.INSTANCE.showIndicators(); // writer mode: glowing line and lit ✨ button
         // Open Keyboard: the AI writer's talk box starts listening straight away
-        if (AiWriter.INSTANCE.takeAutoMic(editorInfo)) {
+        if (AiWriter.INSTANCE.takeAutoMic(editorInfo) || ChatActivity.Companion.takeAutoMic(editorInfo)) {
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
             }, 400);
