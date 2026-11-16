@@ -151,11 +151,34 @@ class VoiceInputController(
         val session = ++sessionId
         listening(true) // pause other media first, so the chime isn't talked over
         click(true)
+        VoicePrefs.markUsed(ime)
         helium314.keyboard.latin.SmartCompose.pauseForVoice() // keep the processor for voice (resumed in listen())
         audioThread = thread(name = "voice-input") {
             var handedOver = false
             try { handedOver = listen(session) }
             finally { if (!handedOver) helium314.keyboard.latin.SmartCompose.resumeAfterVoice() }
+        }
+    }
+
+    @Volatile private var preparing = false
+
+    /**
+     * The keyboard has opened: if voice typing has been used in the last week, load the live model now in the
+     * background, so the mic writes straight away when tapped. Freed again after 5 minutes without voice.
+     */
+    fun prepare() {
+        if (running || preparing) return
+        if (System.currentTimeMillis() - VoicePrefs.lastUsed(ime) > PREPARE_IF_USED_WITHIN_MS) return
+        if (VoicePrefs.liveModel(ime) == null) return
+        if (ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        preparing = true
+        thread(name = "voice-prepare", priority = Thread.MIN_PRIORITY) {
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                if (VoiceEngine.preloadLive(ime))
+                    main.postDelayed({ onFinal { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } },
+                        VoiceEngine.IDLE_RELEASE_MS + 1000)
+            } finally { preparing = false }
         }
     }
 
@@ -593,5 +616,7 @@ class VoiceInputController(
         private const val SILENCE_TIMEOUT_MS = 30_000L
         /** Mic closed and off chime played (about 260 ms) before other sound carries on. */
         private const val HAND_BACK_DELAY_MS = 600L
+        /** Only get voice ready ahead of time for people who used it in the last week. */
+        private const val PREPARE_IF_USED_WITHIN_MS = 7 * 24 * 3600_000L
     }
 }

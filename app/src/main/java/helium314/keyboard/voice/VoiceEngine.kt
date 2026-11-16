@@ -62,6 +62,22 @@ object VoiceEngine {
         release()
     }
 
+    /**
+     * Open Keyboard: loads the live model in the background when the keyboard opens, so tapping the mic
+     * starts writing straight away instead of after a 2-3 s load (Jarrod, 17 Nov: "3 to 5 seconds before it
+     * starts"). Counts as a use, so the usual 5 minute idle rule frees it again. Returns true if it loaded.
+     */
+    fun preloadLive(context: Context): Boolean {
+        if (online != null && onlineModel == VoicePrefs.liveModel(context)) { touch(); return false }
+        val t = android.os.SystemClock.uptimeMillis()
+        runCatching { onlineRecognizer(context) }.onFailure { Log.e("VoiceEngine", "preload failed", it); return false }
+        touch()
+        Log.i("VoiceEngine", "live model ready ahead of the mic (${android.os.SystemClock.uptimeMillis() - t} ms)")
+        return true
+    }
+
+    @Synchronized private fun touch() { lastUsed = android.os.SystemClock.uptimeMillis() }
+
     @Synchronized
     fun onlineRecognizer(context: Context): OnlineRecognizer {
         val m = VoicePrefs.liveModel(context) ?: throw IllegalStateException("live model not downloaded")
