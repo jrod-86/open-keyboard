@@ -113,11 +113,28 @@ class ChatSpeaker(context: Context) {
         private val window = rate / 50
         private var winSum = 0.0
         private var winCount = 0
+        private var peak = 0.08f
 
+        private val stamp = android.media.AudioTimestamp()
+
+        /**
+         * The loudness of what's coming out of the speaker right now. playbackHeadPosition is where the phone has
+         * taken the sound from, which can be well ahead of what you hear (test 199: the mouth wasn't in time, worse on
+         * Bluetooth), so it uses the track's timestamp (the frame actually being played, and when), else the head
+         * minus the output latency.
+         */
         fun level(): Float {
             val t = track ?: return 0f
-            val head = runCatching { t.playbackHeadPosition }.getOrDefault(0)
-            val i = head / window
+            val frame = runCatching {
+                if (t.getTimestamp(stamp) && stamp.framePosition > 0) {
+                    stamp.framePosition + (System.nanoTime() - stamp.nanoTime) * rate / 1_000_000_000L
+                } else {
+                    val latencyMs = runCatching { AudioTrack::class.java.getMethod("getLatency").invoke(t) as Int }.getOrDefault(150)
+                    t.playbackHeadPosition - latencyMs.toLong() * rate / 1000
+                }
+            }.getOrDefault(0L)
+            if (frame < 0) return 0f
+            val i = (frame / window).toInt()
             return if (i in 0 until envelopeSize) envelope[i] else 0f
         }
 
@@ -126,9 +143,11 @@ class ChatSpeaker(context: Context) {
                 winSum += x * x; winCount++
                 if (winCount == window) {
                     if (envelopeSize < envelope.size) {
-                        // speech RMS is mostly 0.02-0.25: map that to a mouth from shut to wide open
+                        // loudness against this voice's own recent loudest, so quiet and loud voices both use the full mouth,
+                        // and it shuts between words (fixed scaling in test 199 left it "half good")
                         val rms = kotlin.math.sqrt(winSum / winCount).toFloat()
-                        envelope[envelopeSize] = ((rms - 0.012f) / 0.15f).coerceIn(0f, 1f)
+                        peak = maxOf(peak * 0.997f, rms, 0.02f)
+                        envelope[envelopeSize] = ((rms - peak * 0.12f) / (peak * 0.7f)).coerceIn(0f, 1f)
                         envelopeSize++
                     }
                     winSum = 0.0; winCount = 0

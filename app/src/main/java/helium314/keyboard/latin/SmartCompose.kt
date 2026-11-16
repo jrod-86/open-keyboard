@@ -54,7 +54,9 @@ object SmartCompose {
         val sv = Settings.getValues()
         if (sv.mIncognitoModeEnabled || !sv.mInputAttributes.mShouldShowSuggestions) return false
         // Chat's message box: the chat keeps its conversation in the model, guessing here would wipe it
-        if (ime.currentInputEditorInfo?.privateImeOptions == ChatActivity.CHAT_OPTION) return false
+        // nor in the keyboard's own screens (Chat, TTS, Sticker maker…)
+        if (ime.currentInputEditorInfo?.privateImeOptions == ChatActivity.CHAT_OPTION ||
+            ime.currentInputEditorInfo?.packageName == ime.packageName) return false
         val type = ime.currentInputEditorInfo?.inputType ?: return false
         if (type and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
         return when (type and InputType.TYPE_MASK_VARIATION) {

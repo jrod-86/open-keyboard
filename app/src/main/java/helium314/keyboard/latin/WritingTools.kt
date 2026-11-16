@@ -171,7 +171,37 @@ object WritingTools {
     @Volatile private var chatInModel: String? = null
 
     /** The model Chat uses: Better writer when it's downloaded (it chats much better), otherwise Quick. */
-    fun chatModel(ctx: Context): Model? = BETTER.takeIf { isReady(ctx, it) } ?: QUICK.takeIf { isReady(ctx, it) }
+    fun chatModel(ctx: Context): Model? {
+        val wanted = if (llmPrefs(ctx).getString(PREF_CHAT_MODEL, BETTER.id) == QUICK.id) QUICK else BETTER
+        return wanted.takeIf { isReady(ctx, it) } ?: listOf(BETTER, QUICK).firstOrNull { isReady(ctx, it) }
+    }
+    private const val PREF_CHAT_MODEL = "open_keyboard_chat_model"
+    /** Chat's own pick: Better (smarter, slower) or Quick (about twice as fast, simpler). */
+    fun chooseChatModel(ctx: Context, m: Model) { llmPrefs(ctx).edit().putString(PREF_CHAT_MODEL, m.id).apply() }
+
+    /**
+     * Loads Chat's model as soon as the screen opens, so the slow part (several seconds, and the phone tidying memory
+     * while 2-3 GB arrive) happens while you're still reading, not when you send (test 199 felt sluggish).
+     */
+    fun warmChat(ctx: Context) {
+        val m = chatModel(ctx) ?: return
+        unloadJob?.cancel()
+        scope.launch {
+            if (!lock.tryLock()) return@launch
+            try {
+                val path = modelFile(ctx, m).absolutePath
+                val e = AiChat.getInferenceEngine(ctx.applicationContext)
+                if (e.state.value is InferenceEngine.State.ModelReady && loadedPath == path) return@launch
+                if (!verified(modelFile(ctx, m), m)) return@launch
+                engine(ctx, m)
+            } catch (e: Throwable) {
+                Log.w(TAG, "chat warm-up failed", e)
+            } finally {
+                lock.unlock()
+                scheduleUnload(ctx, CHAT_KEEP_MS)
+            }
+        }
+    }
 
     /**
      * One turn of the Chat tile. The model keeps the conversation [chatId] in its memory between turns, so only the

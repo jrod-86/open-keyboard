@@ -65,7 +65,7 @@ class ChatActivity : Activity(), Themed {
             return true
         }
 
-        private const val MAX_REPLY_TOKENS = 320
+        private const val MAX_REPLY_TOKENS = 220
         private const val HISTORY_MESSAGES = 12
     }
 
@@ -76,7 +76,7 @@ class ChatActivity : Activity(), Themed {
     private var job: Job? = null
     private lateinit var speaker: ChatSpeaker
     private val messages = ArrayList<Msg>()
-    private var chatId = UUID.randomUUID().toString()
+    private lateinit var personaChip: TextView
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
@@ -110,16 +110,23 @@ class ChatActivity : Activity(), Themed {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, pad / 2) }
 
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(iconButton("☰", "Your chats") { openDrawer() }.apply { setTextColor(t.text) })
         head.addView(UiKit.shinyTitle(this, "💬 Chat"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(iconButton("🙂", "Show or hide the face") { showFace = !showFace; face.visibility = if (showFace) View.VISIBLE else View.GONE })
-        head.addView(iconButton("🗑️", "New chat") { newChat() })
+        head.addView(iconButton("🙂", "Face style") { pickFace() })
+        head.addView(iconButton("➕", "New chat") { newChat() })
         head.addView(ImageThemes.button(this, ImageThemes.KEY_CHAT))
         head.addView(iconButton("ℹ️", "About Chat") { showHelp() })
         root.addView(head)
 
         // the talking face: its mouth follows the voice (Jarrod's idea)
-        face = TalkingFace(this, t.a1, t.a2) { speaker.level() }.apply { visibility = if (showFace) View.VISIBLE else View.GONE }
-        root.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104f)).apply { topMargin = dp(2f) })
+        face = TalkingFace(this, t.a1, t.a2, t.card) { speaker.level() }.apply {
+            visibility = if (showFace) View.VISIBLE else View.GONE
+            style = TalkingFace.Style.entries.firstOrNull { it.name == prefs.getString("face_style", null) } ?: TalkingFace.Style.CARTOON
+            setOnClickListener { pickFace() }
+        }
+        root.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150f)).apply { topMargin = dp(2f) })
+        personaChip = chip("") { changePersonality() }
+        root.addView(personaChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4f) })
 
         // voice controls: read answers out loud, which voice, hands-free talk mode
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4f), 0, dp(6f)) }
@@ -155,19 +162,25 @@ class ChatActivity : Activity(), Themed {
         bar.addView(sendButton, LinearLayout.LayoutParams(dp(48f), dp(48f)).apply { marginStart = dp(8f) })
         root.addView(bar)
 
-        ImageThemes.applyPage(this, root, t)
-        setContentView(root)
-        root.fitAboveKeyboard(includeTop = true)
+        val frame = android.widget.FrameLayout(this)
+        frame.addView(root, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        buildDrawer(frame)
+        ImageThemes.applyPage(this, frame, t)
+        setContentView(frame)
+        frame.fitAboveKeyboard(includeTop = true)
+        personaChip.setPadding(dp(16f), 0, dp(16f), 0)
 
         modelCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         load()
         rebuild()
+        refreshPersonality()
         refreshChips()
         if (talkMode && WritingTools.chatModel(this) != null) input.postDelayed({ listen() }, 300)
     }
 
     override fun onResume() {
         super.onResume()
+        WritingTools.warmChat(applicationContext) // load the model while you read, not when you send
         refreshModelCard()
         refreshChips()
     }
@@ -223,7 +236,7 @@ class ChatActivity : Activity(), Themed {
             updateSendButton()
             val out = withContext(Dispatchers.Default) {
                 runCatching {
-                    WritingTools.chatTurn(applicationContext, chatId, systemPrompt(), history, text, MAX_REPLY_TOKENS) { soFar ->
+                    WritingTools.chatTurn(applicationContext, chat.id, systemPrompt(), history, text, MAX_REPLY_TOKENS) { soFar ->
                         view.post {
                             if (destroyed || finished) return@post
                             val shown = tidy(soFar)
@@ -297,7 +310,7 @@ class ChatActivity : Activity(), Themed {
     /** Small models sometimes add a label, think-tags or markdown: keep just the words. */
     private fun tidy(s: String): String {
         var x = s.replace(Regex("(?s)<think>.*?(</think>|$)"), "")
-        x = x.trim().removePrefix("Assistant:").removePrefix("You:").removePrefix("Buddy:").trim()
+        x = x.trim().removePrefix("Assistant:").removePrefix("You:").trim().let { y -> ChatPersonalities.ALL.fold(y) { acc, p -> acc.removePrefix(p.name + ":") } }.trim()
         x = x.replace("**", "").replace(Regex("(?m)^#+\\s*"), "")
         return x.trim()
     }
@@ -306,11 +319,11 @@ class ChatActivity : Activity(), Themed {
         val now = Date()
         val day = SimpleDateFormat("EEEE d MMMM yyyy", Locale.ENGLISH).format(now)
         val time = SimpleDateFormat("h:mm a", Locale.ENGLISH).format(now)
-        return "You are a friendly chat buddy inside the Open Keyboard app. You are a small AI that runs offline on the user's phone, " +
-            "made for casual conversation and fun. Talk like a warm, upbeat friend texting: keep answers short (one to three sentences) " +
-            "unless the user asks for more, use plain everyday words, no lists, no headings, no markdown, and at most one emoji. " +
-            "Be curious and sometimes ask a question back. You can't go online, look things up or do anything on the phone. " +
-            "If you don't know something, say so honestly instead of making it up. It is $day, $time."
+        val p = personality
+        return "${p.style} You live inside the Open Keyboard app as a small AI that runs offline on the user's phone, made for casual chat and fun. " +
+            "Stay in character the whole time. Keep answers short (one to three sentences) unless the user asks for more, like texting: " +
+            "no lists, no headings, no markdown, at most one emoji. Sometimes ask a question back. You can't go online, look things up or do anything " +
+            "on the phone. If you don't know something, say so (in character) instead of making it up. It is $day, $time."
     }
 
     /** The last few messages, for when the model starts this chat again (it was freed, or writing help used it). */
@@ -322,38 +335,202 @@ class ChatActivity : Activity(), Themed {
         return sb.toString().trimEnd()
     }
 
+    private val personality get() = ChatPersonalities.byId(chat.personality)
+
+    /** ➕ New chat: pick who to talk to first. */
     private fun newChat() {
-        stopAll()
-        messages.clear()
-        chatId = UUID.randomUUID().toString()
-        WritingTools.forgetChat()
-        save()
-        rebuild()
-        toast("New chat started")
+        pickPersonality("Who do you want to chat with?") { p ->
+            stopAll()
+            save()
+            prefs.edit().putString("personality", p.id).apply()
+            openChat(ChatStore.newChat(p.id))
+            toast("New chat with ${p.name}")
+        }
     }
 
-    // ---- saving the chat, so it's still there next time ----
+    /** Changes who you're talking to in this chat (they carry on from what was said). */
+    private fun changePersonality() {
+        pickPersonality("Change personality") { p ->
+            if (p.id == chat.personality) return@pickPersonality
+            stopAll()
+            chat.personality = p.id
+            prefs.edit().putString("personality", p.id).apply()
+            WritingTools.forgetChat() // the model has to hear the new character
+            save()
+            refreshPersonality()
+            toast("Now chatting with ${p.name}")
+        }
+    }
 
-    private fun file() = File(filesDir, "chat/conversation.json")
+    private fun pickPersonality(title: String, onPick: (ChatPersonality) -> Unit) {
+        val all = ChatPersonalities.ALL
+        val labels = all.map { "${it.emoji}  ${it.name}${if (it.cheeky) "  (cheeky)" else ""}\n      ${it.about}" }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels.toTypedArray()) { _, which -> onPick(all[which]) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openChat(c: SavedChat) {
+        stopAll()
+        chat = c
+        messages.clear()
+        c.messages.forEach { (me, text) -> messages.add(Msg(me, text)) }
+        WritingTools.forgetChat()
+        rebuild()
+        refreshPersonality()
+    }
+
+    // ---- saving chats, so they're still there next time (☰ lists them) ----
+
+    private lateinit var chat: SavedChat
 
     private fun load() {
-        runCatching {
-            val f = file()
-            if (!f.exists()) return
-            val o = JSONObject(f.readText())
-            chatId = o.optString("id", chatId)
-            val a = o.getJSONArray("messages")
-            for (i in 0 until a.length()) { val m = a.getJSONObject(i); messages.add(Msg(m.getBoolean("me"), m.getString("text"))) }
-        }.onFailure { Log.w(TAG, "couldn't read the saved chat", it) }
+        val last = prefs.getString("last_chat", null)?.let { ChatStore.load(this, it) }
+        chat = last ?: ChatStore.all(this).firstOrNull() ?: ChatStore.newChat(prefs.getString("personality", "buddy")!!)
+        messages.clear()
+        chat.messages.forEach { (me, text) -> messages.add(Msg(me, text)) }
     }
 
     private fun save() {
-        runCatching {
-            val a = JSONArray()
-            messages.takeLast(200).forEach { a.put(JSONObject().put("me", it.me).put("text", it.text)) }
-            val f = file(); f.parentFile?.mkdirs()
-            f.writeText(JSONObject().put("id", chatId).put("messages", a).toString())
-        }.onFailure { Log.w(TAG, "couldn't save the chat", it) }
+        if (!::chat.isInitialized) return
+        chat.messages.clear()
+        messages.forEach { chat.messages.add(it.me to it.text) }
+        if (chat.title.isEmpty()) chat.title = ChatStore.titleFor(chat.messages)
+        chat.updated = System.currentTimeMillis()
+        ChatStore.save(this, chat)
+        prefs.edit().putString("last_chat", chat.id).apply()
+    }
+
+    // ---- ☰ the side bar of old chats ----
+
+    private lateinit var drawer: LinearLayout
+    private lateinit var scrim: View
+    private lateinit var drawerList: LinearLayout
+    private var drawerOpen = false
+
+    private fun buildDrawer(frame: android.widget.FrameLayout) {
+        scrim = View(this).apply { setBackgroundColor(0x88000000.toInt()); visibility = View.GONE; setOnClickListener { closeDrawer() } }
+        frame.addView(scrim, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        val width = minOf(resources.displayMetrics.widthPixels * 82 / 100, dp(340f))
+        drawer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
+            setBackgroundColor(t.bg)
+            elevation = dp(12f).toFloat()
+            visibility = View.GONE
+            isClickable = true
+        }
+        drawer.addView(TextView(this).apply {
+            text = "Your chats"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); typeface = Typeface.DEFAULT_BOLD; setTextColor(t.text)
+            setPadding(0, 0, 0, dp(10f))
+        })
+        drawer.addView(UiKit.glow(this, "➕  New chat") { closeDrawer(); newChat() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48f)))
+        drawerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10f), 0, 0) }
+        drawer.addView(ScrollView(this).apply { addView(drawerList) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        drawer.addView(TextView(this).apply {
+            text = "Hold a chat to rename or delete it."; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTextColor(t.text); alpha = 0.6f
+            setPadding(0, dp(8f), 0, 0)
+        })
+        frame.addView(drawer, android.widget.FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
+    }
+
+    private fun openDrawer() {
+        hideKeyboard()
+        save()
+        fillDrawer()
+        drawerOpen = true
+        scrim.visibility = View.VISIBLE; scrim.alpha = 0f; scrim.animate().alpha(1f).setDuration(180).start()
+        drawer.visibility = View.VISIBLE
+        drawer.translationX = -drawer.width.toFloat().coerceAtLeast(dp(340f).toFloat())
+        drawer.animate().translationX(0f).setDuration(200).start()
+    }
+
+    private fun closeDrawer() {
+        if (!drawerOpen) return
+        drawerOpen = false
+        scrim.animate().alpha(0f).setDuration(160).withEndAction { scrim.visibility = View.GONE }.start()
+        drawer.animate().translationX(-drawer.width.toFloat()).setDuration(180).withEndAction { drawer.visibility = View.GONE }.start()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (drawerOpen) closeDrawer() else @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
+    private fun fillDrawer() {
+        drawerList.removeAllViews()
+        val chats = ChatStore.all(this)
+        if (chats.isEmpty()) drawerList.addView(TextView(this).apply {
+            text = "No saved chats yet."; setTextColor(t.text); alpha = 0.7f; setPadding(0, dp(8f), 0, 0)
+        })
+        val fmt = SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH)
+        for (c in chats) {
+            val p = ChatPersonalities.byId(c.personality)
+            val current = ::chat.isInitialized && c.id == chat.id
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10f), dp(10f), dp(10f), dp(10f))
+                background = if (current) UiKit.rounded(this@ChatActivity, 14f, t.card, t.a1) else UiKit.rounded(this@ChatActivity, 14f, t.card)
+                setOnClickListener { closeDrawer(); if (!current) { save(); openChat(c) } }
+                setOnLongClickListener { chatMenu(c); true }
+            }
+            row.addView(TextView(this).apply { text = p.emoji; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(0, 0, dp(10f), 0) })
+            val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            texts.addView(TextView(this).apply {
+                text = c.title.ifEmpty { "New chat" }; maxLines = 2; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setTextColor(t.text)
+            })
+            texts.addView(TextView(this).apply {
+                text = "${p.name} · ${fmt.format(Date(c.updated))}"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTextColor(t.text); alpha = 0.6f
+            })
+            row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            drawerList.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6f) })
+        }
+    }
+
+    private fun chatMenu(c: SavedChat) {
+        AlertDialog.Builder(this).setItems(arrayOf("✏️ Rename", "🗑️ Delete")) { _, which ->
+            if (which == 0) {
+                val field = EditText(this).apply { setText(c.title); setSelection(text.length) }
+                AlertDialog.Builder(this).setTitle("Rename chat").setView(field)
+                    .setPositiveButton("Save") { _, _ ->
+                        c.title = field.text.toString().trim().take(60)
+                        if (::chat.isInitialized && c.id == chat.id) chat.title = c.title
+                        ChatStore.save(this, c); fillDrawer()
+                    }.setNegativeButton("Cancel", null).show()
+            } else {
+                AlertDialog.Builder(this).setMessage("Delete this chat?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        ChatStore.delete(this, c.id)
+                        if (::chat.isInitialized && c.id == chat.id) openChat(ChatStore.newChat(c.personality))
+                        fillDrawer()
+                    }.setNegativeButton("Cancel", null).show()
+            }
+        }.show()
+    }
+
+    /** 🙂 the face's look, or no face. */
+    private fun pickFace() {
+        val styles = TalkingFace.Style.entries
+        val labels = styles.map { it.label } + "🚫 No face"
+        val cur = if (!showFace) styles.size else styles.indexOf(face.style)
+        AlertDialog.Builder(this).setTitle("Face")
+            .setSingleChoiceItems(labels.toTypedArray(), cur) { d, which ->
+                if (which == styles.size) { showFace = false; face.visibility = View.GONE }
+                else {
+                    showFace = true; face.visibility = View.VISIBLE
+                    face.style = styles[which]; prefs.edit().putString("face_style", styles[which].name).apply()
+                }
+                d.dismiss()
+            }.setNegativeButton("Close", null).show()
+    }
+
+    /** The "who you're chatting with" chip, and the face's cheeky eyebrows. */
+    private fun refreshPersonality() {
+        val p = personality
+        personaChip.text = "${p.emoji} ${p.name} ▾"
+        face.cheeky = p.cheeky
     }
 
     // ---- views ----
@@ -383,10 +560,23 @@ class ChatActivity : Activity(), Themed {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f); setTextColor(t.text); alpha = 0.85f; setPadding(0, dp(4f), 0, 0)
         })
         val m = WritingTools.chatModel(this@ChatActivity)
-        if (m != null) addView(TextView(this@ChatActivity).apply {
-            text = "Using ${m.label} (${if (m === WritingTools.BETTER) "Qwen3 4B" else "Qwen2.5 1.5B, quicker but simpler"})"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTextColor(t.text); alpha = 0.6f; setPadding(0, dp(6f), 0, 0)
-        })
+        if (m != null) {
+            val other = if (m === WritingTools.BETTER) WritingTools.QUICK else WritingTools.BETTER
+            val canSwitch = WritingTools.isReady(this@ChatActivity, other)
+            addView(TextView(this@ChatActivity).apply {
+                text = (if (m === WritingTools.BETTER) "🧠 Using Better (Qwen3 4B): smarter, slower" else "⚡ Using Quick (Qwen2.5 1.5B): about twice as fast, simpler") +
+                    (if (canSwitch) "\nTap to switch to ${if (other === WritingTools.BETTER) "🧠 Better" else "⚡ Quick"}" else "")
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f); setTextColor(t.text); alpha = 0.7f; setPadding(0, dp(6f), 0, 0)
+                if (canSwitch) setOnClickListener {
+                    if (job?.isActive == true) return@setOnClickListener
+                    WritingTools.chooseChatModel(this@ChatActivity, other)
+                    WritingTools.forgetChat()
+                    rebuild()
+                    WritingTools.warmChat(applicationContext)
+                    toast(if (other === WritingTools.BETTER) "Switched to Better" else "Switched to Quick")
+                }
+            })
+        }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10f) }
     }
 
@@ -563,8 +753,10 @@ class ChatActivity : Activity(), Themed {
                 "• Type, or tap the keyboard's mic and talk.\n" +
                 "• 🔊 Talks: reads its answers out loud. Tap the voice to pick one from the TTS tile, including voices you made.\n" +
                 "• 🎙️ Talk mode: hands-free. Talk, then say \"send\". It answers out loud, then listens again.\n" +
-                "• 🙂 shows or hides the face. Its mouth moves with the voice while it talks.\n" +
-                "• Long-press a message to copy it or hear it again. 🗑️ starts a new chat.\n\n" +
+                "• 🙂 (or tap the face) picks its look: Cartoon, Matrix, Robot screen or Neon, or no face. Its mouth moves with the voice.\n" +
+                "• Tap the name under the face to change personality: 11 friendly ones and 4 cheeky ones (Gremlin, Grumpy, Roaster, Diva).\n" +
+                "• ➕ starts a new chat. ☰ shows your old chats (hold one to rename or delete it).\n" +
+                "• Long-press a message to copy it or hear it again.\n\n" +
                 "It uses Better writer (Qwen3 4B) if you have it, otherwise Quick. The model and voices are only kept in memory while you use them.")
             .setPositiveButton("OK", null)
             .show()
