@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -269,10 +270,18 @@ class ChatActivity : Activity(), Themed {
         job = scope.launch {
             updateSendButton()
             var attempt = 0
+            // Test 211: a long story was written and spoken at once and the voice couldn't keep up (they share the
+            // phone's processor). Writing is far quicker than talking, so while two sentences are already waiting to
+            // be spoken, the AI pauses and lets the voice have the processor. The words then appear about as fast
+            // as they're said.
+            val pace: (suspend () -> Unit)? = if (voice == null) null else ({
+                var waited = 0
+                while (speaker.backlog() >= 2 && waited < 30_000 && !finished && !destroyed) { delay(40); waited += 40 }
+            })
             suspend fun ask(message: String, hist: String) = withContext(Dispatchers.Default) {
                 val mine = ++attempt
                 runCatching {
-                    WritingTools.chatTurn(applicationContext, chat.id, systemPrompt(), hist, message, MAX_REPLY_TOKENS) { soFar ->
+                    WritingTools.chatTurn(applicationContext, chat.id, systemPrompt(), hist, message, MAX_REPLY_TOKENS, pace) { soFar ->
                         view.post {
                             if (destroyed || finished || mine != attempt) return@post
                             val shown = tidy(soFar)

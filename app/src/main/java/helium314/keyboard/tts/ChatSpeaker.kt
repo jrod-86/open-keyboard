@@ -64,6 +64,9 @@ class ChatSpeaker(context: Context) {
     /** How loud the voice is right now (0..1), following what the speaker is actually playing, for the talking face. */
     fun level(): Float = session?.level() ?: 0f
 
+    /** Sentences waiting for their speech to be made (not counting the one being made now). */
+    fun backlog(): Int = session?.sentences?.count { it !== END } ?: 0
+
     val speaking get() = session?.let { !it.stopped && !it.finishedPlaying } ?: false
 
     /** Starts a new reply in [voice]; anything still being said stops. */

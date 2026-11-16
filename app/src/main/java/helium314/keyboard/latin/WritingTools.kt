@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -214,7 +215,7 @@ object WritingTools {
      * unloaded, the chat starts again from [system], which then holds the earlier messages ([history]).
      */
     suspend fun chatTurn(ctx: Context, chatId: String, system: String, history: String, message: String, maxTokens: Int,
-                         onPiece: (String) -> Unit): String? {
+                         pace: (suspend () -> Unit)? = null, onPiece: (String) -> Unit): String? {
         unloadJob?.cancel()
         try {
             return lock.withLock {
@@ -231,7 +232,11 @@ object WritingTools {
                 }
                 val out = StringBuilder()
                 var pieces = 0
-                engine.sendUserPrompt(message, maxTokens).collect { pieces++; out.append(it); onPiece(out.toString()) }
+                // no buffer: when [pace] waits, the model really stops writing (by default it ran 64 words ahead)
+                engine.sendUserPrompt(message, maxTokens).buffer(0).collect {
+                    pieces++; out.append(it); onPiece(out.toString())
+                    pace?.invoke()
+                }
                 // finished by itself (not cut off at the length limit): the model now holds this conversation properly
                 if (pieces < maxTokens - 2) chatInModel = chatId
                 out.toString()
