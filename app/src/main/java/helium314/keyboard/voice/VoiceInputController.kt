@@ -79,21 +79,38 @@ class VoiceInputController(
         runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
         hasFocus = false
         Log.i(TAG, "media handed back")
-        if (mediaWasPlaying) main.postDelayed(nudgePlayer, 1000)
+        if (mediaWasPlaying) { watchChecks = 0; presses = 0; wasActive = false; main.postDelayed(nudgePlayer, WATCH_STEP_MS) }
     }
 
-    /** Some players don't start again by themselves: if it was playing before the mic, press play. */
-    private val nudgePlayer = Runnable {
+    private var watchChecks = 0
+    private var presses = 0
+    private var wasActive = false
+
+    /**
+     * Open Keyboard: watches the media for a few seconds after the mic closes and presses play only when it isn't
+     * playing. Test 215 always pressed play, and some players take "play" as play/pause, so media that had already
+     * carried on by itself stopped again (Jarrod, 17 Nov). Before that, a player that started and then stopped a moment
+     * later was never pressed. Now: if it's not playing after 1.5 s, or it stops again within 5 s, press play (at most twice).
+     */
+    private val nudgePlayer: Runnable = Runnable {
         if (running || hasFocus || !mediaWasPlaying) return@Runnable
-        mediaWasPlaying = false
-        // Open Keyboard: always press play (it never pauses, unlike play/pause). The "is music playing" check said
-        // yes while the podcast was still paused (17 Nov logs), so it was never pressed and Jarrod had to restart it.
-        Log.i(TAG, "pressing play so the media carries on (music active: ${audioManager.isMusicActive})")
-        runCatching {
-            val now = android.os.SystemClock.uptimeMillis()
-            for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
-                audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(now, now, action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY, 0))
-        }
+        val active = audioManager.isMusicActive
+        watchChecks++
+        val elapsed = watchChecks * WATCH_STEP_MS
+        val stoppedAgain = wasActive && !active
+        val neverStarted = !active && !wasActive && elapsed >= 1500
+        if (active != wasActive) Log.i(TAG, "media after mic: playing=$active at ${elapsed} ms")
+        if ((stoppedAgain || neverStarted) && presses < 2) {
+            presses++
+            Log.i(TAG, "media not playing ${if (stoppedAgain) "(stopped again)" else "(didn't start)"}, pressing play")
+            runCatching {
+                val now = android.os.SystemClock.uptimeMillis()
+                for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
+                    audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(now, now, action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+            }
+            wasActive = true // give the player a moment before judging again
+        } else wasActive = active
+        if (elapsed < WATCH_FOR_MS) main.postDelayed(nudgePlayer, WATCH_STEP_MS) else mediaWasPlaying = false
     }
 
     @Volatile private var running = false
@@ -617,6 +634,9 @@ class VoiceInputController(
         private const val SILENCE_TIMEOUT_MS = 30_000L
         /** Mic closed and off chime played (about 260 ms) before other sound carries on. */
         private const val HAND_BACK_DELAY_MS = 600L
+        /** After the mic, check the media every half second for 5 seconds. */
+        private const val WATCH_STEP_MS = 500L
+        private const val WATCH_FOR_MS = 5000L
         /** Only get voice ready ahead of time for people who used it in the last week. */
         private const val PREPARE_IF_USED_WITHIN_MS = 7 * 24 * 3600_000L
     }
