@@ -13,66 +13,26 @@ enum class VoiceModel(
     val approxMb: Int,
     val license: String,
 ) {
-    /** Small streaming model that types words while you speak. */
-    STREAMING_EN(
-        "Live English (streaming Zipformer)",
-        "Small and fast. Voice typing needs one of the live models.",
-        "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
-        listOf(
-            "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-            "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-            "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-            "tokens.txt",
-        ),
-        73, "Apache-2.0",
-    ),
-
     /**
-     * Open Keyboard: bigger live models (test 184). Tested in the cloud with truck noise mixed into
-     * speech, words wrong in the live text at 0 dB: small Zipformer 38%, FastConformer 19%, Nemotron 17%.
+     * Shows the words while you speak. Open Keyboard (test 184/185): chosen after cloud tests with
+     * truck noise mixed into speech, live words wrong at 0 dB: small Zipformer 38%, NVIDIA
+     * FastConformer 19%, Nemotron 17%. Writes capitals and punctuation itself.
      */
-    LIVE_FASTCONFORMER(
-        "Live English, better (NVIDIA FastConformer)",
-        "Live words much closer to right in noise than the small model. Credit: NVIDIA, licensed CC-BY-4.0.",
-        "csukuangfj/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8",
-        listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
-        131, "CC-BY-4.0",
-    ),
-
     LIVE_NEMOTRON(
-        "Live English, best (NVIDIA Nemotron streaming 0.6B)",
-        "Most accurate live words, with capitals and punctuation as you speak. Uses more battery. " +
-                "Credit: NVIDIA, NVIDIA Open Model License.",
+        "Live words (NVIDIA Nemotron)",
+        "Shows your words as you speak, with capitals and punctuation. Credit: NVIDIA, NVIDIA Open Model License.",
         "csukuangfj/sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14",
         listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
         633, "NVIDIA Open Model License",
     ),
 
-    /** Accurate English model used to re-check each finished sentence. Default accuracy model. */
+    /** Re-checks each sentence when you pause and makes it accurate. */
     PARAKEET_EN(
-        "NVIDIA Parakeet TDT 0.6B v2",
-        "Most accurate English model, adds punctuation and capitals. Credit: NVIDIA, licensed CC-BY-4.0.",
+        "Clean-up (NVIDIA Parakeet)",
+        "When you pause, listens to the sentence again and fixes any wrong words. Credit: NVIDIA, licensed CC-BY-4.0.",
         "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
         listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
         661, "CC-BY-4.0",
-    ),
-
-    /** Alternative accuracy model, for comparing against Parakeet. */
-    WHISPER_SMALL_EN(
-        "OpenAI Whisper small.en",
-        "Alternative accurate English model, adds punctuation and capitals.",
-        "csukuangfj/sherpa-onnx-whisper-small.en",
-        listOf("small.en-encoder.int8.onnx", "small.en-decoder.int8.onnx", "small.en-tokens.txt"),
-        375, "MIT",
-    ),
-
-    /** Largest model: best with accents and noise, but slower and a big download. */
-    WHISPER_TURBO(
-        "OpenAI Whisper large-v3-turbo",
-        "Best with strong accents and background noise. Slower and a large download.",
-        "csukuangfj/sherpa-onnx-whisper-turbo",
-        listOf("turbo-encoder.int8.onnx", "turbo-decoder.int8.onnx", "turbo-tokens.txt"),
-        1036, "MIT",
     );
 
     fun dir(context: Context) = File(context.filesDir, "voice-models/$name")
@@ -81,43 +41,30 @@ enum class VoiceModel(
     fun isInstalled(context: Context) = files.all { file(context, it).let { f -> f.isFile && f.length() > 0 } }
 
     companion object {
-        /** Models that can re-check a finished sentence. */
-        val accuracyModels = listOf(PARAKEET_EN, WHISPER_SMALL_EN, WHISPER_TURBO)
-        /** Models that show the words while you speak, best first. */
-        val liveModels = listOf(LIVE_NEMOTRON, LIVE_FASTCONFORMER, STREAMING_EN)
+        /** Folders of models earlier test builds offered, removed to free space (Jarrod, 16 Nov: keep only the two). */
+        private val oldModelFolders = listOf("STREAMING_EN", "LIVE_FASTCONFORMER", "WHISPER_SMALL_EN", "WHISPER_TURBO")
+
+        /** Deletes the models older builds could download. */
+        fun removeOldModels(context: Context) {
+            val root = File(context.filesDir, "voice-models")
+            for (name in oldModelFolders) {
+                File(root, name).takeIf { it.exists() }?.deleteRecursively()
+            }
+        }
     }
 }
 
 /** User choices for voice typing, kept in their own small preferences file. */
 object VoicePrefs {
     private const val FILE = "voice_typing"
-    private const val KEY_ACCURACY_MODEL = "accuracy_model"
-    const val NONE = "NONE"
 
     private fun prefs(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    /** The accuracy model to use, or null to keep the live text as it is. */
-    fun accuracyModel(context: Context): VoiceModel? {
-        val stored = prefs(context).getString(KEY_ACCURACY_MODEL, VoiceModel.PARAKEET_EN.name)
-        return VoiceModel.entries.firstOrNull { it.name == stored && it in VoiceModel.accuracyModels }
-    }
+    /** The clean-up model, or null if it isn't downloaded yet. */
+    fun accuracyModel(context: Context): VoiceModel? = VoiceModel.PARAKEET_EN.takeIf { it.isInstalled(context) }
 
-    fun setAccuracyModel(context: Context, model: VoiceModel?) {
-        prefs(context).edit().putString(KEY_ACCURACY_MODEL, model?.name ?: NONE).apply()
-    }
-
-    /**
-     * The live model to use: the one picked in settings if downloaded, otherwise the best one
-     * downloaded, or null if none is.
-     */
-    fun liveModel(context: Context): VoiceModel? {
-        val stored = prefs(context).getString("live_model", null)
-        VoiceModel.liveModels.firstOrNull { it.name == stored && it.isInstalled(context) }?.let { return it }
-        return VoiceModel.liveModels.firstOrNull { it.isInstalled(context) }
-    }
-    fun pickedLiveModel(context: Context): VoiceModel? =
-        prefs(context).getString("live_model", null)?.let { n -> VoiceModel.liveModels.firstOrNull { it.name == n } }
-    fun setLiveModel(context: Context, model: VoiceModel) = prefs(context).edit().putString("live_model", model.name).apply()
+    /** The live model, or null if it isn't downloaded yet. */
+    fun liveModel(context: Context): VoiceModel? = VoiceModel.LIVE_NEMOTRON.takeIf { it.isInstalled(context) }
 
     /** Clean up background noise before recognition. On by default. */
     fun noiseReduction(context: Context) = prefs(context).getBoolean("noise_reduction", true)

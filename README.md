@@ -60,13 +60,11 @@ Speech models are not bundled; the app downloads them when you ask it to:
 
 | Model | Licence | Source |
 | --- | --- | --- |
-| Streaming Zipformer English (icefall) | Apache-2.0 | https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26 |
-| NVIDIA Parakeet TDT 0.6B v2 | CC-BY-4.0, credit: NVIDIA | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2 |
-| OpenAI Whisper small.en | MIT | https://github.com/openai/whisper |
-| OpenAI Whisper large-v3-turbo | MIT | https://github.com/openai/whisper |
+| NVIDIA Nemotron Speech Streaming EN 0.6B (live words) | NVIDIA Open Model License, credit: NVIDIA | https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b |
+| NVIDIA Parakeet TDT 0.6B v2 (clean-up) | CC-BY-4.0, credit: NVIDIA | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2 |
 
 ## Credits
 
 Huge thanks to the HeliBoard, OpenBoard and AOSP keyboard contributors, the k2-fsa
-sherpa-onnx team, NVIDIA for Parakeet, OpenAI for Whisper, and woheller69 for Whisper+,
+sherpa-onnx team, NVIDIA for Parakeet and Nemotron, OpenAI for Whisper, and woheller69 for Whisper+,
 which the first test build used. The original HeliBoard README is kept in `HELIBOARD_README.md`.

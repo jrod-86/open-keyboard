@@ -9,7 +9,6 @@ import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
-import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
@@ -35,7 +34,7 @@ object VoiceEngine {
     @Volatile private var online: OnlineRecognizer? = null
     @Volatile private var onlineModel: VoiceModel? = null
     /** Whether the live model in use writes capitals and punctuation itself. */
-    val liveWritesCapitals: Boolean get() = onlineModel == VoiceModel.LIVE_NEMOTRON
+    val liveWritesCapitals: Boolean get() = true
     @Volatile private var offline: OfflineRecognizer? = null
     @Volatile private var offlineModel: VoiceModel? = null
 
@@ -61,7 +60,7 @@ object VoiceEngine {
 
     @Synchronized
     fun onlineRecognizer(context: Context): OnlineRecognizer {
-        val m = VoicePrefs.liveModel(context) ?: VoiceModel.STREAMING_EN
+        val m = VoicePrefs.liveModel(context) ?: throw IllegalStateException("live model not downloaded")
         if (m == onlineModel) online?.let { return it }
         online?.release(); online = null; onlineModel = null
         val f = { name: String -> m.file(context, name).absolutePath }
@@ -71,7 +70,7 @@ object VoiceEngine {
             }
             tokens = f(m.files[3])
             // the big model needs more of the phone's cores to keep up with speech
-            numThreads = if (m == VoiceModel.LIVE_NEMOTRON) 4 else 2
+            numThreads = 4
         }
         Log.i("VoiceEngine", "live model: ${m.name}")
         val config = OnlineRecognizerConfig().apply {
@@ -106,13 +105,6 @@ object VoiceEngine {
                     }
                     tokens = f(wanted.files[3])
                     modelType = "nemo_transducer"
-                }
-                VoiceModel.WHISPER_SMALL_EN, VoiceModel.WHISPER_TURBO -> {
-                    whisper = OfflineWhisperModelConfig().apply {
-                        encoder = f(wanted.files[0]); decoder = f(wanted.files[1])
-                        language = "en"; task = "transcribe"
-                    }
-                    tokens = f(wanted.files[2])
                 }
                 else -> return null
             }
