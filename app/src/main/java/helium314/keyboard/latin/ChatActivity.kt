@@ -56,23 +56,28 @@ class ChatActivity : Activity(), Themed {
         private const val TAG = "Chat"
         /** Put on the message box: smart compose leaves it alone, and the keyboard knows when to start the mic. */
         const val CHAT_OPTION = "io.github.jrod86.openkeyboard.chat"
-        /** Chat runs in its own process (test 201), so "start the mic" travels to the keyboard in the box's options, with a time. */
-        private const val LISTEN = ";listen="
-        @Volatile private var lastListen = ""
-
-        /** Called when the keyboard opens on a field: true once, for Chat's box in talk mode, to start the mic. */
+        /** Called when the keyboard opens on a field: true once, for Chat's box just after Hands-free asked for the mic. */
         fun takeAutoMic(editorInfo: EditorInfo?): Boolean {
-            val opts = editorInfo?.privateImeOptions ?: return false
-            if (!opts.startsWith(CHAT_OPTION + LISTEN)) return false
-            val stamp = opts.substringAfter(LISTEN)
-            val at = stamp.toLongOrNull() ?: return false
-            // only once per request, and only right after it was made
-            if (stamp == lastListen || System.currentTimeMillis() - at > 5000) return false
-            lastListen = stamp
+            if (!isChatBox(editorInfo)) return false
+            val asked = listenAsked
+            if (asked == 0L || System.currentTimeMillis() - asked > 5000) return false
+            listenAsked = 0L
             return true
         }
 
         private const val MAX_REPLY_TOKENS = 220
+        /** Hands-free on a new chat: they say hello first, then the mic opens (Jarrod, test 205). */
+        private const val GREETING = "(The user has just opened the chat and will talk to you out loud. Say hello and introduce " +
+            "yourself in your own style, in one or two short sentences, and ask them something.)"
+
+        /** Sent to the keyboard (in the main process) to start the mic on Chat's box. */
+        const val LISTEN_ACTION = "io.github.jrod86.openkeyboard.CHAT_LISTEN"
+        @Volatile private var listenAsked = 0L
+
+        /** Keyboard side: Chat asked for the mic (Hands-free on). */
+        fun askListen() { listenAsked = System.currentTimeMillis() }
+
+        fun isChatBox(editorInfo: EditorInfo?) = editorInfo?.privateImeOptions?.startsWith(CHAT_OPTION) == true
         private const val HISTORY_MESSAGES = 12
     }
 
@@ -233,17 +238,20 @@ class ChatActivity : Activity(), Themed {
 
     // ---- the conversation ----
 
-    private fun send() {
+    /** Sends what's in the box; with [greeting], nothing is sent and they say hello and who they are instead. */
+    private fun send(greeting: Boolean = false) {
         if (job?.isActive == true) return
-        val text = input.text.toString().trim()
+        val text = if (greeting) GREETING else input.text.toString().trim()
         if (text.isEmpty()) return
         if (WritingTools.chatModel(this) == null) { toast("Download a model first (below)"); refreshModelCard(); scrollDown(); return }
         speaker.stop()
-        input.setText("")
+        if (!greeting) input.setText("")
         // the earlier messages, in case the model has to start this chat again
         val history = historyText()
-        messages.add(Msg(true, text))
-        list.addView(bubble(messages.last()))
+        if (!greeting) {
+            messages.add(Msg(true, text))
+            list.addView(bubble(messages.last()))
+        }
         val reply = Msg(false, "")
         val view = bubble(reply, thinking = true)
         // sent while the AI is still loading: say so, rather than a "…" that looks stuck (Jarrod, test 202)
@@ -371,6 +379,7 @@ class ChatActivity : Activity(), Themed {
             prefs.edit().putString("personality", p.id).apply()
             openChat(ChatStore.newChat(p.id))
             toast("New chat with ${p.name}")
+            if (talkMode) send(greeting = true) // Hands-free: they say hello, then the mic opens
         }
     }
 
@@ -738,25 +747,33 @@ class ChatActivity : Activity(), Themed {
         talkMode = !talkMode
         if (talkMode) {
             if (currentVoice() != null) speakOn = true
-            toast("Talk mode on: talk, then say \"send\". It answers, then listens again. Tap again to stop.")
-            if (job?.isActive != true && !speaker.speaking) listen()
+            toast("Hands-free on: talk, then say \"send\". It answers, then listens again. Tap again to stop.")
+            when {
+                job?.isActive == true || speaker.speaking -> {} // listens once it has finished answering
+                messages.isEmpty() && WritingTools.chatModel(this) != null -> send(greeting = true) // hello first, then the mic
+                else -> listen()
+            }
         } else {
-            input.privateImeOptions = CHAT_OPTION
             hideKeyboard() // stops the mic
         }
         refreshChips()
     }
 
-    /** Opens the keyboard on the message box with the mic already listening. */
+    /**
+     * Opens the keyboard on the message box with the mic listening. Test 205 changed the box's options and asked for the
+     * keyboard, but the phone didn't show it, so the mic never started. Now Chat asks the keyboard directly: it shows
+     * itself on the box if needed and starts the mic.
+     */
     private fun listen() {
-        if (destroyed || !visible || WritingTools.chatModel(this) == null) return
+        if (destroyed || !visible || !talkMode || WritingTools.chatModel(this) == null) return
         input.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        // the mic starts when the keyboard opens on the box with a fresh "listen" stamp, so close it first if it's up
-        imm.hideSoftInputFromWindow(input.windowToken, 0)
-        input.privateImeOptions = CHAT_OPTION + LISTEN + System.currentTimeMillis()
-        imm.restartInput(input)
-        input.postDelayed({ if (!destroyed) { input.requestFocus(); imm.showSoftInput(input, 0) } }, 250)
+        imm.showSoftInput(input, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 30) runCatching { window.insetsController?.show(android.view.WindowInsets.Type.ime()) }
+        input.postDelayed({
+            if (destroyed || !talkMode) return@postDelayed
+            sendBroadcast(Intent(LISTEN_ACTION).setPackage(packageName))
+        }, 150)
     }
 
     private fun hideKeyboard() {

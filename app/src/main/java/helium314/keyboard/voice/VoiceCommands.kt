@@ -20,6 +20,14 @@ object VoiceCommands {
         return actions[plain]
     }
 
+    /** "…, send." / "… send it" at the very end of what was said (Chat's Hands-free: say send to send). */
+    private val trailingSend = Regex("(?i)[\\s,.!?;:-]*\\b(?:and |now )?send(?: it| that| message| the message| now)?[\\s.!?]*$")
+
+    fun endsWithSend(sentence: String) = trailingSend.containsMatchIn(sentence)
+
+    /** What was said, without the "send" on the end. */
+    fun withoutSend(sentence: String) = trailingSend.replace(sentence, "").trim()
+
     // longest phrases first so "exclamation mark" wins over a shorter match
     private val marks = listOf(
         "new paragraph" to "\n\n", "next paragraph" to "\n\n", "new lines" to "\n", "new line" to "\n", "next line" to "\n",
