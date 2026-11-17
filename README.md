@@ -12,10 +12,11 @@ the catalog.
 To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in `catalog.json`.
 
 ## Cheeky Dog - Test
-Two transparent animated WebPs: good-morning coffee toast (001) and happy hello (002).
-Each is 512 x 512, 72 frames, three seconds. 001 is user-approved; 002 completed
-the delegated agent-review workflow and is offered for user phone testing before
-expanding the pack. CC0 was explicitly authorized by jrod.
+Three transparent animated WebPs: good-morning coffee toast (001), happy hello
+(002), and can't stop laughing (003). Each is 512 x 512, 72 frames, three seconds.
+003 completed technical checks and agent visual review with human-assisted
+recovery; it is now offered for user phone testing, not claimed as an unassisted
+autonomy success. CC0 was explicitly authorized by jrod.
 Version 2 uses cheeky-dog-pilot-v2.zip to avoid stale ZIP caches; version 1 is retained.
 Already installed? Remove only Cheeky Dog - Test from Your stickers, reopen the
 store, and tap Get again. Installed packs do not update automatically yet.
@@ -25,6 +26,8 @@ the keyboard fetches and caches the matching GIF when needed. Reinstall the pack
 to save the new alternative URLs. The two WebP originals and ZIP are unchanged.
 GIF uses binary transparency, unlike WebP's soft alpha. Each GIF is 512 x 512,
 72 frames, three seconds, looping. No APK rebuild is required.
+Version 4 adds 003 and its matching Messenger GIF; the ZIP now contains three
+WebPs. The 001/002 WebPs and their GIF alternatives remain byte-identical.
 
 ## Yellow Moods (animated)
 65 animated yellow emoji face stickers (animated WebP) made by jrod for Open Keyboard. CC0 (public domain).
