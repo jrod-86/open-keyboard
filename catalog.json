@@ -42,8 +42,9 @@
    "featured": true,
    "icon": "cheeky-dog-pilot-icon.png",
    "zip": "cheeky-dog-pilot-v2.zip",
+   "alt": "cheeky-dog-pilot-alt/",
    "size": 6378679,
-   "version": 2
+   "version": 3
   }
  ]
 }

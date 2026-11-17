@@ -19,8 +19,12 @@ expanding the pack. CC0 was explicitly authorized by jrod.
 Version 2 uses cheeky-dog-pilot-v2.zip to avoid stale ZIP caches; version 1 is retained.
 Already installed? Remove only Cheeky Dog - Test from Your stickers, reopen the
 store, and tap Get again. Installed packs do not update automatically yet.
-No GIF alternative is included in this initial WebP test; some receiving apps may
-flatten animated WebP. No APK rebuild is required to load the updated catalogue.
+Version 3 adds transparent animated GIF copies in cheeky-dog-pilot-alt/ for
+Messenger and other apps that flatten animated WebP. Like the cat/yellow packs,
+the keyboard fetches and caches the matching GIF when needed. Reinstall the pack
+to save the new alternative URLs. The two WebP originals and ZIP are unchanged.
+GIF uses binary transparency, unlike WebP's soft alpha. Each GIF is 512 x 512,
+72 frames, three seconds, looping. No APK rebuild is required.
 
 ## Yellow Moods (animated)
 65 animated yellow emoji face stickers (animated WebP) made by jrod for Open Keyboard. CC0 (public domain).
