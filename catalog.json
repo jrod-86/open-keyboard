@@ -30,6 +30,20 @@
    "alt": "tuxedo-cat-animated-alt/",
    "size": 49518108,
    "version": 3
+  },
+  {
+   "id": "cheeky-dog-pilot",
+   "name": "Cheeky Dog - Test",
+   "author": "jrod",
+   "license": "CC0",
+   "source": "https://github.com/jrod-86/open-keyboard",
+   "credit": "",
+   "count": 1,
+   "featured": true,
+   "icon": "cheeky-dog-pilot-icon.png",
+   "zip": "cheeky-dog-pilot.zip",
+   "size": 3215846,
+   "version": 1
   }
  ]
 }
