@@ -12,9 +12,13 @@ the catalog.
 To add a pack: add a zip of PNG/GIF/WebP pictures, a 128 px icon and an entry in `catalog.json`.
 
 ## Cheeky Dog - Test
-One user-approved transparent animated WebP: good-morning coffee toast.
-512 x 512, 72 frames, three seconds. Published as a separate pilot for phone testing
-before expanding the pack. CC0 was explicitly authorized by jrod.
+Two transparent animated WebPs: good-morning coffee toast (001) and happy hello (002).
+Each is 512 x 512, 72 frames, three seconds. 001 is user-approved; 002 completed
+the delegated agent-review workflow and is offered for user phone testing before
+expanding the pack. CC0 was explicitly authorized by jrod.
+Version 2 uses cheeky-dog-pilot-v2.zip to avoid stale ZIP caches; version 1 is retained.
+Already installed? Remove only Cheeky Dog - Test from Your stickers, reopen the
+store, and tap Get again. Installed packs do not update automatically yet.
 No GIF alternative is included in this initial WebP test; some receiving apps may
 flatten animated WebP. No APK rebuild is required to load the updated catalogue.
 
