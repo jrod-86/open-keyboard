@@ -24,6 +24,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Test sticker sharing policy
+        run: ./gradlew testRunTestsUnitTest --tests helium314.keyboard.media.StickerSharePolicyTest
+
       - name: Build with Gradle
         run: ./gradlew assembleDebug
 

@@ -194,14 +194,14 @@ object MediaSender {
             ?.firstOrNull { it.substringBefore('=') == file.nameWithoutExtension }?.substringAfter('=')
     }.getOrNull()
 
-    private val gifApps = setOf("com.facebook.orca", "com.facebook.mlite", "com.facebook.katana", "com.instagram.android",
-        "com.instagram.barcelona", "com.snapchat.android", "com.discord")
-
     private fun prefersGif(ime: InputMethodService): Boolean {
         val ei = ime.currentInputEditorInfo ?: return false
-        if (ei.packageName in gifApps) return true
         val accepted = EditorInfoCompat.getContentMimeTypes(ei)
-        return accepted.none { ClipDescription.compareMimeTypes("image/webp", it) } && accepted.any { ClipDescription.compareMimeTypes("image/gif", it) }
+        return StickerSharePolicy.prefersGif(
+            ei.packageName,
+            accepted.any { ClipDescription.compareMimeTypes("image/webp", it) },
+            accepted.any { ClipDescription.compareMimeTypes("image/gif", it) },
+        )
     }
 
     private fun mediaDir(ctx: Context) = File(ctx.cacheDir, "media").apply {
