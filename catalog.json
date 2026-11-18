@@ -1,50 +1,65 @@
 {
- "version": 1,
- "packs": [
-  {
-   "id": "yellow-moods",
-   "name": "Yellow Moods",
-   "author": "jrod",
-   "license": "CC0",
-   "source": "https://github.com/jrod-86/open-keyboard",
-   "credit": "",
-   "count": 65,
-   "featured": true,
-   "icon": "yellow-moods-icon.png",
-   "zip": "yellow-moods.zip",
-   "alt": "yellow-moods-alt/",
-   "size": 41008605,
-   "version": 1
-  },
-  {
-   "id": "tuxedo-cat-animated",
-   "name": "Tuxedo Cat",
-   "author": "jrod",
-   "license": "CC0",
-   "source": "https://github.com/jrod-86/open-keyboard",
-   "credit": "",
-   "count": 64,
-   "featured": true,
-   "icon": "tuxedo-cat-animated-icon.png",
-   "zip": "tuxedo-cat-animated.zip",
-   "alt": "tuxedo-cat-animated-alt/",
-   "size": 49518108,
-   "version": 3
-  },
-  {
-   "id": "cheeky-dog-pilot",
-   "name": "Cheeky Dog - Test",
-   "author": "jrod",
-   "license": "CC0",
-   "source": "https://github.com/jrod-86/open-keyboard",
-   "credit": "",
-   "count": 3,
-   "featured": true,
-   "icon": "cheeky-dog-pilot-icon.png",
-   "zip": "cheeky-dog-pilot-v4.zip",
-   "alt": "cheeky-dog-pilot-alt/",
-   "size": 9941924,
-   "version": 4
-  }
- ]
+  "version": 1,
+  "packs": [
+    {
+      "id": "yellow-moods",
+      "name": "Yellow Moods",
+      "author": "jrod",
+      "license": "CC0",
+      "source": "https://github.com/jrod-86/open-keyboard",
+      "credit": "",
+      "count": 65,
+      "featured": true,
+      "icon": "yellow-moods-icon.png",
+      "zip": "yellow-moods.zip",
+      "alt": "yellow-moods-alt/",
+      "size": 41008605,
+      "version": 1
+    },
+    {
+      "id": "tuxedo-cat-animated",
+      "name": "Tuxedo Cat",
+      "author": "jrod",
+      "license": "CC0",
+      "source": "https://github.com/jrod-86/open-keyboard",
+      "credit": "",
+      "count": 64,
+      "featured": true,
+      "icon": "tuxedo-cat-animated-icon.png",
+      "zip": "tuxedo-cat-animated.zip",
+      "alt": "tuxedo-cat-animated-alt/",
+      "size": 49518108,
+      "version": 3
+    },
+    {
+      "id": "cheeky-dog-v2-part-1",
+      "name": "Cheeky Dog v2 - Part 1",
+      "author": "jrod",
+      "license": "CC0",
+      "source": "https://github.com/jrod-86/open-keyboard",
+      "credit": "",
+      "count": 30,
+      "featured": true,
+      "icon": "cheeky-dog-pilot-icon.png",
+      "zip": "cheeky-dog-v2-part-1-first55.zip",
+      "alt": "cheeky-dog-v2-part-1-first55-alt/",
+      "size": 90381749,
+      "version": 1
+    },
+    {
+      "id": "cheeky-dog-v2-part-2",
+      "name": "Cheeky Dog v2 - Part 2",
+      "author": "jrod",
+      "license": "CC0",
+      "source": "https://github.com/jrod-86/open-keyboard",
+      "credit": "",
+      "count": 25,
+      "featured": true,
+      "icon": "cheeky-dog-pilot-icon.png",
+      "zip": "cheeky-dog-v2-part-2-first55.zip",
+      "alt": "cheeky-dog-v2-part-2-first55-alt/",
+      "size": 75268550,
+      "version": 1
+    }
+  ]
 }
