@@ -115,8 +115,9 @@ object SlashCommands {
     /** The chip for the suggestion bar, or null if no command is being typed. */
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         if (!Plugins.isOn(ime, "slash")) return null
-        val ic = ime.currentInputConnection ?: return null
-        val match = match(ic.getTextBeforeCursor(200, 0), ime) ?: return null
+        if (ime.currentInputConnection == null) return null
+        // Open Keyboard: runs after every key press; the keyboard's own copy of the text avoids asking the app
+        val match = match(ime.mInputLogic.mConnection.getTextBeforeCursor(200, 0), ime) ?: return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
         textView.text = if (match.insert != null) "↵  ${match.shown}" else match.shown

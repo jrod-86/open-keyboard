@@ -34,6 +34,8 @@ object SmartCompose {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
+    /** For the lag log: true while a guess is being worked out. */
+    val busy: Boolean get() = job?.isActive == true
     private var pending: Runnable? = null
     @Volatile private var forText: String? = null
     @Volatile private var suggestion: String? = null
