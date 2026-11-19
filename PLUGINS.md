@@ -76,3 +76,39 @@ HTTP transport. They enter its `https://` address, plus a key if it needs one, w
 after the command goes to the tool's first text argument, or to named arguments written as
 `/tool city=Sydney days=3`. Nothing is sent until the person taps **Ask**, and the text answer
 replaces the command when tapped.
+
+## Starter kit
+
+The [`plugin-starter`](plugin-starter/) folder is a complete little app that adds `/hello`. Copy it,
+rename the package, and build your own command from there.
+
+## Trust badge
+
+**Settings → Plugins** shows a badge on every outside plugin, so people can see at a glance whether to
+trust it:
+
+- **🔓 Open source** when your app has this line in its manifest (or was installed from F-Droid):
+  ```xml
+  <meta-data android:name="io.github.jrod86.openkeyboard.SOURCE_URL" android:value="https://github.com/you/your-plugin" />
+  ```
+- **📴 Works offline** when your app doesn't ask for the `INTERNET` permission, otherwise
+  **🌐 Can use the internet**.
+- **👁 Sees…** what the keyboard gives it (for a command, only what is typed after it).
+
+## Keeping the keyboard fast
+
+The keyboard comes first. A plugin must never slow down typing:
+
+- Answer quickly (3 seconds at most) and do slow work ahead of time.
+- Run heavy work (AI models, images) in your own app, not on every key press.
+- Free big things (models, pictures) when you're not using them, and when Android says memory is low
+  (`onTrimMemory`).
+
+**Settings → Plugins → ⚡ Keyboard speed** shows how fast the keyboard opens, any freezes, and how much
+memory each part uses, so you can check your plugin doesn't slow anything down.
+
+## AI models
+
+**Settings → Plugins → 🧠 AI models** lists every model the keyboard has downloaded, its size and which
+apps use it. Each model is downloaded once and shared. A door for outside plugin apps to use these
+shared models is planned.

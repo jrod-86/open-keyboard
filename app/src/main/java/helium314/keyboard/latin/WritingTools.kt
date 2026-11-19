@@ -451,6 +451,14 @@ object WritingTools {
         return t.trim()
     }
 
+    /** Runs the Writing help button called [label] ("Shorter"), e.g. from voice: "make that shorter". False if it can't. */
+    fun runNamed(context: Context, label: String): Boolean {
+        val a = actions.firstOrNull { it.label == label } ?: return false
+        if (!anyDownloaded(context) || !Plugins.isOn(context, "writing")) return false
+        run(context, a)
+        return true
+    }
+
     private fun run(context: Context, action: Action) {
         val ime = ime(context) ?: return
         val ic = ime.currentInputConnection ?: return
@@ -583,6 +591,20 @@ object WritingTools {
     suspend fun unloadNow(context: Context) {
         unloadJob?.cancel()
         lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
+    }
+
+    /** Phone short of memory: free the model now unless something is using it this moment (test 219). */
+    /** A model file was deleted (Model Manager): check again next time instead of trusting the 30 s cache. */
+    fun forgetReady() { readyCache = null }
+
+    fun freeIfIdle(context: Context) {
+        if (!loaded || chatOpen) return
+        scope.launch {
+            if (!lock.tryLock()) return@launch
+            try { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
+            finally { lock.unlock() }
+            Log.i(TAG, "writing model freed: phone short of memory")
+        }
     }
 
     private fun scheduleUnload(context: Context, after: Long = 90_000) {

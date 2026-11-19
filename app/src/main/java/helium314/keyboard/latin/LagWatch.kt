@@ -51,11 +51,14 @@ object LagWatch {
                 Thread.sleep(SLOW_MS)
                 if (answeredAt == 0L) {
                     // stuck: note what the main thread is doing right now
-                    val stack = Looper.getMainLooper().thread.stackTrace
-                        .take(25).joinToString("\n    at ")
+                    val frames = Looper.getMainLooper().thread.stackTrace
+                    val stack = frames.take(25).joinToString("\n    at ")
                     while (answeredAt == 0L && thread === me) Thread.sleep(50)
                     val ms = (if (answeredAt == 0L) SystemClock.uptimeMillis() else answeredAt) - askedAt
                     Log.w(TAG, "keyboard froze for about $ms ms (${state()}), it was busy in:\n    at $stack")
+                    // for the speed meter: the first of our own lines in the stack says what it was doing
+                    val ours = frames.firstOrNull { it.className.startsWith("helium314") }
+                    SpeedMeter.freeze(ms, ours?.let { it.className.substringAfterLast('.') + "." + it.methodName } ?: "Android / the app")
                 }
                 Thread.sleep(CHECK_EVERY_MS)
             }

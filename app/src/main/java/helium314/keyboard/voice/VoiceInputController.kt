@@ -455,6 +455,12 @@ class VoiceInputController(
             onFinal { main.post { if (session == sessionId) runAction(VoiceCommands.Action.SEND) } }
             return
         }
+        // "change dinner to lunch" / "make that shorter" (test 219): edits what was already written
+        VoiceCommands.edit(streamingText)?.let { edit ->
+            main.post { if (session == sessionId) { current = ""; render() } }
+            onFinal { main.post { if (session == sessionId) runEdit(edit, streamingText) } }
+            return
+        }
         VoiceCommands.action(streamingText)?.let { action ->
             main.post { if (session == sessionId) { current = ""; render() } }
             // run after the sentences before it have been written
@@ -586,6 +592,44 @@ class VoiceInputController(
                     if (sendLike) ic()?.performEditorAction(editorAction)
                     else toast("This app needs its own send button tapped")
                 }, 300)
+            }
+        }
+    }
+
+    /**
+     * Runs a voice editing command. "change X to Y" swaps the last X in the text before the cursor (if X isn't there,
+     * it was a normal sentence after all and is typed as said). "make that shorter" runs that Writing help button.
+     */
+    private fun runEdit(edit: VoiceCommands.Edit, said: String) {
+        val ic = ic() ?: return
+        when (edit) {
+            is VoiceCommands.Edit.Replace -> {
+                val before = ic.getTextBeforeCursor(2000, 0)?.toString().orEmpty()
+                val at = before.lastIndexOf(edit.old, ignoreCase = true)
+                if (at < 0) {
+                    // not an edit after all: write it like any other sentence
+                    val text = formatStreaming(said)
+                    val noLead = text.isEmpty() || text[0] in ",.!?;:…)\n"
+                    ic.commitText((if (noLead) "" else lead()) + text, 1)
+                    needsLeadingSpace = true
+                    resync(); return
+                }
+                // keep a capital letter if the old word had one
+                val replacement = if (before[at].isUpperCase()) edit.new.replaceFirstChar { it.titlecase() } else edit.new
+                val after = before.length - (at + edit.old.length)
+                ic.beginBatchEdit()
+                ic.finishComposingText()
+                ic.deleteSurroundingText(before.length - at, 0)
+                ic.commitText(replacement + before.substring(at + edit.old.length), 1)
+                ic.endBatchEdit()
+                Log.i(TAG, "voice edit: replaced a word ($after characters after it kept)")
+                resync()
+            }
+            is VoiceCommands.Edit.Rewrite -> {
+                if (running) stop()
+                ic.finishComposingText()
+                resync()
+                if (!helium314.keyboard.latin.WritingTools.runNamed(ime, edit.label)) toast("Writing help needs its model downloaded first")
             }
         }
     }

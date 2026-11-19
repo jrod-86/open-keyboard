@@ -20,6 +20,32 @@ object VoiceCommands {
         return actions[plain]
     }
 
+    /** Voice editing (test 219, idea 8): "change dinner to lunch", or "make that shorter" (Writing help on the text). */
+    sealed class Edit {
+        class Replace(val old: String, val new: String) : Edit()
+        class Rewrite(val label: String) : Edit()
+    }
+
+    private val replaceCmd = Regex("(?i)^(?:change|replace)\\s+(.{1,40}?)\\s+(?:to|with)\\s+(.{1,60}?)[.!]?$")
+    private val rewrites = mapOf(
+        "shorter" to "Shorter", "longer" to "Longer", "friendlier" to "Friendlier", "more friendly" to "Friendlier",
+        "more professional" to "Professional", "professional" to "Professional", "funnier" to "Funnier",
+        "more loving" to "More loving", "more casual" to "Casual", "casual" to "Casual", "clearer" to "Clearer",
+    )
+    private val rewriteCmd = Regex("(?i)^make (?:that|it|this)( a bit| a little)? (.+?)[.!]?$")
+
+    /** If the whole sentence is an editing command, returns it ("change X to Y" only when X has at most 4 words). */
+    fun edit(sentence: String): Edit? {
+        if (!helium314.keyboard.latin.Plugins.isOn("voice_commands")) return null
+        val t = sentence.trim()
+        rewriteCmd.matchEntire(t)?.let { m -> rewrites[m.groupValues[2].lowercase().trim()]?.let { return Edit.Rewrite(it) } }
+        replaceCmd.matchEntire(t)?.let { m ->
+            val old = m.groupValues[1].trim().trim(',', '"', '“', '”'); val new = m.groupValues[2].trim().trim(',', '"', '“', '”')
+            if (old.isNotEmpty() && new.isNotEmpty() && old.split(' ').size <= 4) return Edit.Replace(old, new)
+        }
+        return null
+    }
+
     /** "…, send." / "… send it" at the very end of what was said (Chat's Hands-free: say send to send). */
     private val trailingSend = Regex("(?i)[\\s,.!?;:-]*\\b(?:and |now )?send(?: it| that| message| the message| now)?[\\s.!?]*$")
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No INTERNET permission: the keyboard shows this plugin as "Works offline". -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Hello plugin" android:allowBackup="false">
+        <!-- Shown as "Open source" in the keyboard's Settings, Plugins. Put your own source code address here. -->
+        <meta-data
+            android:name="io.github.jrod86.openkeyboard.SOURCE_URL"
+            android:value="https://github.com/you/your-plugin" />
+
+        <provider
+            android:name=".HelloCommands"
+            android:authorities="com.example.okplugin.commands"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.jrod86.openkeyboard.COMMANDS" />
+            </intent-filter>
+        </provider>
+    </application>
+</manifest>

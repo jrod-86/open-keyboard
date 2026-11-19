@@ -232,6 +232,13 @@ class ChatActivity : Activity(), Themed {
         updateSendButton()
     }
 
+    /** Phone short of memory while Chat is in the background: give the model back (test 219). */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW && !visible && job?.isActive != true)
+            scope.launch(Dispatchers.Default) { WritingTools.unloadNow(applicationContext) }
+    }
+
     override fun onDestroy() {
         destroyed = true
         job?.cancel()

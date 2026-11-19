@@ -70,6 +70,10 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             Text("Everything extra in the keyboard is a plugin. Switch off what you don't use and it " +
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
+            SpeedMeterCard()
+            Spacer(Modifier.height(12.dp))
+            ModelManagerCard()
+            Spacer(Modifier.height(16.dp))
             Text("Apps in the app drawer", style = MaterialTheme.typography.titleMedium)
             Text("Switch an app off and it leaves the app drawer and the top bar. Switch it back on any time.",
                 style = MaterialTheme.typography.bodySmall)
@@ -110,7 +114,8 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                 val cmdOn = remember(version) { Plugins.isOn(ctx, "app_commands") }
                 commandApps.forEach { p ->
                     val icon = remember(p.packageName) { runCatching { ctx.packageManager.getApplicationIcon(p.packageName) }.getOrNull() }
-                    row(p.id, p.label, p.names.joinToString("  ") { "/$it" }, icon, enabled = cmdOn)
+                    val badge = remember(p.packageName) { helium314.keyboard.latin.ModelManager.trust(ctx, p.packageName, "only what you type after its command") }
+                    row(p.id, p.label, p.names.joinToString("  ") { "/$it" } + "\n" + badge, icon, enabled = cmdOn)
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -121,7 +126,10 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             val appsOn = remember(version) { Plugins.isOn(ctx, "app_actions") }
             if (apps.isEmpty()) Text("None of your apps offer text actions yet.", style = MaterialTheme.typography.bodyMedium)
-            apps.forEach { row(it.id, it.label, null, it.icon, enabled = appsOn) }
+            apps.forEach {
+                val badge = remember(it.id) { helium314.keyboard.latin.ModelManager.trust(ctx, it.component.packageName, "only the text you send it from the menu") }
+                row(it.id, it.label, badge, it.icon, enabled = appsOn)
+            }
         }
     }
 
@@ -151,6 +159,135 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                 }) { Text("Add") }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { adding = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/**
+ * Open Keyboard (test 219): the speed meter. How fast the keyboard opens, any freezes, and how much memory each part of
+ * the app uses right now, so a plugin that slows things down is easy to spot.
+ */
+@Composable
+private fun SpeedMeterCard() {
+    val ctx = LocalContext.current
+    var memory by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        memory = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { helium314.keyboard.latin.SpeedMeter.memoryByPart(ctx) }
+    }
+    val meter = helium314.keyboard.latin.SpeedMeter
+    val opens = remember { meter.openTimes() }
+    val freezes = remember { meter.freezes() }
+    val low = remember { meter.lowMemoryEvents() }
+    val loaded = remember { meter.loadedNow() }
+    androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text("⚡ Keyboard speed", style = MaterialTheme.typography.titleMedium)
+            Text("Since the keyboard last started.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            if (opens.isEmpty()) Text("Opening: open the keyboard a few times to see this.")
+            else {
+                val avg = opens.average().toInt()
+                val verdict = when { avg < 150 -> "fast"; avg < 400 -> "OK"; else -> "slow" }
+                Text("Opening: ${avg} ms on average ($verdict), slowest ${opens.max()} ms, over ${opens.size} openings")
+            }
+            if (freezes.isEmpty()) Text("Freezes: none 👍")
+            else {
+                val longest = freezes.maxBy { it.ms }
+                Text("Freezes: ${freezes.size}, longest ${longest.ms} ms (in ${longest.what})")
+                val fmt = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+                freezes.takeLast(3).reversed().forEach {
+                    Text("  ${fmt.format(java.util.Date(it.atWallMs))}: ${it.ms} ms in ${it.what}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (low.isNotEmpty()) Text("Phone short of memory ${low.size} time(s); AI models were given back.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Memory now", fontWeight = FontWeight.Bold)
+            if (memory.isEmpty()) Text("Working it out…", style = MaterialTheme.typography.bodySmall)
+            memory.forEach { (name, mb) -> Text("$name: $mb MB", style = MaterialTheme.typography.bodySmall) }
+            Text("Loaded in the keyboard: " + (loaded.joinToString(", ").ifEmpty { "no AI models (lightest)" }),
+                style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/**
+ * Open Keyboard (test 219, idea 5): the shared Model Manager. Every AI model downloaded, how big it is, which apps share
+ * it, and Delete. Model packs at the top get everything for one job in one tap.
+ */
+@Composable
+private fun ModelManagerCard() {
+    val ctx = LocalContext.current
+    val mm = helium314.keyboard.latin.ModelManager
+    val wt = helium314.keyboard.latin.WritingTools
+    var tick by remember { mutableStateOf(0) }
+    var models by remember { mutableStateOf<List<helium314.keyboard.latin.ModelManager.Entry>?>(null) }
+    var asking by remember { mutableStateOf<helium314.keyboard.latin.ModelManager.Entry?>(null) }
+    androidx.compose.runtime.LaunchedEffect(tick) {
+        models = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mm.list(ctx) }
+    }
+    val voiceModels = helium314.keyboard.voice.VoiceModel.entries
+    val voiceDone = remember(tick) { voiceModels.all { it.isInstalled(ctx) } }
+    val writingDone = remember(tick) { wt.isReady(ctx, wt.QUICK) || wt.isReady(ctx, wt.BETTER) }
+    val voiceSize = "%.1f GB".format(voiceModels.sumOf { it.approxMb } / 1000.0)
+    fun getVoice() = ctx.startActivity(android.content.Intent(ctx, helium314.keyboard.voice.VoiceSetupActivity::class.java))
+    fun getWriting() { wt.startDownload(ctx, wt.QUICK); wt.choose(ctx, wt.QUICK) }
+    androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text("🧠 AI models", style = MaterialTheme.typography.titleMedium)
+            Text("Each model is downloaded once and shared by every app that needs it.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Model packs", fontWeight = FontWeight.Bold)
+            @Composable
+            fun pack(name: String, what: String, done: Boolean, get: () -> Unit) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(name)
+                        Text(what, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (done) Text("✓ Got it") else androidx.compose.material3.TextButton(onClick = { get(); tick++ }) { Text("Get") }
+                }
+            }
+            pack("🎙️ Voice pack", "Voice typing, voice commands, Chat Talk mode. About $voiceSize.", voiceDone) { getVoice() }
+            pack("✍️ Writing pack", "Smart compose, Writing help, AI writer, Chat. About ${wt.QUICK.sizeText}.", writingDone) { getWriting() }
+            pack("📴 Everything offline", "Both packs, so the keyboard's AI works with no internet. About " +
+                    "%.1f GB. Use Wi-Fi.".format(voiceModels.sumOf { it.approxMb } / 1000.0 + wt.QUICK.size / 1e9), voiceDone && writingDone) {
+                if (!writingDone) getWriting()
+                if (!voiceDone) getVoice()
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Downloaded", fontWeight = FontWeight.Bold)
+            val list = models
+            if (list == null) Text("Looking…", style = MaterialTheme.typography.bodySmall)
+            else if (list.isEmpty()) Text("No AI models downloaded yet.", style = MaterialTheme.typography.bodySmall)
+            else {
+                Text("Total: " + mm.sizeText(list.sumOf { it.bytes }), style = MaterialTheme.typography.bodySmall)
+                list.forEach { e ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${e.name} · ${mm.sizeText(e.bytes)}")
+                            Text("Used by: ${e.usedBy}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        androidx.compose.material3.TextButton(onClick = { asking = e }) { Text("Delete") }
+                    }
+                }
+            }
+        }
+    }
+    asking?.let { e ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { asking = null },
+            title = { Text("Delete ${e.name}?") },
+            text = { Text(if (e.userMade) "These are things you made. They can't be downloaded again." else
+                "Frees ${mm.sizeText(e.bytes)}. ${e.usedBy} won't work until you download it again.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    asking = null
+                    val problem = mm.delete(ctx, e)
+                    android.widget.Toast.makeText(ctx, problem ?: "Deleted ${e.name}", android.widget.Toast.LENGTH_LONG).show()
+                    tick++
+                }) { Text("Delete") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } },
         )
     }
 }
