@@ -41,6 +41,7 @@ class App : Application() {
         // process so the keyboard's memory stays small and Android doesn't close and reopen it (a slow, laggy reopen)
         if (process.endsWith(":tts") || process.endsWith(":chat") || process.endsWith(":tools")) return
         NativeCrashes.collect(this)
+        KeyboardMcpServer.startIfEnabled(this) // test 226: only if switched on in Settings, Plugins
 
         val scope = CoroutineScope(Dispatchers.Default)
         // other inits can be in parallel, except what depends on SubtypeSettings

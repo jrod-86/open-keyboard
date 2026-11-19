@@ -121,6 +121,8 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                 }
             }
             androidx.compose.material3.Button(onClick = { adding = true }, enabled = mcpOn) { Text("Add an MCP server") }
+            Spacer(Modifier.height(12.dp))
+            KeyboardMcpCard()
             if (commandApps.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
                 Text("Commands from your apps", style = MaterialTheme.typography.titleMedium)
@@ -370,6 +372,45 @@ private fun PluginStoreCard(onBack: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text("Made a plugin? Add it to plugin-store.json on GitHub (see PLUGINS.md).", style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+/**
+ * Open Keyboard (test 226): the keyboard as an MCP server, so AI apps on this phone can use its on-phone AI.
+ * Off until switched on; only reachable from this phone, and only with the key.
+ */
+@Composable
+private fun KeyboardMcpCard() {
+    val ctx = LocalContext.current
+    val server = helium314.keyboard.latin.KeyboardMcpServer
+    var on by remember { mutableStateOf(server.isEnabled(ctx)) }
+    var key by remember { mutableStateOf(if (on) server.key(ctx) else "") }
+    fun copy(label: String, text: String) {
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+        android.widget.Toast.makeText(ctx, "$label copied", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Let AI apps use the keyboard (MCP)", fontWeight = FontWeight.Bold)
+            Text("AI apps on this phone can use the keyboard's on-phone AI: write, rewrite in a style, list models. " +
+                    "Only apps on this phone, and only with the key below. Nothing leaves the phone.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = on, onCheckedChange = {
+            server.setEnabled(ctx, it); on = it
+            if (it) key = server.key(ctx)
+        })
+    }
+    if (on) {
+        Text("Address: ${server.ADDRESS}", style = MaterialTheme.typography.bodySmall)
+        Text("Key: $key", style = MaterialTheme.typography.bodySmall)
+        if (!server.running) Text("Couldn't start (port ${server.PORT} is in use). Switch it off and on again.", style = MaterialTheme.typography.bodySmall)
+        Row {
+            androidx.compose.material3.TextButton(onClick = { copy("Address", server.ADDRESS) }) { Text("Copy address") }
+            androidx.compose.material3.TextButton(onClick = { copy("Key", key) }) { Text("Copy key") }
+            androidx.compose.material3.TextButton(onClick = { key = server.newKey(ctx) }) { Text("New key") }
         }
     }
 }

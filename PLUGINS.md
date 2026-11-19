@@ -172,3 +172,10 @@ without a keyboard update. To add yours, open a pull request with an entry like 
 `source` is required (open source only). `fdroid` is optional: when it's there and F-Droid is installed,
 **Get** opens F-Droid, otherwise it opens `download`. `uses_models` says which of the shared AI models
 your app uses, if any.
+
+## The keyboard as an MCP server
+
+**Settings → Plugins → MCP servers → Let AI apps use the keyboard** turns on an MCP server (Streamable
+HTTP, JSON answers) at `http://127.0.0.1:8765/mcp`. Only apps on the same phone can reach it, and only
+with the key shown there (`Authorization: Bearer <key>`). Its tools: `write` (a message from a short
+request), `rewrite` (text in one of Writing help's styles) and `list_models`. Everything runs on the phone.

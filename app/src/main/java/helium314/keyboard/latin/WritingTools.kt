@@ -480,6 +480,16 @@ object WritingTools {
         return t.trim()
     }
 
+    /** Writing help's styles, for other apps (the keyboard's MCP server, test 226). */
+    val styleNames: List<String> get() = actions.map { it.label }
+
+    /** Rewrites [text] in the Writing help style called [label] and returns it, or null if no model / unknown style. */
+    suspend fun rewrite(ctx: Context, text: String, label: String): String? {
+        val a = actions.firstOrNull { it.label.equals(label, true) } ?: return null
+        val out = generate(ctx, SYSTEM, "${a.instruction}\n\nText:\n$text", (text.length / 2 + 64).coerceIn(64, 768)) ?: return null
+        return clean(out)
+    }
+
     /** Runs the Writing help button called [label] ("Shorter"), e.g. from voice: "make that shorter". False if it can't. */
     fun runNamed(context: Context, label: String): Boolean {
         val a = actions.firstOrNull { it.label == label } ?: return false
