@@ -154,6 +154,29 @@ object WritingTools {
     @Volatile var loaded = false
         private set
 
+    /**
+     * Open Keyboard (test 221): true in the keyboard's own process. There the model is never loaded: every request goes
+     * to [WriterService] in Chat's process, so the keyboard stays light and fast whatever the model is doing.
+     */
+    private val remote: Boolean by lazy { !android.app.Application.getProcessName().orEmpty().contains(':') }
+
+    /** The writer service answered: the model is in memory (in Chat's process) for the next 90 s or so. */
+    fun markUsed() { loaded = true; scheduleUnload(null) }
+    fun writerGone() { loaded = false }
+
+    /** Like [generate], but returns null straight away if the model is busy (Smart compose doesn't wait). */
+    suspend fun askIfIdle(ctx: Context, system: String, prompt: String, maxTokens: Int): String? {
+        if (remote) return WriterClient.ask(ctx, system, prompt, maxTokens, ifIdle = true)
+        if (active(ctx) == null) return null
+        return withEngine(ctx) { engine ->
+            engine.startFresh()
+            engine.setSystemPrompt(system)
+            val sb = StringBuilder()
+            engine.sendUserPrompt(prompt, maxTokens).collect { sb.append(it) }
+            sb.toString()
+        }
+    }
+
     /** True when some writing model is downloaded, so the AI writer can run. */
     fun anyDownloaded(ctx: Context) = active(ctx) != null
 
@@ -162,6 +185,7 @@ object WritingTools {
      * Waits if writing help is busy. Returns null if no model is downloaded or the download is damaged.
      */
     suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, onPiece: (String) -> Unit = {}): String? {
+        if (remote) return if (active(ctx) == null) null else WriterClient.ask(ctx, system, prompt, maxTokens, onPiece = onPiece)
         unloadJob?.cancel()
         try {
             return lock.withLock {
@@ -280,6 +304,7 @@ object WritingTools {
 
     /** Runs [block] with the loaded model, or returns null if writing help is busy right now. */
     suspend fun <T> withEngine(ctx: Context, block: suspend (InferenceEngine) -> T): T? {
+        check(!remote) { "the writing model doesn't load in the keyboard's process" }
         if (!lock.tryLock()) return null
         unloadJob?.cancel()
         try {
@@ -433,7 +458,10 @@ object WritingTools {
         val engine = AiChat.getInferenceEngine(ctx.applicationContext)
         val state = engine.state.first { it !is InferenceEngine.State.Uninitialized && it !is InferenceEngine.State.Initializing }
         if (state is InferenceEngine.State.Error) engine.cleanUp()
-        val path = modelFile(ctx, model ?: active(ctx) ?: QUICK).absolutePath
+        // Open Keyboard (test 221): Chat and the keyboard share one model now. If one is already in memory, writing help
+        // uses it instead of swapping (swapping means seconds of loading)
+        val held = loadedPath?.takeIf { p -> model == null && engine.state.value is InferenceEngine.State.ModelReady && models.any { modelFile(ctx, it).absolutePath == p } }
+        val path = held ?: modelFile(ctx, model ?: active(ctx) ?: QUICK).absolutePath
         // switched between Quick and Better writer: load the other one
         if (engine.state.value is InferenceEngine.State.ModelReady && loadedPath != path) {
             engine.cleanUp()
@@ -472,39 +500,25 @@ object WritingTools {
         unloadJob?.cancel()
         scope.launch {
             try {
-                val result = lock.withLock {
-                    val m = active(context) ?: return@launch
-                    if (!verified(modelFile(context, m), m)) {
-                        toast(context, "The ${m.label} model download was damaged. Please download it again.")
-                        return@launch
-                    }
-                    val engine = engine(context)
-                    engine.startFresh()
-                    engine.setSystemPrompt(SYSTEM)
-                    val out = StringBuilder()
-                    val words = source.trim().split(Regex("\\s+")).size
-                    val instruction = if (action.label == "Longer")
-                        action.instruction + " Use about ${(words * 2).coerceIn(words + 8, words + 60)} words at most."
-                    else action.instruction
-                    // a token is about 4 characters; Longer gets room for roughly double, the rest about the same length
-                    val maxTokens = if (action.label == "Rhyme") (source.length + 120).coerceIn(120, 500)
-                        else if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
-                    engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { out.append(it) }
-                    var c = clean(out.toString())
-                    // Rhyme: try again (up to 2 more times) if the line endings don't actually rhyme
-                    var tries = 1
-                    while (action.label == "Rhyme" && tries < 3 && !rhymes(c)) {
-                        tries++
-                        engine.startFresh()
-                        engine.setSystemPrompt(SYSTEM)
-                        val again = StringBuilder()
-                        engine.sendUserPrompt("$instruction\n\nText:\n$source", maxTokens).collect { again.append(it) }
-                        c = clean(again.toString())
-                    }
-                    // ran out of room mid-sentence: end at the last full sentence
-                    val end = c.indexOfLast { it == '.' || it == '!' || it == '?' }
-                    if (action.label == "Longer" && end > 0 && end < c.length - 1 && c.last() !in ".!?…\"')") c.substring(0, end + 1) else c
+                val words = source.trim().split(Regex("\\s+")).size
+                val instruction = if (action.label == "Longer")
+                    action.instruction + " Use about ${(words * 2).coerceIn(words + 8, words + 60)} words at most."
+                else action.instruction
+                // a token is about 4 characters; Longer gets room for roughly double, the rest about the same length
+                val maxTokens = if (action.label == "Rhyme") (source.length + 120).coerceIn(120, 500)
+                    else if (action.label == "Longer") (source.length / 2 + 48).coerceIn(48, 400) else (source.length / 2 + 64).coerceIn(64, 768)
+                // Open Keyboard (test 221): through generate(), so from the keyboard it runs in Chat's process
+                val ask = "$instruction\n\nText:\n$source"
+                var c = clean(generate(context, SYSTEM, ask, maxTokens) ?: return@launch)
+                // Rhyme: try again (up to 2 more times) if the line endings don't actually rhyme
+                var tries = 1
+                while (action.label == "Rhyme" && tries < 3 && !rhymes(c)) {
+                    tries++
+                    c = clean(generate(context, SYSTEM, ask, maxTokens) ?: break)
                 }
+                // ran out of room mid-sentence: end at the last full sentence
+                val end = c.indexOfLast { it == '.' || it == '!' || it == '?' }
+                val result = if (action.label == "Longer" && end > 0 && end < c.length - 1 && c.last() !in ".!?…\"')") c.substring(0, end + 1) else c
                 if (result.isBlank()) { toast(context, "Couldn't come up with anything, try again"); return@launch }
                 withContext(Dispatchers.Main) { replace(ime, selected.isNotEmpty(), before, after, source, result) }
             } catch (e: Throwable) {
@@ -589,6 +603,7 @@ object WritingTools {
     /** Frees the memory the model uses once writing help hasn't been used for a while. */
     /** Frees the model now, e.g. before the Image maker needs the memory for drawing. */
     suspend fun unloadNow(context: Context) {
+        if (remote) { WriterClient.free(); return }
         unloadJob?.cancel()
         lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
     }
@@ -598,6 +613,7 @@ object WritingTools {
     fun forgetReady() { readyCache = null }
 
     fun freeIfIdle(context: Context) {
+        if (remote) { WriterClient.free(); return }
         if (!loaded || chatOpen) return
         scope.launch {
             if (!lock.tryLock()) return@launch
@@ -607,10 +623,12 @@ object WritingTools {
         }
     }
 
-    private fun scheduleUnload(context: Context, after: Long = 90_000) {
+    private fun scheduleUnload(context: Context?, after: Long = 90_000) {
         unloadJob?.cancel()
         unloadJob = scope.launch {
             delay(after)
+            // keyboard's process: nothing to free here, Chat's process frees the model by itself after the same wait
+            if (remote || context == null) { loaded = false; return@launch }
             lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
         }
     }

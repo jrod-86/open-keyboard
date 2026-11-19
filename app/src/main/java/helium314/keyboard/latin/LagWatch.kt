@@ -38,7 +38,7 @@ object LagWatch {
         val javaMb = (rt.totalMemory() - rt.freeMemory()) / 1_000_000
         val nativeMb = android.os.Debug.getNativeHeapAllocatedSize() / 1_000_000
         return "memory: java $javaMb MB, native $nativeMb MB; smart compose working: ${SmartCompose.busy}; " +
-            "voice models loaded: ${helium314.keyboard.voice.VoiceEngine.loaded}; writing model loaded: ${WritingTools.loaded}"
+            "voice models loaded: ${helium314.keyboard.voice.VoiceEngine.loaded}; writing model in use (in Chat's process): ${WritingTools.loaded}"
     }
 
     private fun watch() {

@@ -119,16 +119,10 @@ object SmartCompose {
         forText = before
         job = scope.launch {
             try {
-                val out = WritingTools.withEngine(ime) { engine ->
-                    // loading the model can't be stopped part way; if the mic came on meanwhile, stop here
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    if (quietForVoice) throw kotlinx.coroutines.CancellationException("voice typing")
-                    engine.startFresh()
-                    engine.setSystemPrompt(SYSTEM)
-                    val sb = StringBuilder()
-                    engine.sendUserPrompt(before.takeLast(300).trimEnd(), 16).collect { sb.append(it) }
-                    sb.toString()
-                } ?: return@launch
+                // Open Keyboard (test 221): the model runs in Chat's process; the keyboard only waits for the answer
+                if (quietForVoice) return@launch
+                val out = WritingTools.askIfIdle(ime, SYSTEM, before.takeLast(300).trimEnd(), 16) ?: return@launch
+                if (quietForVoice) return@launch
                 val guess = tidy(before, out) ?: return@launch
                 withContext(Dispatchers.Main) {
                     if (forText == before && textBefore(ime) == before) {

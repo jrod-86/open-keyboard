@@ -212,7 +212,7 @@ private fun SpeedMeterCard() {
             Text("Memory now", fontWeight = FontWeight.Bold)
             if (memory.isEmpty()) Text("Working it out…", style = MaterialTheme.typography.bodySmall)
             memory.forEach { (name, mb) -> Text("$name: $mb MB", style = MaterialTheme.typography.bodySmall) }
-            Text("Loaded in the keyboard: " + (loaded.joinToString(", ").ifEmpty { "no AI models (lightest)" }),
+            Text("Loaded in the keyboard: " + (loaded.joinToString(", ").ifEmpty { "no AI models (lightest)" }) + ". The writing model always runs outside the keyboard.",
                 style = MaterialTheme.typography.bodySmall)
         }
     }

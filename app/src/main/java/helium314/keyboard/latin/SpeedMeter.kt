@@ -56,7 +56,7 @@ object SpeedMeter {
         return procs.mapIndexed { i, p ->
             val name = when (p.processName.substringAfter(':', "")) {
                 "" -> "Keyboard"
-                "chat" -> "Chat"
+                "chat" -> "Chat + writing model"
                 "tts" -> "TTS"
                 "tools" -> "Sticker maker / Scan text"
                 "imagemaker" -> "Local Image"
@@ -69,7 +69,6 @@ object SpeedMeter {
     /** What big things the keyboard has in memory right now. */
     fun loadedNow(): List<String> = buildList {
         if (helium314.keyboard.voice.VoiceEngine.loaded) add("Voice typing models")
-        if (WritingTools.loaded) add("Writing model (Smart compose, Writing help)")
         if (SmartCompose.busy) add("Smart compose is guessing")
     }
 }
