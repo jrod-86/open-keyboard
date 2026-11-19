@@ -24,7 +24,7 @@ object Plugins {
 
     val builtIn = listOf(
         Plugin("slash", "/ commands", "Type /calc, /convert, /date, /roll and more, or = 12*7, and tap the answer"),
-        Plugin("voice_commands", "Voice commands", "Say \"delete that\", \"send\", \"comma\" or \"new line\" while voice typing. Pick which ones below"),
+        Plugin("voice_commands", "Voice commands", "Say \"delete that\", \"send message\", \"comma\" or \"new line\" while voice typing. Pick which ones below"),
         Plugin("shortcuts", "Text shortcuts", "Type a shortcut like @@ and press space to get the full text"),
         Plugin("translate", "Translate", "Translate what you type, all on the phone"),
         Plugin("writing", "Writing help", "Fix, shorten or change the tone of your text with on-phone AI"),

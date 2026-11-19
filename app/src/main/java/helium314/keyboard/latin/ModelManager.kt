@@ -62,8 +62,15 @@ object ModelManager {
         listOfNotNull(files, ext).distinct().forEach { root ->
             root.listFiles()?.filter { it.name !in notModels && known.none { k -> k.path == it.name } }?.forEach { f ->
                 val size = sizeOf(f)
-                if (size > 20_000_000) out += Entry(if (f.name.contains("transl", true) || f.name.contains("fox", true))
-                    "Translate languages" else f.name, if (f.name.contains("transl", true) || f.name.contains("fox", true)) "Translate" else "?", f, size)
+                if (size > 20_000_000) {
+                    val (name, usedBy) = when {
+                        f.name.contains("transl", true) || f.name.contains("fox", true) -> "Translate languages" to "Translate"
+                        // test 222: left from the old Whisper voice typing (removed in test 186)
+                        f.name.contains("whisper", true) -> "Old Whisper voice model (${f.name})" to "Nothing any more, safe to delete"
+                        else -> f.name to "Not sure, probably left over from an older test"
+                    }
+                    out += Entry(name, usedBy, f, size)
+                }
             }
         }
         return out.sortedByDescending { it.bytes }

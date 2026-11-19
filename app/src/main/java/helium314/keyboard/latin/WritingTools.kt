@@ -185,7 +185,8 @@ object WritingTools {
      * Waits if writing help is busy. Returns null if no model is downloaded or the download is damaged.
      */
     suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, onPiece: (String) -> Unit = {}): String? {
-        if (remote) return if (active(ctx) == null) null else WriterClient.ask(ctx, system, prompt, maxTokens, onPiece = onPiece)
+        // test 222: at most 3 minutes, so a "writing…" sign can never hang around
+        if (remote) return if (active(ctx) == null) null else withTimeoutOrNull(180_000) { WriterClient.ask(ctx, system, prompt, maxTokens, onPiece = onPiece) }
         unloadJob?.cancel()
         try {
             return lock.withLock {

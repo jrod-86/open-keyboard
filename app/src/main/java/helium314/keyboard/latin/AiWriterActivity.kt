@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The AI writer's talk box: the mic is already listening, say (or type) what you want written,
- * tap Write it (or say "send"), check the text, then Insert puts it in the app you were in.
+ * tap Write it (or say "send message"), check the text, then Insert puts it in the app you were in.
  */
 class AiWriterActivity : Activity() {
     private val scope = MainScope()
@@ -49,7 +49,7 @@ class AiWriterActivity : Activity() {
         top.addView(button("Close", false) { finish() })
         root.addView(top)
         root.addView(TextView(this).apply {
-            text = "Say or type what you want, like \"a happy birthday message for my wife\". Then tap Write it, or say \"send\"."
+            text = "Say or type what you want, like \"a happy birthday message for my wife\". Then tap Write it, or say \"send message\"."
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             alpha = 0.8f
             setPadding(0, dp(6f), 0, dp(8f))

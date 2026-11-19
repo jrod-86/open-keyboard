@@ -252,7 +252,8 @@ private fun ModelManagerCard() {
                         Text(name)
                         Text(what, style = MaterialTheme.typography.bodySmall)
                     }
-                    if (done) Text("✓ Got it") else androidx.compose.material3.TextButton(onClick = { get(); tick++ }) { Text("Get") }
+                    // test 222: same look as the Delete buttons below (Jarrod: the packs looked different)
+                    androidx.compose.material3.TextButton(onClick = { get(); tick++ }, enabled = !done) { Text(if (done) "✓ Got it" else "Get") }
                 }
             }
             pack("🎙️ Voice pack", "Voice typing, voice commands, Chat Talk mode. About $voiceSize.", voiceDone) { getVoice() }

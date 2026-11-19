@@ -1268,7 +1268,12 @@ public final class InputLogic {
         // not looked up on every step (that made the text fight back, especially in web based apps);
         // it starts slow, goes word by word after 2.5 s, fast after 4 s, by lines after 8 s. Suggestions come back on release.
         // the first delete of a press also comes marked as a repeat, so a new hold starts after each release
-        final boolean held = event.isKeyRepeat() && !mDeleteNewPress;
+        // Open Keyboard (test 222, Jarrod: "sometimes it deletes fast straight away"): the release isn't always reported
+        // (finger slid off the key, touch cancelled), so a press could carry on from an old hold's timer. A gap of more
+        // than a second since the last delete always means a new press, which starts slow again.
+        final long now = inputTransaction.getTimestamp();
+        final boolean held = event.isKeyRepeat() && !mDeleteNewPress && now - mLastDeleteTime < 1000;
+        mLastDeleteTime = now;
         mDeleteNewPress = false;
         if (held) {
             mDeleteHeld = true;
@@ -1476,6 +1481,7 @@ public final class InputLogic {
         return true;
     }
     private long mDeleteStartTime;
+    private long mLastDeleteTime;
     private boolean mDeleteNewPress = true;
     private int mDeleteStep;
     private boolean mDeleteHeld;
