@@ -73,6 +73,11 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             SpeedMeterCard()
             Spacer(Modifier.height(12.dp))
             ModelManagerCard()
+            Spacer(Modifier.height(12.dp))
+            PluginStoreCard(onBack = {
+                // back from installing or removing a plugin: look for plugin apps again
+                helium314.keyboard.latin.CommandPlugins.refresh(ctx, true) { commandApps = helium314.keyboard.latin.CommandPlugins.providers }
+            })
             Spacer(Modifier.height(16.dp))
             Text("Apps in the app drawer", style = MaterialTheme.typography.titleMedium)
             Text("Switch an app off and it leaves the app drawer and the top bar. Switch it back on any time.",
@@ -301,5 +306,70 @@ private fun ModelManagerCard() {
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * Open Keyboard (test 225): the plugin store. Free, open source plugin apps from a list on GitHub. Get opens F-Droid or
+ * the download page; once installed, the plugin shows up below (switched off until you switch it on).
+ */
+@Composable
+private fun PluginStoreCard(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val store = helium314.keyboard.latin.PluginStore
+    var open by remember { mutableStateOf(false) }
+    var items by remember { mutableStateOf<List<helium314.keyboard.latin.PluginStore.Item>?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var tick by remember { mutableStateOf(0) }
+    if (open) androidx.compose.runtime.LaunchedEffect(Unit) {
+        val (list, problem) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.load(ctx) }
+        items = list; note = problem
+    }
+    // coming back from the installer: check again what's installed
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { tick++; if (tick > 1) onBack() } }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text("🛍️ Plugin store", style = MaterialTheme.typography.titleMedium)
+            Text("Free, open source apps that add to the keyboard. New ones start switched off.", style = MaterialTheme.typography.bodySmall)
+            if (!open) androidx.compose.material3.TextButton(onClick = { open = true }) { Text("Browse plugins") }
+            else {
+                val list = items
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (list == null) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+                else if (list.isEmpty() && note == null) Text("No plugins in the store yet.", style = MaterialTheme.typography.bodySmall)
+                list?.forEach { item ->
+                    val installed = remember(tick, item.packageName) { store.isInstalled(ctx, item) }
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${item.emoji} ${item.name}", fontWeight = FontWeight.Bold)
+                            Text(item.description, style = MaterialTheme.typography.bodySmall)
+                            val facts = listOfNotNull(
+                                if (item.source != null) "🔓 Open source" else null,
+                                if (item.offline) "📴 Works offline" else "🌐 Uses the internet",
+                                item.usesModels?.let { "🧠 Uses your $it" },
+                                item.size,
+                                item.author.ifBlank { null }?.let { "by $it" },
+                            )
+                            Text(facts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (installed) {
+                                androidx.compose.material3.TextButton(onClick = {}, enabled = false) { Text("✓ Installed") }
+                                androidx.compose.material3.TextButton(onClick = { store.uninstall(ctx, item) }) { Text("Remove") }
+                            } else androidx.compose.material3.TextButton(onClick = { store.get(ctx, item) }) { Text("Get") }
+                            if (item.source != null) androidx.compose.material3.TextButton(onClick = { store.openSource(ctx, item) }) { Text("Code") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Made a plugin? Add it to plugin-store.json on GitHub (see PLUGINS.md).", style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }

@@ -146,3 +146,29 @@ val fd = contentResolver.openFileDescriptor(Uri.withAppendedPath(base, "${ids[0]
 ```
 
 The models list in the keyboard shows your app under "Used by" once it has opened a model.
+
+## The plugin store
+
+**Settings → Plugins → 🛍️ Plugin store** lists free, open source plugin apps. The list is the file
+[`plugin-store.json`](https://github.com/jrod-86/open-keyboard/blob/apk/plugin-store.json), so it grows
+without a keyboard update. To add yours, open a pull request with an entry like this:
+
+```json
+{
+  "package": "com.you.yourplugin",
+  "name": "Your plugin",
+  "emoji": "🧩",
+  "description": "One or two plain sentences on what it does.",
+  "author": "You",
+  "source": "https://github.com/you/your-plugin",
+  "download": "https://github.com/you/your-plugin/releases/latest",
+  "fdroid": "com.you.yourplugin",
+  "offline": true,
+  "size": "3 MB",
+  "uses_models": "voice typing models"
+}
+```
+
+`source` is required (open source only). `fdroid` is optional: when it's there and F-Droid is installed,
+**Get** opens F-Droid, otherwise it opens `download`. `uses_models` says which of the shared AI models
+your app uses, if any.

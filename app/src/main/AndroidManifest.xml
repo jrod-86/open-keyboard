@@ -281,6 +281,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Open Keyboard (test 225): the plugin store opens F-Droid when it's installed -->
+        <package android:name="org.fdroid.fdroid" />
         <!-- To detect other IMEs -->
         <intent>
             <!-- changed to * as it's supposed to help with finding other keyboard apps, see https://github.com/HeliBorg/HeliBoard/issues/1340 -->
