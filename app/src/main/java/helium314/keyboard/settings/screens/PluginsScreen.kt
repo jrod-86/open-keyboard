@@ -70,6 +70,12 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             Text("Everything extra in the keyboard is a plugin. Switch off what you don't use and it " +
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
+            Text("Apps in the app drawer", style = MaterialTheme.typography.titleMedium)
+            Text("Switch an app off and it leaves the app drawer and the top bar. Switch it back on any time.",
+                style = MaterialTheme.typography.bodySmall)
+            Plugins.apps.forEach { row(it.id, it.name, it.description) }
+            Spacer(Modifier.height(16.dp))
+            Text("Keyboard features", style = MaterialTheme.typography.titleMedium)
             Plugins.builtIn.forEach { row(it.id, it.name, it.description) }
             if (remember(version) { Plugins.isOn(ctx, "fingers") }) {
                 val taps = remember(version) { helium314.keyboard.keyboard.FingerModel.learnedTaps(ctx) }

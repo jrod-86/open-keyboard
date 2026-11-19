@@ -155,6 +155,7 @@ object FancyText {
      */
     fun handle(ic: InputConnection?, codePoint: Int, isDelete: Boolean, finishComposing: () -> Unit, resync: (Int, Int) -> Unit): Boolean {
         val s = style ?: return false
+        if (!Plugins.isOn("app_fancy_text")) { style = null; return false } // switched off in Plugins (test 218)
         ic ?: return false
         if (isDelete) {
             if (s.reverse) {

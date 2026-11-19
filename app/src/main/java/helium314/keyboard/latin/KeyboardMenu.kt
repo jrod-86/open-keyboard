@@ -470,15 +470,15 @@ object KeyboardMenu {
                 icon = ownIcon(R.drawable.ic_menu_voice_translate), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
             Item(tr("This app", R.string.ok_tile_this_app), ownIcon(R.drawable.ic_menu_this_app)) { AppProfiles.show(context) },
             Item(tr("Language", R.string.ok_tile_language), ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
-            Item(tr("Fancy text", R.string.ok_tile_fancy_text), ownIcon(R.drawable.ic_menu_fancy_text), idOverride = "fancy") { FancyText.show(context) },
-            Item(tr("Local Image", R.string.ok_tile_image_maker), ownIcon(R.drawable.ic_menu_image_maker), idOverride = "image maker") {
+            Item(tr("Fancy text", R.string.ok_tile_fancy_text), ownIcon(R.drawable.ic_menu_fancy_text), plugin = "app_fancy_text", idOverride = "fancy") { FancyText.show(context) },
+            Item(tr("Local Image", R.string.ok_tile_image_maker), ownIcon(R.drawable.ic_menu_image_maker), plugin = "app_image", idOverride = "image maker") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.ImageMakerActivity::class.java)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("TTS", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), idOverride = "text to speech") {
+            Item(tr("TTS", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), plugin = "app_tts", idOverride = "text to speech") {
                 // bring along what's selected, or everything written in the box
                 var c: Context? = context
                 while (c is android.content.ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -494,7 +494,7 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("Chat", R.string.ok_tile_chat), ownIcon(R.drawable.ic_menu_chat), idOverride = "chat") {
+            Item(tr("Chat", R.string.ok_tile_chat), ownIcon(R.drawable.ic_menu_chat), plugin = "app_chat", idOverride = "chat") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, ChatActivity::class.java)
@@ -502,7 +502,7 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure { android.widget.Toast.makeText(context, "Chat couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
             },
-            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), idOverride = "sticker maker") {
+            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), plugin = "app_sticker_maker", idOverride = "sticker maker") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.StickerMakerActivity::class.java)

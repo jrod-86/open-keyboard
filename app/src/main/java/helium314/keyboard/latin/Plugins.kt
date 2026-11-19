@@ -36,6 +36,18 @@ object Plugins {
         Plugin("app_actions", "Actions from your apps", "Apps on your phone that work on text appear in the keyboard menu"),
     )
 
+    /**
+     * Open Keyboard (test 218, Jarrod): the bigger apps in the app drawer are plugins too. Switched off, an app's tile
+     * leaves the app drawer and the top bar, and none of its code or models load.
+     */
+    val apps = listOf(
+        Plugin("app_chat", "💬 Chat", "Chat for fun with an AI that lives on your phone"),
+        Plugin("app_tts", "🔊 TTS", "Read text out loud and make your own voices"),
+        Plugin("app_image", "🖼️ Local Image", "Make pictures on your phone"),
+        Plugin("app_sticker_maker", "✂️ Sticker maker", "Turn a photo into a sticker"),
+        Plugin("app_fancy_text", "𝓕 Fancy text", "Type in 50 fancy letter styles"),
+    )
+
     private var prefs: SharedPreferences? = null
 
     fun init(ctx: Context) { if (prefs == null) prefs = ctx.applicationContext.prefs() }
