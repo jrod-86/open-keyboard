@@ -36,6 +36,8 @@ object CommandPlugins {
 
     @Volatile var providers: List<Provider> = emptyList(); private set
     private var lastRefresh = 0L
+    /** Commands each plugin app gave, with the app's install/update time then. */
+    private val known = ConcurrentHashMap<String, Pair<Long, Provider>>()
     private val main = Handler(Looper.getMainLooper())
 
     /** Looks for plugin apps again, at most once a minute unless forced. */
@@ -43,6 +45,7 @@ object CommandPlugins {
         val now = System.currentTimeMillis()
         if (!force && now - lastRefresh < 60_000) return
         lastRefresh = now
+        if (force) known.clear()
         val app = ctx.applicationContext
         thread(name = "command-plugins") {
             val pm = app.packageManager
@@ -51,11 +54,16 @@ object CommandPlugins {
                     val p = info.providerInfo ?: return@mapNotNull null
                     if (!p.exported || p.packageName == app.packageName) return@mapNotNull null
                     val authority = p.authority?.split(';')?.firstOrNull() ?: return@mapNotNull null
+                    // Open Keyboard (test 217): asking a plugin app for its commands starts that app, so with several
+                    // plugins every keyboard opening woke them all up (memory and processor right as you start typing).
+                    // Now each app is only asked again when it was installed or updated since the last time.
+                    val updated = runCatching { pm.getPackageInfo(p.packageName, 0).lastUpdateTime }.getOrDefault(0L)
+                    known[authority]?.let { (at, prov) -> if (at == updated && updated != 0L) return@mapNotNull prov }
                     val b = callWithTimeout(app, authority, "commands", null, null) ?: return@mapNotNull null
                     val names = b.getStringArray("names")?.map { it.lowercase().filter { c -> c in 'a'..'z' || c in '0'..'9' } }
                         ?: return@mapNotNull null
                     val usages = b.getStringArray("usages")?.toList() ?: names.map { "/$it" }
-                    Provider(authority, p.packageName, info.loadLabel(pm).toString(), names, usages)
+                    Provider(authority, p.packageName, info.loadLabel(pm).toString(), names, usages).also { known[authority] = updated to it }
                 }
             providers = found
             main.post {

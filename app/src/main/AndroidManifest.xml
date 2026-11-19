@@ -139,6 +139,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
             android:taskAffinity="io.github.jrod86.openkeyboard.stickermaker"
+            android:process=":tools"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
         <activity android:name="helium314.keyboard.latin.AiWriterActivity"
@@ -169,6 +170,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:label="Scan text"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
+            android:process=":tools"
             android:exported="false" />
 
         <provider android:name="androidx.core.content.FileProvider"

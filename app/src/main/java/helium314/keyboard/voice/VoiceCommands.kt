@@ -16,7 +16,7 @@ object VoiceCommands {
     /** If the whole sentence is a command, returns it. */
     fun action(sentence: String): Action? {
         if (!helium314.keyboard.latin.Plugins.isOn("voice_commands")) return null
-        val plain = sentence.lowercase().replace(Regex("[^a-z ]"), " ").trim().replace(Regex("\\s+"), " ")
+        val plain = sentence.lowercase().replace(notLetters, " ").trim().replace(spaces, " ")
         return actions[plain]
     }
 
@@ -43,6 +43,16 @@ object VoiceCommands {
         Regex("[ ,.]*\\b${spoken.replace(" ", "[ -]")}\\b[,.]?", RegexOption.IGNORE_CASE) to symbol
     }
 
+    // Open Keyboard (test 217): made once, not on every live word update (10 times a second while talking)
+    private val notLetters = Regex("[^a-z ]")
+    private val spaces = Regex("\\s+")
+    private val spacedNewLine = Regex(" *\n *")
+    private val openBracketSpace = Regex("\\( +")
+    private val tagSpace = Regex("([@#]) +")
+    private val doubleSpace = Regex(" {2,}")
+    private val spaceBeforeMark = Regex(" +([,.!?;:…)])")
+    private val sentenceStart = Regex("([.!?…]\\s+|\n)([a-z])")
+
     /** Turns spoken punctuation ("comma", "new line") into symbols and fixes capitals after them. */
     fun punctuate(text: String): String {
         var t = text
@@ -58,10 +68,10 @@ object VoiceCommands {
             }
         }
         // tidy spaces
-        t = t.replace(Regex(" *\n *"), "\n").replace(Regex("\\( +"), "(").replace(Regex("([@#]) +"), "$1")
-            .replace(Regex(" {2,}"), " ").replace(Regex(" +([,.!?;:…)])"), "$1")
+        t = t.replace(spacedNewLine, "\n").replace(openBracketSpace, "(").replace(tagSpace, "$1")
+            .replace(doubleSpace, " ").replace(spaceBeforeMark, "$1")
         // capital letter after a sentence end or a new line
-        t = Regex("([.!?…]\\s+|\n)([a-z])").replace(t) { it.groupValues[1] + it.groupValues[2].uppercase() }
+        t = sentenceStart.replace(t) { it.groupValues[1] + it.groupValues[2].uppercase() }
         return t.trimStart(' ')
     }
 }

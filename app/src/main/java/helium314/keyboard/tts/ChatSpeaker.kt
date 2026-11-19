@@ -43,21 +43,33 @@ class ChatSpeaker(context: Context) {
             return out
         }
 
+        // Open Keyboard (test 217): made once instead of for every sentence
+        private val markup = Regex("[*_#`~]+")
+        private val dash = Regex("\\s*[—–]\\s*")
+        private val isContraction = Regex("(?i)\\b(how|what|where|who|when|why|there|here|that|it|he|she|everything|nothing|something)'s\\b")
+        private val letUs = Regex("(?i)\\blet's\\b")
+        private val possessive = Regex("(\\w)'s\\b")
+        private val quotes = Regex("[“”„\"«»]")
+        private val emoji = Regex("[\\uD800-\\uDFFF]|[\\u2600-\\u27BF]|[\\uFE0F\\u200D]")
+        private val spaces = Regex("\\s+")
+        /** AudioTrack.getLatency is hidden: look it up once (null if the phone doesn't have it). */
+        private val latencyMethod by lazy { runCatching { AudioTrack::class.java.getMethod("getLatency") }.getOrNull() }
+
         /** Words for the ear: no emojis, markdown stars or hashes. */
         fun forSpeech(text: String): String = text
-            .replace(Regex("[*_#`~]+"), "")
+            .replace(markup, "")
             // "breeze—perfect" was read as one unknown word and skipped
-            .replace(Regex("\\s*[—–]\\s*"), ", ")
+            .replace(dash, ", ")
             .replace('’', '\'')
             // the word list has no "how's", "what's"…: say them in full
-            .replace(Regex("(?i)\\b(how|what|where|who|when|why|there|here|that|it|he|she|everything|nothing|something)'s\\b")) { it.groupValues[1] + " is" }
-            .replace(Regex("(?i)\\blet's\\b"), "let us")
+            .replace(isContraction) { it.groupValues[1] + " is" }
+            .replace(letUs, "let us")
             // "autumn's" isn't in the word list either, but sounds just like "autumns"
-            .replace(Regex("(\\w)'s\\b"), "$1s")
+            .replace(possessive, "$1s")
             // quotes stuck to a word ("“error”") made it unknown
-            .replace(Regex("[“”„\"«»]"), "")
-            .replace(Regex("[\\uD800-\\uDFFF]|[\\u2600-\\u27BF]|[\\uFE0F\\u200D]"), "")
-            .replace(Regex("\\s+"), " ")
+            .replace(quotes, "")
+            .replace(emoji, "")
+            .replace(spaces, " ")
             .trim()
     }
 
@@ -145,7 +157,7 @@ class ChatSpeaker(context: Context) {
                 if (t.getTimestamp(stamp) && stamp.framePosition > 0) {
                     stamp.framePosition + (System.nanoTime() - stamp.nanoTime) * rate / 1_000_000_000L
                 } else {
-                    val latencyMs = runCatching { AudioTrack::class.java.getMethod("getLatency").invoke(t) as Int }.getOrDefault(150)
+                    val latencyMs = runCatching { latencyMethod?.invoke(t) as? Int }.getOrNull() ?: 150
                     t.playbackHeadPosition - latencyMs.toLong() * rate / 1000
                 }
             }.getOrDefault(0L)

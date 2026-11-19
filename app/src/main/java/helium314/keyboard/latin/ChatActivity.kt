@@ -81,6 +81,10 @@ class ChatActivity : Activity(), Themed {
 
         fun isChatBox(editorInfo: EditorInfo?) = editorInfo?.privateImeOptions?.startsWith(CHAT_OPTION) == true
         private const val HISTORY_MESSAGES = 12
+        // Open Keyboard (test 217): made once, not again for every word the AI writes
+        private val SENTENCE_END = Regex("[.!?…]+[\"'”’)]*\\s+|\\n+")
+        private val THINK = Regex("(?s)<think>.*?(</think>|$)")
+        private val HEADING = Regex("(?m)^#+\\s*")
     }
 
     private class Msg(val me: Boolean, var text: String)
@@ -361,15 +365,15 @@ class ChatActivity : Activity(), Themed {
     /** Where the last whole sentence in [s] (after [from]) ends, or [from] if there's none yet. */
     private fun lastSentenceEnd(s: String, from: Int): Int {
         var end = from
-        Regex("[.!?…]+[\"'”’)]*\\s+|\\n+").findAll(s, from).forEach { end = it.range.last + 1 }
+        SENTENCE_END.findAll(s, from).forEach { end = it.range.last + 1 }
         return end
     }
 
     /** Small models sometimes add a label, think-tags or markdown: keep just the words. */
     private fun tidy(s: String): String {
-        var x = s.replace(Regex("(?s)<think>.*?(</think>|$)"), "")
+        var x = s.replace(THINK, "")
         x = x.trim().removePrefix("Assistant:").removePrefix("You:").trim().let { y -> ChatPersonalities.ALL.fold(y) { acc, p -> acc.removePrefix(p.name + ":") } }.trim()
-        x = x.replace("**", "").replace(Regex("(?m)^#+\\s*"), "")
+        x = x.replace("**", "").replace(HEADING, "")
         return x.trim()
     }
 

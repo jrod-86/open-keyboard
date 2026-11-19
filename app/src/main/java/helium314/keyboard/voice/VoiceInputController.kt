@@ -608,9 +608,11 @@ class VoiceInputController(
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
         if (VoiceEngine.liveWritesCapitals) return VoiceCommands.punctuate(VoiceSpelling.apply(text, region))
-        val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
+        val lower = text.lowercase().replace(loneI, "I")
         return VoiceCommands.punctuate(VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region))
     }
+
+    private val loneI = Regex("\\bi\\b")
 
     private fun toast(message: String) = Toast.makeText(ime, message, Toast.LENGTH_SHORT).show()
 

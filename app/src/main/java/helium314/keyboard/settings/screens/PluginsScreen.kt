@@ -32,7 +32,7 @@ import helium314.keyboard.settings.SearchSettingsScreen
 @Composable
 fun PluginsScreen(onClickBack: () -> Unit) {
     val ctx = LocalContext.current
-    val apps = remember { Plugins.appActions(ctx) }
+    val apps = remember { Plugins.appActions(ctx, fresh = true) }
     var version by remember { mutableStateOf(0) }
     var commandApps by remember { mutableStateOf(helium314.keyboard.latin.CommandPlugins.providers) }
     androidx.compose.runtime.LaunchedEffect(Unit) {

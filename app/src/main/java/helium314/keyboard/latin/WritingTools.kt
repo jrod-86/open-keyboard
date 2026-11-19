@@ -64,7 +64,7 @@ object WritingTools {
     private fun llmPrefs(ctx: Context) = ctx.getSharedPreferences("open_keyboard_llm", Context.MODE_PRIVATE)
     /** The model picked in Writing help (Quick unless changed). */
     fun chosen(ctx: Context): Model = models.firstOrNull { it.id == llmPrefs(ctx).getString(PREF_MODEL, QUICK.id) } ?: QUICK
-    fun choose(ctx: Context, m: Model) { llmPrefs(ctx).edit().putString(PREF_MODEL, m.id).apply() }
+    fun choose(ctx: Context, m: Model) { llmPrefs(ctx).edit().putString(PREF_MODEL, m.id).apply(); readyCache = null }
     /** The model that will actually run: the chosen one, or the other if only that one is downloaded. */
     private fun active(ctx: Context): Model? = chosen(ctx).takeIf { isReady(ctx, it) } ?: models.firstOrNull { isReady(ctx, it) }
 
@@ -125,6 +125,7 @@ object WritingTools {
         val file = modelFile(ctx, m)
         file.parentFile?.mkdirs()
         file.delete()
+        readyCache = null
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return
         val request = DownloadManager.Request(Uri.parse(m.url))
             .setTitle("Open Keyboard writing model (${m.label})")
@@ -138,10 +139,20 @@ object WritingTools {
 
     /** True when the writing model is downloaded and checked, so smart compose can use it. */
     fun modelReady(ctx: Context): Boolean {
-        val m = active(ctx) ?: return false
-        val f = modelFile(ctx, m)
-        return File(f.path + ".ok").let { it.exists() && it.lastModified() >= f.lastModified() }
+        // Open Keyboard (test 217): smart compose asks this on the keyboard's main thread after every pause in typing.
+        // It looks at up to 6 files on shared storage (slow on Android's storage layer), so the answer is kept for 30 s.
+        val now = android.os.SystemClock.uptimeMillis()
+        readyCache?.let { (at, ready) -> if (now - at < 30_000) return ready }
+        val m = active(ctx)
+        val ready = m != null && modelFile(ctx, m).let { f -> File(f.path + ".ok").let { it.exists() && it.lastModified() >= f.lastModified() } }
+        readyCache = now to ready
+        return ready
     }
+    @Volatile private var readyCache: Pair<Long, Boolean>? = null
+
+    /** Whether the writing model is in memory right now (smart compose waits longer before loading it). */
+    @Volatile var loaded = false
+        private set
 
     /** True when some writing model is downloaded, so the AI writer can run. */
     fun anyDownloaded(ctx: Context) = active(ctx) != null
@@ -188,6 +199,7 @@ object WritingTools {
      * while 2-3 GB arrive) happens while you're still reading, not when you send (test 199 felt sluggish).
      */
     fun warmChat(ctx: Context, onLoading: () -> Unit = {}, onReady: () -> Unit = {}) {
+        chatOpen = true
         val m = chatModel(ctx) ?: return
         unloadJob?.cancel()
         scope.launch {
@@ -203,7 +215,7 @@ object WritingTools {
                 Log.w(TAG, "chat warm-up failed", e)
             } finally {
                 lock.unlock()
-                scheduleUnload(ctx, CHAT_KEEP_MS)
+                scheduleUnload(ctx, chatKeep())
                 main.post(onReady)
             }
         }
@@ -242,7 +254,7 @@ object WritingTools {
                 out.toString()
             }
         } finally {
-            scheduleUnload(ctx, CHAT_KEEP_MS)
+            scheduleUnload(ctx, chatKeep())
         }
     }
 
@@ -250,7 +262,15 @@ object WritingTools {
     fun forgetChat() { chatInModel = null }
 
     /** Chat closed: free the model's memory after the usual short wait instead of Chat's longer one. */
-    fun chatClosed(ctx: Context) { if (!lock.isLocked) scheduleUnload(ctx) }
+    fun chatClosed(ctx: Context) { chatOpen = false; if (!lock.isLocked) scheduleUnload(ctx) }
+
+    /**
+     * Open Keyboard (test 217): Chat closed while it was still answering used to keep the model (1-3 GB) for 5 more
+     * minutes, because the answer's own clean-up set the long timer after the screen had gone. Now the long wait only
+     * applies while the Chat screen is open.
+     */
+    @Volatile private var chatOpen = false
+    private fun chatKeep() = if (chatOpen) CHAT_KEEP_MS else 90_000L
 
     private const val CHAT_KEEP_MS = 5 * 60_000L
     private var justLoaded = false
@@ -280,6 +300,7 @@ object WritingTools {
         }
         val ok = md.digest().joinToString("") { "%02x".format(it) } == m.sha256
         if (ok) marker.writeText("ok") else file.delete()
+        readyCache = null
         return ok
     }
 
@@ -419,6 +440,7 @@ object WritingTools {
             withTimeoutOrNull(10_000) { engine.state.first { it is InferenceEngine.State.Initialized } }
         }
         if (engine.state.value !is InferenceEngine.State.ModelReady) { engine.loadModel(path); loadedPath = path; justLoaded = true }
+        loaded = true
         return engine
     }
 
@@ -560,14 +582,14 @@ object WritingTools {
     /** Frees the model now, e.g. before the Image maker needs the memory for drawing. */
     suspend fun unloadNow(context: Context) {
         unloadJob?.cancel()
-        lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() } }
+        lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
     }
 
     private fun scheduleUnload(context: Context, after: Long = 90_000) {
         unloadJob?.cancel()
         unloadJob = scope.launch {
             delay(after)
-            lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() } }
+            lock.withLock { runCatching { AiChat.getInferenceEngine(context.applicationContext).cleanUp() }; loaded = false }
         }
     }
 

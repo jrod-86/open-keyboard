@@ -543,7 +543,7 @@ object KeyboardMenu {
             Plugins.enabledAppActions(context).map { app ->
                 // the app's logo as a one-colour outline, so it matches the other tiles
                 val mono = appOutline(context, app.component.packageName, app.icon)
-                Item(app.label, { mono?.first ?: app.icon?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
+                Item(app.label, { mono?.first ?: (app.icon?.constantState?.newDrawable() ?: app.icon)?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
                     hide()
                     var c: Context = context
                     while (c is ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -638,7 +638,19 @@ object KeyboardMenu {
      * the logo layer of its adaptive icon. Second is true when it's a full-size adaptive layer.
      * Null when the icon has no separate logo, so the colour icon is kept.
      */
+    /** Open Keyboard (test 217): app outlines worked out once per app, not every time the bar or drawer is built. */
+    private val outlines = java.util.concurrent.ConcurrentHashMap<String, Pair<android.graphics.drawable.Drawable, Boolean>>()
+    private val noOutline = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private fun appOutline(context: Context, pkg: String, icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
+        if (pkg in noOutline) return null
+        outlines[pkg]?.let { (d, big) -> return (d.constantState?.newDrawable()?.mutate() ?: d) to big }
+        val found = findAppOutline(context, pkg, icon)
+        if (found == null) noOutline.add(pkg) else outlines[pkg] = found
+        return found?.let { (d, big) -> (d.constantState?.newDrawable()?.mutate() ?: d) to big }
+    }
+
+    private fun findAppOutline(context: Context, pkg: String, icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
         // Samsung (and some launchers' icon packs) hand out finished pictures; read the app's own icon layers instead
         val raw = runCatching {
             val pm = context.packageManager

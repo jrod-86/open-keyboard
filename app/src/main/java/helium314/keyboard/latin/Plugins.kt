@@ -60,7 +60,18 @@ object Plugins {
         if (app.isBlank() || action.contains(app, ignoreCase = true)) action else "$action ($app)"
 
     /** Apps that offer a text action, excluding this app. */
-    fun appActions(ctx: Context): List<AppAction> {
+    fun appActions(ctx: Context, fresh: Boolean = false): List<AppAction> {
+        // Open Keyboard (test 217): the top bar and the app drawer ask for this every time they're built, and looking
+        // through all the phone's apps (with their names and icons) is slow. Kept for 10 minutes, or until the Plugins
+        // screen asks again.
+        val now = android.os.SystemClock.uptimeMillis()
+        val cached = appActionsCache
+        if (!fresh && cached != null && now - cached.first < 10 * 60_000) return cached.second
+        return findAppActions(ctx).also { appActionsCache = now to it }
+    }
+    @Volatile private var appActionsCache: Pair<Long, List<AppAction>>? = null
+
+    private fun findAppActions(ctx: Context): List<AppAction> {
         val pm = ctx.packageManager
         return runCatching { pm.queryIntentActivities(processTextIntent(), 0) }.getOrDefault(emptyList())
             .filter { it.activityInfo.packageName != ctx.packageName && it.activityInfo.exported }
