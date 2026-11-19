@@ -1,0 +1,16 @@
+{
+  "about": "Open Keyboard plugin store. Free, open source apps only. To add yours, open a pull request adding an entry here.",
+  "plugins": [
+    {
+      "package": "com.example.okplugin",
+      "name": "Hello plugin (example)",
+      "emoji": "👋",
+      "description": "The starter kit example: /hello says hi, /models lists the AI models it could share. For trying plugins and for people making their own.",
+      "author": "Open Keyboard",
+      "source": "https://github.com/jrod-86/open-keyboard/tree/claude/project-thread-t657j2/plugin-starter",
+      "download": "https://github.com/jrod-86/open-keyboard/raw/apk/OpenKeyboard-plugin-hello.apk",
+      "offline": true,
+      "size": "1 MB"
+    }
+  ]
+}
