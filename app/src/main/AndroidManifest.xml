@@ -177,6 +177,14 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:process=":tools"
             android:exported="false" />
 
+        <!-- Open Keyboard (test 224): shared AI models for plugin apps you've switched on (read only) -->
+        <provider android:name="helium314.keyboard.latin.ModelProvider"
+            android:authorities="${applicationId}.models"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.jrod86.openkeyboard.MODELS" />
+            </intent-filter>
+        </provider>
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.media"
             android:exported="false"

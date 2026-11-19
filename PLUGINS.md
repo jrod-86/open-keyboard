@@ -113,8 +113,36 @@ The keyboard comes first. A plugin must never slow down typing:
 **Settings → Plugins → ⚡ Keyboard speed** shows how fast the keyboard opens, any freezes, and how much
 memory each part uses, so you can check your plugin doesn't slow anything down.
 
-## AI models
+## AI models: use the ones already downloaded
 
 **Settings → Plugins → 🧠 AI models** lists every model the keyboard has downloaded, its size and which
-apps use it. Each model is downloaded once and shared. A door for outside plugin apps to use these
-shared models is planned.
+apps use it. Each model is downloaded once and shared, like Pinokio. Your plugin app can use these
+models too, so people never download the same model twice. This works once the person has switched your
+plugin on, and it is read only: you can't change or delete a model. Voices people made themselves are
+never shared.
+
+Find the keyboard's model door, and add this to your manifest so Android lets you see it:
+
+```xml
+<queries>
+    <intent><action android:name="io.github.jrod86.openkeyboard.MODELS" /></intent>
+</queries>
+```
+
+```kotlin
+val info = packageManager.queryIntentContentProviders(Intent("io.github.jrod86.openkeyboard.MODELS"), 0)
+    .firstOrNull()?.providerInfo ?: return // Open Keyboard isn't installed
+val base = Uri.parse("content://${info.authority}")
+val models = contentResolver.call(base, "models", null, null) ?: return
+// "error" is set if the person hasn't switched your plugin on yet
+val ids = models.getStringArray("ids")       // e.g. "voice-models", "llm_qwen2.5-1.5b-instruct-q4_k_m.gguf"
+val names = models.getStringArray("names")   // "Voice typing", "Writing model (Quick)"…
+val kinds = models.getStringArray("kinds")   // what the keyboard uses each one for
+val sizes = models.getLongArray("sizes")     // bytes
+val files = models.getStringArray("files_${ids!![0]}") // the files in that model
+
+// read one file (no copy needed: llama.cpp and ONNX can open "/proc/self/fd/<fd>")
+val fd = contentResolver.openFileDescriptor(Uri.withAppendedPath(base, "${ids[0]}/${files!![0]}"), "r")
+```
+
+The models list in the keyboard shows your app under "Used by" once it has opened a model.

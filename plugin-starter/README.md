@@ -1,9 +1,9 @@
 # Open Keyboard plugin starter kit
 
-A tiny, complete Android app that adds a `/hello` command to Open Keyboard. Copy this folder, rename
+A tiny, complete Android app that adds `/hello` and `/models` (which AI models it could share) to Open Keyboard. Copy this folder, rename
 the package, and change `HelloCommands.kt` to do your own thing.
 
-1. Open this folder in Android Studio (it's its own project, separate from the keyboard).
+1. Open this folder in Android Studio (it's its own project, separate from the keyboard), or run `./gradlew assembleDebug`.
 2. Change `com.example.okplugin` to your own package name in `app/build.gradle.kts`,
    `AndroidManifest.xml` and the Kotlin file.
 3. Put your source code address in the `SOURCE_URL` line of the manifest, so the keyboard shows the

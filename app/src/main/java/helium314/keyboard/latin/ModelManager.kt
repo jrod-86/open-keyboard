@@ -15,7 +15,10 @@ import java.io.File
  * Also the trust badge for outside plugin apps: open source or not, works offline or not, and what it gets to see.
  */
 object ModelManager {
-    class Entry(val name: String, val usedBy: String, val file: File, val bytes: Long, val userMade: Boolean = false)
+    class Entry(val name: String, val usedBy: String, val file: File, val bytes: Long, val userMade: Boolean = false) {
+        /** Stable name for plugin apps (test 224): the folder or file name, e.g. "voice-models" or "qwen2.5-1.5b-instruct-q4_k_m.gguf". */
+        val id: String get() = file.path.substringAfter("/files/").replace('/', '_')
+    }
 
     private class Known(val path: String, val name: String, val usedBy: String, val external: Boolean = false, val userMade: Boolean = false)
 
@@ -44,7 +47,7 @@ object ModelManager {
         known.forEach { k ->
             val f = File(if (k.external) ext ?: files else files, k.path)
             val size = sizeOf(f)
-            if (size > 0) out += Entry(k.name, k.usedBy, f, size, k.userMade)
+            if (size > 0) out += Entry(k.name, withApps(ctx, k.usedBy, f), f, size, k.userMade)
         }
         // writing and translation models, one file each
         listOfNotNull(ext, files).distinct().forEach { root ->
@@ -55,7 +58,7 @@ object ModelManager {
                     f.name.startsWith("madlad") -> "Khmer translator" to "Translate"
                     else -> f.name to "?"
                 }
-                out += Entry(name, usedBy, f, f.length())
+                out += Entry(name, withApps(ctx, usedBy, f), f, f.length())
             }
         }
         // anything else big that we don't know by name (Translate's language models, for one)
@@ -74,6 +77,22 @@ object ModelManager {
             }
         }
         return out.sortedByDescending { it.bytes }
+    }
+
+    // ---------- sharing with plugin apps (test 224) ----------
+
+    private fun sharePrefs(ctx: Context) = ctx.getSharedPreferences("open_keyboard_model_sharing", Context.MODE_PRIVATE)
+
+    /** A plugin app opened this model: remember it, so the list can say who shares it. */
+    fun noteSharedWith(ctx: Context, e: Entry, appLabel: String) {
+        val p = sharePrefs(ctx)
+        val now = p.getStringSet(e.file.path, emptySet()).orEmpty()
+        if (appLabel !in now) p.edit().putStringSet(e.file.path, now + appLabel).apply()
+    }
+
+    private fun withApps(ctx: Context, usedBy: String, f: File): String {
+        val apps = sharePrefs(ctx).getStringSet(f.path, emptySet()).orEmpty()
+        return if (apps.isEmpty()) usedBy else usedBy + ", " + apps.sorted().joinToString(", ") + " (plugin app)"
     }
 
     private fun sizeOf(f: File): Long = if (!f.exists()) 0 else if (f.isFile) f.length() else f.walkTopDown().filter { it.isFile }.sumOf { it.length() }
