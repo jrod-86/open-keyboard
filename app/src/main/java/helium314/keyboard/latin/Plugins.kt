@@ -54,8 +54,39 @@ object Plugins {
 
     private fun key(id: String) = "open_keyboard_plugin_$id"
 
-    /** Whether a plugin is on. Plugins are on until switched off. */
-    fun isOn(id: String) = prefs?.getBoolean(key(id), true) ?: true
+    /**
+     * Whether a plugin is on. The keyboard's own plugins are on until switched off.
+     * Open Keyboard (test 223, Jarrod: "keyboard first"): plugins from other apps ("cmd:" commands, "app:" text actions)
+     * start OFF when they're new, so nothing new can surprise you or slow the keyboard. Ones you already had before
+     * this version keep working (they were on).
+     */
+    fun isOn(id: String): Boolean {
+        val p = prefs ?: return !isOutside(id)
+        if (!isOutside(id)) return p.getBoolean(key(id), true)
+        if (p.contains(key(id))) return p.getBoolean(key(id), false)
+        return !p.getBoolean(seededKey(id), false) // not looked at yet since updating: as before (on)
+    }
+
+    private fun isOutside(id: String) = id.startsWith("cmd:") || id.startsWith("app:")
+    private fun seededKey(id: String) = "open_keyboard_plugins_seeded_" + id.substringBefore(':')
+
+    /** A new outside plugin that hasn't been switched on or off yet (the Plugins screen marks it "New"). */
+    fun isNew(ctx: Context, id: String): Boolean { init(ctx); return isOutside(id) && prefs?.contains(key(id)) == false }
+
+    /**
+     * Called with every outside plugin found. The first time after updating, the ones already there are kept on;
+     * from then on, anything new starts off.
+     */
+    fun seedOutside(ctx: Context, ids: List<String>) {
+        init(ctx)
+        val p = prefs ?: return
+        val kind = ids.firstOrNull() ?: return
+        if (p.getBoolean(seededKey(kind), false)) return
+        p.edit().apply {
+            ids.forEach { if (!p.contains(key(it))) putBoolean(key(it), true) }
+            putBoolean(seededKey(kind), true)
+        }.apply()
+    }
     fun isOn(ctx: Context, id: String): Boolean { init(ctx); return isOn(id) }
     fun set(ctx: Context, id: String, on: Boolean) { init(ctx); prefs?.edit()?.putBoolean(key(id), on)?.apply() }
 
@@ -92,6 +123,7 @@ object Plugins {
                 runCatching { it.loadIcon(pm) }.getOrNull()) }
             .distinctBy { it.id }
             .sortedBy { it.label.lowercase() }
+            .also { list -> if (list.isNotEmpty()) seedOutside(ctx, list.map { it.id }) }
     }
 
     /** App actions that are switched on, for the menu. */

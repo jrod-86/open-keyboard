@@ -123,7 +123,9 @@ fun PluginsScreen(onClickBack: () -> Unit) {
                 commandApps.forEach { p ->
                     val icon = remember(p.packageName) { runCatching { ctx.packageManager.getApplicationIcon(p.packageName) }.getOrNull() }
                     val badge = remember(p.packageName) { helium314.keyboard.latin.ModelManager.trust(ctx, p.packageName, "only what you type after its command") }
-                    row(p.id, p.label, p.names.joinToString("  ") { "/$it" } + "\n" + badge, icon, enabled = cmdOn)
+                    val fresh = remember(version, p.id) { Plugins.isNew(ctx, p.id) }
+                    row(p.id, (if (fresh) "🆕 " else "") + p.label, p.names.joinToString("  ") { "/$it" } + "\n" + badge +
+                        (if (fresh) "\nNew: off until you switch it on" else ""), icon, enabled = cmdOn)
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -136,7 +138,8 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             if (apps.isEmpty()) Text("None of your apps offer text actions yet.", style = MaterialTheme.typography.bodyMedium)
             apps.forEach {
                 val badge = remember(it.id) { helium314.keyboard.latin.ModelManager.trust(ctx, it.component.packageName, "only the text you send it from the menu") }
-                row(it.id, it.label, badge, it.icon, enabled = appsOn)
+                val fresh = remember(version, it.id) { Plugins.isNew(ctx, it.id) }
+                row(it.id, (if (fresh) "🆕 " else "") + it.label, badge + (if (fresh) "\nNew: off until you switch it on" else ""), it.icon, enabled = appsOn)
             }
         }
     }

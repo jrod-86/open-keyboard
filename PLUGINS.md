@@ -82,6 +82,12 @@ replaces the command when tapped.
 The [`plugin-starter`](plugin-starter/) folder is a complete little app that adds `/hello`. Copy it,
 rename the package, and build your own command from there.
 
+## New plugins start switched off
+
+When someone installs your app, its commands and text actions show up in **Settings → Plugins** marked
+🆕, switched off. Nothing reaches your app until the person switches it on. Tell people where to do
+that, for example on your app's first screen.
+
 ## Trust badge
 
 **Settings → Plugins** shows a badge on every outside plugin, so people can see at a glance whether to

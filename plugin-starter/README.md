@@ -11,7 +11,7 @@ the package, and change `HelloCommands.kt` to do your own thing.
 4. Run it on your phone, open the keyboard, and type `/hello Sam`.
 
 The keyboard finds the plugin by itself. It shows up under **Settings → Plugins → Commands from your
-apps**, with its trust badge, and can be switched off there. The full guide is in
+apps**, marked 🆕 and switched off, with its trust badge. Switch it on there to try it. The full guide is in
 [PLUGINS.md](../PLUGINS.md).
 
 This starter kit doesn't ask for the internet permission, so it gets the 📴 Works offline badge.
