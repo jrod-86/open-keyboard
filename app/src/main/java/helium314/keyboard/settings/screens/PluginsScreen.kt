@@ -80,7 +80,15 @@ fun PluginsScreen(onClickBack: () -> Unit) {
             Plugins.apps.forEach { row(it.id, it.name, it.description) }
             Spacer(Modifier.height(16.dp))
             Text("Keyboard features", style = MaterialTheme.typography.titleMedium)
-            Plugins.builtIn.forEach { row(it.id, it.name, it.description) }
+            Plugins.builtIn.forEach {
+                row(it.id, it.name, it.description)
+                // Open Keyboard (test 220, Jarrod): a switch for each voice command, so you keep only the ones you like
+                if (it.id == "voice_commands" && remember(version) { Plugins.isOn(ctx, "voice_commands") }) {
+                    Column(Modifier.padding(start = 20.dp)) {
+                        helium314.keyboard.voice.VoiceCommands.commands.forEach { c -> row(c.id, c.name, c.example) }
+                    }
+                }
+            }
             if (remember(version) { Plugins.isOn(ctx, "fingers") }) {
                 val taps = remember(version) { helium314.keyboard.keyboard.FingerModel.learnedTaps(ctx) }
                 androidx.compose.material3.TextButton(onClick = {

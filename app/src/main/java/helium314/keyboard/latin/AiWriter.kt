@@ -284,7 +284,7 @@ object AiWriter {
      */
     fun fromVoice(service: InputMethodService, sentence: String): Boolean {
         val ime = service as? LatinIME ?: return false
-        if (!Plugins.isOn(ime, "writing") || !WritingTools.anyDownloaded(ime)) return false
+        if (!Plugins.isOn(ime, "writing") || !helium314.keyboard.voice.VoiceCommands.isOn("vc_write") || !WritingTools.anyDownloaded(ime)) return false
         // the talk box and writer mode take the words as they are
         if (ime.currentInputEditorInfo?.packageName == ime.packageName || writerActive(ime)) return false
         val request = sentence.trim()

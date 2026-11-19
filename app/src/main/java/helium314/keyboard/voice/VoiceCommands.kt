@@ -5,6 +5,29 @@ package helium314.keyboard.voice
 object VoiceCommands {
     enum class Action { DELETE_THAT, SEND, STOP, CLEAR_ALL }
 
+    /**
+     * Open Keyboard (test 220, Jarrod): every voice command has its own switch under Settings, Plugins, Voice commands,
+     * so someone can keep just the ones they like. The main "Voice commands" switch turns them all off.
+     */
+    class Command(val id: String, val name: String, val example: String)
+    val commands = listOf(
+        Command("vc_punctuation", "Say punctuation", "\"comma\", \"full stop\", \"question mark\", \"new line\""),
+        Command("vc_delete", "Delete that", "\"delete that\" or \"scratch that\" removes what you just said"),
+        Command("vc_clear", "Clear all", "\"clear all\" empties the text box"),
+        Command("vc_send", "Send", "\"send\" sends the message (Chat's own box always listens for send)"),
+        Command("vc_stop", "Stop listening", "\"stop listening\" turns the mic off"),
+        Command("vc_change", "Change a word", "\"change dinner to lunch\" fixes a word you said"),
+        Command("vc_rewrite", "Make that…", "\"make that shorter / friendlier / more professional\" (uses Writing help)"),
+        Command("vc_write", "Write a…", "\"write a birthday message for my wife\" (uses the AI writer)"),
+    )
+
+    /** Whether one voice command is on: the main switch and its own switch. */
+    fun isOn(id: String) = helium314.keyboard.latin.Plugins.isOn("voice_commands") && helium314.keyboard.latin.Plugins.isOn(id)
+
+    private fun idOf(a: Action) = when (a) {
+        Action.DELETE_THAT -> "vc_delete"; Action.SEND -> "vc_send"; Action.STOP -> "vc_stop"; Action.CLEAR_ALL -> "vc_clear"
+    }
+
     private val actions = mapOf(
         "delete that" to Action.DELETE_THAT, "undo that" to Action.DELETE_THAT, "scratch that" to Action.DELETE_THAT,
         "delete" to Action.DELETE_THAT,
@@ -17,7 +40,7 @@ object VoiceCommands {
     fun action(sentence: String): Action? {
         if (!helium314.keyboard.latin.Plugins.isOn("voice_commands")) return null
         val plain = sentence.lowercase().replace(notLetters, " ").trim().replace(spaces, " ")
-        return actions[plain]
+        return actions[plain]?.takeIf { isOn(idOf(it)) }
     }
 
     /** Voice editing (test 219, idea 8): "change dinner to lunch", or "make that shorter" (Writing help on the text). */
@@ -38,8 +61,8 @@ object VoiceCommands {
     fun edit(sentence: String): Edit? {
         if (!helium314.keyboard.latin.Plugins.isOn("voice_commands")) return null
         val t = sentence.trim()
-        rewriteCmd.matchEntire(t)?.let { m -> rewrites[m.groupValues[2].lowercase().trim()]?.let { return Edit.Rewrite(it) } }
-        replaceCmd.matchEntire(t)?.let { m ->
+        if (isOn("vc_rewrite")) rewriteCmd.matchEntire(t)?.let { m -> rewrites[m.groupValues[2].lowercase().trim()]?.let { return Edit.Rewrite(it) } }
+        if (isOn("vc_change")) replaceCmd.matchEntire(t)?.let { m ->
             val old = m.groupValues[1].trim().trim(',', '"', '“', '”'); val new = m.groupValues[2].trim().trim(',', '"', '“', '”')
             if (old.isNotEmpty() && new.isNotEmpty() && old.split(' ').size <= 4) return Edit.Replace(old, new)
         }
@@ -82,7 +105,7 @@ object VoiceCommands {
     /** Turns spoken punctuation ("comma", "new line") into symbols and fixes capitals after them. */
     fun punctuate(text: String): String {
         var t = text
-        for ((regex, symbol) in markRegex) {
+        if (isOn("vc_punctuation")) for ((regex, symbol) in markRegex) {
             t = regex.replace(t) { m ->
                 val opening = symbol == "(" || (symbol == "\"" && m.value.contains("open", true))
                 when {
