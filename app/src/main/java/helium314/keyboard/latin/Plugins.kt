@@ -47,6 +47,7 @@ object Plugins {
         Plugin("app_sticker_maker", "✂️ Sticker maker", "Turn a photo into a sticker"),
         Plugin("app_fancy_text", "𝓕 Fancy text", "Type in 50 fancy letter styles"),
         Plugin("app_music", "🎵 Music", "Play the music on your phone, Apple Music style"),
+        Plugin("app_converter", "🔄 Converter", "Change documents into other types, like Word to PDF (offline)"),
     )
 
     private var prefs: SharedPreferences? = null

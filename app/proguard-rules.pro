@@ -26,3 +26,6 @@
     public static void onProgress(int, int);
     public static void onStage(java.lang.String, long, long);
 }
+
+# Open Keyboard Converter (test 233): jsoup can use re2j if present; it is not
+-dontwarn com.google.re2j.**

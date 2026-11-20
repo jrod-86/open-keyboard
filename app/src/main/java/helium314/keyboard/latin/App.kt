@@ -39,7 +39,7 @@ class App : Application() {
         // Chat (":chat", test 201) is the same: its model load stalled the keyboard for seconds when they shared a process
         // Sticker maker and Scan text (":tools", test 217) run picture AI models (hundreds of MB): kept out of the keyboard's
         // process so the keyboard's memory stays small and Android doesn't close and reopen it (a slow, laggy reopen)
-        if (process.endsWith(":tts") || process.endsWith(":chat") || process.endsWith(":tools") || process.endsWith(":music")) return
+        if (process.endsWith(":tts") || process.endsWith(":chat") || process.endsWith(":tools") || process.endsWith(":music") || process.endsWith(":convert")) return
         NativeCrashes.collect(this)
         KeyboardMcpServer.startIfEnabled(this) // test 226: only if switched on in Settings, Plugins
 
