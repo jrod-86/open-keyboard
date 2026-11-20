@@ -124,6 +124,9 @@ class Library(val songs: List<Song>) {
                     }
                 }
             }
+            // songs you said aren't music (test 255) stay out of the library
+            val hidden = HiddenSongs.all(ctx)
+            if (hidden.isNotEmpty()) out.removeAll { it.id in hidden }
             val fixes = SongFixer.all(ctx)
             if (fixes.isNotEmpty()) for (i in out.indices) if (out[i].id in fixes) out[i] = SongFixer.apply(ctx, out[i])
             Library(out.sortedBy { it.title.lowercase() }).also { cached = it }
@@ -160,4 +163,19 @@ object Covers {
         if (bmp != null) cache.put(key, bmp) else synchronized(missing) { missing += key }
         bmp
     }
+}
+
+/** Test 255 (Jarrod): recordings and other non-music sounds you hid from the library. id -> "title · artist". */
+object HiddenSongs {
+    private fun file(ctx: Context) = java.io.File(ctx.filesDir, "music/hidden.json")
+    @Synchronized fun all(ctx: Context): Map<Long, String> = runCatching {
+        val o = org.json.JSONObject(file(ctx).readText())
+        o.keys().asSequence().associate { it.toLong() to o.getString(it) }
+    }.getOrDefault(emptyMap())
+    @Synchronized private fun write(ctx: Context, map: Map<Long, String>) {
+        val o = org.json.JSONObject(); map.forEach { (k, v) -> o.put(k.toString(), v) }
+        file(ctx).apply { parentFile?.mkdirs() }.writeText(o.toString())
+    }
+    fun hide(ctx: Context, song: Song) = write(ctx, all(ctx) + (song.id to "${song.title} · ${song.artist}"))
+    fun show(ctx: Context, id: Long) = write(ctx, all(ctx) - id)
 }

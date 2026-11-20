@@ -403,7 +403,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Playlists -> PlaylistsPage(library, ::open, ::back)
                     Page.Import -> ImportPage(library, ::open, ::back)
                     is Page.PlaylistPage -> PlaylistPage(p.id, library, ui, ::open, ::back)
-                    Page.Settings -> SettingsPage(::open, ::back)
+                    Page.Settings -> SettingsPage(::open, ::back) { reload() }
                     Page.Fixer -> FixerPage(library, onBack = ::back) { reload() }
                     Page.Artists -> ArtistsPage(library, ::open, ::back)
                     is Page.AlbumPage -> library.albums.find { it.id == p.id }?.let { AlbumPage(it, ui, library, ::open, ::back) }

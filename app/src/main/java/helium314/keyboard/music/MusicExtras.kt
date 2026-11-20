@@ -231,7 +231,7 @@ private fun Color.compositeWhite(f: Float) = Color(red + (1 - red) * f, green + 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
+internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryChanged: () -> Unit = {}) {
     val ctx = LocalContext.current
     fun changed() = MusicSettings.save(ctx)
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -339,6 +339,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
                 Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
             }
         }
+        item { HiddenSongsRow(onLibraryChanged) }
         item {
             TextButton({ addHomeShortcut(ctx) }, Modifier.padding(8.dp)) { Text("Add Music to Home screen", color = Accent) }
         }
@@ -604,7 +605,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                         SongFixer.skip(ctx, r.song.id, true); rows = rows?.minus(r)
                     }, onUndo = {
                         SongFixer.undo(ctx, r.song.id); Covers.clear(); onChanged()
-                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly, onPick = {
+                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly, onHide = {
+                        HiddenSongs.hide(ctx, r.song); dirty = true; rows = rows?.minus(r)
+                        android.widget.Toast.makeText(ctx, "Hidden. Bring it back in Settings, Hidden songs.", android.widget.Toast.LENGTH_SHORT).show()
+                    }, onPick = {
                         picking = r
                         picker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
                     })
@@ -641,7 +645,7 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
 }
 
 @Composable
-private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onPick: () -> Unit = {}) {
+private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onHide: () -> Unit = {}, onPick: () -> Unit = {}) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(Modifier.clickable { onPick() }, verticalAlignment = Alignment.CenterVertically) { // tap the song to pick a picture
@@ -663,12 +667,14 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 TextButton(onPick) { Text("Pick picture", color = Accent) }
                 if (r.song.fixed) TextButton(onUndo) { Text("Undo fix", color = Accent) }
                 else TextButton(onSkip) { Text("Skip", color = dim) }
+                TextButton(onHide) { Text("Not music, hide", color = dim) }
             }
             m == null -> Row(Modifier.padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(r.note ?: "No match found.", Modifier.weight(1f, fill = false), fontSize = 13.sp, color = dim)
                 TextButton(onSearch) { Text("Search…", color = Accent) }
                 TextButton(onPick) { Text("Pick picture", color = Accent) }
                 TextButton(onSkip) { Text("Skip", color = dim) }
+                TextButton(onHide) { Text("Not music, hide", color = dim) }
             }
             else -> {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))
@@ -698,6 +704,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                     TextButton(onSearch) { Text("Search…", color = Accent) }
                     TextButton(onPick) { Text("Pick picture", color = Accent) }
                     TextButton(onSkip) { Text("Skip", color = dim) }
+                    TextButton(onHide) { Text("Not music, hide", color = dim) }
                 }
             }
         }
@@ -712,4 +719,33 @@ internal object ArtCheck {
     fun add(ctx: Context, ids: Set<Long>) {
         runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText((load(ctx) + ids).joinToString("\n")) }
     }
+}
+
+/** Settings, Your music: songs hidden as "not music", with a way to bring each back (test 255). */
+@Composable
+private fun HiddenSongsRow(onLibraryChanged: () -> Unit) {
+    val ctx = LocalContext.current
+    var hidden by remember { mutableStateOf(HiddenSongs.all(ctx)) }
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clickable { hidden = HiddenSongs.all(ctx); open = true }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Hidden songs (${hidden.size})", fontSize = 17.sp)
+            Text("Recordings and other sounds you said aren't music", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        }
+        Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+    }
+    if (open) AlertDialog(onDismissRequest = { open = false },
+        title = { Text("Hidden songs") },
+        text = {
+            if (hidden.isEmpty()) Text("Nothing hidden. In Fix song info, tap \"Not music, hide\" on a recording to hide it.")
+            else LazyColumn(Modifier.height(360.dp)) {
+                items(hidden.entries.toList(), key = { it.key }) { (id, name) ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, Modifier.weight(1f), fontSize = 14.sp, maxLines = 2)
+                        TextButton({ HiddenSongs.show(ctx, id); hidden = HiddenSongs.all(ctx); onLibraryChanged() }) { Text("Show again", color = Accent) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton({ open = false }) { Text("Done", color = Accent) } })
 }
