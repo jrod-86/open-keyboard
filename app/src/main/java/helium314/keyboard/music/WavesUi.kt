@@ -356,9 +356,13 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     val by = Sorts.playlistSort.intValue
     // the list as shown; while you drag a playlist it changes here first, then gets saved when you let go
-    val order = remember { mutableStateListOf<Playlist>() }
+    // test 279 (Jarrod: Back still went to the top): the list has to be full on the very first frame, or the list
+    // only has its 3 top rows for a moment and the saved scroll spot gets lost
+    fun sorted() = if (by == 1) Playlists.all.value.sortedBy { it.name.lowercase() } else Playlists.all.value
+    val order = remember { mutableStateListOf<Playlist>().apply { addAll(sorted()) } }
     LaunchedEffect(Playlists.all.value, by) {
-        order.clear(); order.addAll(if (by == 1) Playlists.all.value.sortedBy { it.name.lowercase() } else Playlists.all.value)
+        val now = sorted()
+        if (order.toList() != now) { order.clear(); order.addAll(now) }
     }
     PlaylistSelect.total = order.size; PlaylistSelect.allIds = order.map { it.id }
     val state = TabScroll.playlists
@@ -373,13 +377,16 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         val info = state.layoutInfo.visibleItemsInfo
         val i = order.indexOfFirst { it.id == id }
         if (i < 0) return false
+        // test 279 (Jarrod: "it just stops"): the list keeps its place by the top row's playlist, so moving the dragged
+        // playlist above the top row made the list jump and threw away the drag. Keep the place by position instead.
+        fun keepPlace() = state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
         // swap with the neighbour once the dragged row passes half of it
         if (dragOffset > 0 && i < order.size - 1) {
             val next = info.find { it.key == order[i + 1].id }
-            if (next != null && dragOffset > next.size / 2f) { order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true; return true }
+            if (next != null && dragOffset > next.size / 2f) { keepPlace(); order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true; return true }
         } else if (dragOffset < 0 && i > 0) {
             val prev = info.find { it.key == order[i - 1].id }
-            if (prev != null && -dragOffset > prev.size / 2f) { order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true; return true }
+            if (prev != null && -dragOffset > prev.size / 2f) { keepPlace(); order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true; return true }
         }
         return false
     }
