@@ -49,6 +49,7 @@ data class Song(
                 .setAlbumTitle(album)
                 .setAlbumArtist(albumArtist)
                 .setArtworkUri(artUri)
+                .setExtras(CoverBitmapLoader.extras(this)) // test 266: lets the session load the real cover
                 .setTrackNumber(track)
                 .setReleaseYear(year.takeIf { it > 0 })
                 .setDurationMs(durationMs)

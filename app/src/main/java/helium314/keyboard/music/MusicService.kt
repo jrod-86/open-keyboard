@@ -35,6 +35,7 @@ object MusicState {
  * Open Keyboard Music (test 229): plays music in the background, with lock screen, notification,
  * headphone and Bluetooth controls (Media3). Lives in its own ":music" process so it never slows typing.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MusicService : MediaSessionService() {
     private var session: MediaSession? = null
     private var leveler: LevelApplier? = null
@@ -88,7 +89,18 @@ class MusicService : MediaSessionService() {
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        session = MediaSession.Builder(this, player).setSessionActivity(open).build()
+        // test 266: real covers and shuffle/repeat buttons for the phone's own pop-up player (see SessionLook.kt)
+        val s = MediaSession.Builder(this, player).setSessionActivity(open)
+            .setBitmapLoader(androidx.media3.session.CacheBitmapLoader(CoverBitmapLoader(this)))
+            .setCallback(SessionButtons.callback())
+            .setMediaButtonPreferences(SessionButtons.buttons(player))
+            .build()
+        session = s
+        player.addListener(object : Player.Listener {
+            // shuffle or repeat changed in the app: update the buttons on the phone's player too
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
+            override fun onRepeatModeChanged(repeatMode: Int) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
+        })
         Leveler.load(this)
         leveler = LevelApplier(this, player).also { player.addListener(it.listener) }
         Tuning.load(this)
