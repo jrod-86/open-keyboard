@@ -1,25 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Open Waves home screen icon (test 286): a 1x1 widget that looks like an app icon, so it has no shortcut badge -->
+<!-- Open Waves home screen icon (test 286): a 1x1 widget that looks like an app icon, so it has no shortcut badge.
+     Test 287 (Jarrod): Samsung's squircle shape, and the icon fills the cell like the other apps' icons do, with no name under it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/ow_icon_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:gravity="center"
-    android:orientation="vertical">
+    android:padding="4dp">
     <ImageView
-        android:layout_width="54dp"
-        android:layout_height="54dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scaleType="fitCenter"
         android:src="@drawable/open_waves_widget_icon"
         android:contentDescription="Open Waves" />
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="Open Waves"
-        android:textColor="#FFFFFFFF"
-        android:textSize="12sp"
-        android:maxLines="1"
-        android:shadowColor="#B3000000"
-        android:shadowDy="1"
-        android:shadowRadius="3" />
 </LinearLayout>
