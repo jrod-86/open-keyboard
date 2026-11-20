@@ -45,4 +45,31 @@ object MusicIcons {
     val share = icon("share", "M18,16.08c-0.76,0 -1.44,0.3 -1.96,0.77L8.91,12.7c0.05,-0.23 0.09,-0.46 0.09,-0.7s-0.04,-0.47 -0.09,-0.7l7.05,-4.11c0.54,0.5 1.25,0.81 2.04,0.81 1.66,0 3,-1.34 3,-3s-1.34,-3 -3,-3 -3,1.34 -3,3c0,0.24 0.04,0.47 0.09,0.7L8.04,9.81C7.5,9.31 6.79,9 6,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3c0.79,0 1.5,-0.31 2.04,-0.81l7.12,4.16c-0.05,0.21 -0.08,0.43 -0.08,0.65 0,1.61 1.31,2.92 2.92,2.92 1.61,0 2.92,-1.31 2.92,-2.92s-1.31,-2.92 -2.92,-2.92z")
     val delete = icon("delete", "M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z")
     val album = icon("album", "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zm0,14.5c-2.49,0 -4.5,-2.01 -4.5,-4.5S9.51,7.5 12,7.5s4.5,2.01 4.5,4.5 -2.01,4.5 -4.5,4.5zm0,-5.5c-0.55,0 -1,0.45 -1,1s0.45,1 1,1 1,-0.45 1,-1 -0.45,-1 -1,-1z")
+
+    // ---- thin outline icons in the style of Samsung's player (test 239), drawn by us ----
+    private fun line(name: String, vararg paths: String, w: Float = 1.6f, fills: List<String> = emptyList()): ImageVector {
+        val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+        paths.forEach { b.addPath(addPathNodes(it), stroke = SolidColor(Color.Black), strokeLineWidth = w,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) }
+        fills.forEach { b.addPath(addPathNodes(it), fill = SolidColor(Color.Black)) }
+        return b.build()
+    }
+    val sDown = line("s_down", "M5,9L12,16L19,9")
+    val sSmartView = line("s_smartview", "M4.6,10.2A7.8,7.8 0,0 1,17.8 6.4", "M18.2,3.4V6.8H14.8", "M19.4,13.8A7.8,7.8 0,0 1,6.2 17.6", "M5.8,20.6V17.2H9.2",
+        "M10.2,9L15.2,12L10.2,15Z")
+    val sVolume = line("s_volume", "M4,9.5H7.5L12,5.5V18.5L7.5,14.5H4Z", "M15,9.2A3.6,3.6 0,0 1,15 14.8", "M17.4,6.6A7.4,7.4 0,0 1,17.4 17.4")
+    val sEqualizer = line("s_eq", "M4,11V19", "M8,6V19", "M12,13V19", "M16,8V19", "M20,15V19", w = 1.7f)
+    val sMore = icon("s_more", "M10.4,5a1.6,1.6 0,1 0,3.2 0a1.6,1.6 0,1 0,-3.2 0zM10.4,12a1.6,1.6 0,1 0,3.2 0a1.6,1.6 0,1 0,-3.2 0zM10.4,19a1.6,1.6 0,1 0,3.2 0a1.6,1.6 0,1 0,-3.2 0z")
+    val sQueue = line("s_queue", "M4,6H19", "M6,11H14", "M4,16H10", "M17.5,18.2V10.2L20.2,11.2", fills = listOf("M13.6,18.2a1.95,1.95 0,1 0,3.9 0a1.95,1.95 0,1 0,-3.9 0z"))
+    val sHeart = line("s_heart", "M12,19.6C12,19.6 3.6,14.6 3.6,9.1A4.3,4.3 0,0 1,12 7.4A4.3,4.3 0,0 1,20.4 9.1C20.4,14.6 12,19.6 12,19.6Z")
+    val sHeartFull = icon("s_heart_full", "M12,19.6C12,19.6 3.6,14.6 3.6,9.1A4.3,4.3 0,0 1,12 7.4A4.3,4.3 0,0 1,20.4 9.1C20.4,14.6 12,19.6 12,19.6Z")
+    val sPlus = line("s_plus", "M12,4.5V19.5", "M4.5,12H19.5", w = 1.7f)
+    val sShuffle = line("s_shuffle", "M3.5,7H6.8C11,7 12.6,17 16.8,17H20.5", "M3.5,17H6.8C11,17 12.6,7 16.8,7H20.5", "M18.2,4.6L20.5,7L18.2,9.4", "M18.2,14.6L20.5,17L18.2,19.4")
+    val sRepeat = line("s_repeat", "M4,13.2V10.5A3,3 0,0 1,7 7.5H18.6", "M16.2,5.1L18.6,7.5L16.2,9.9", "M20,10.8V13.5A3,3 0,0 1,17 16.5H5.4", "M7.8,14.1L5.4,16.5L7.8,18.9")
+    val sRepeatOne = line("s_repeat_one", "M4,13.2V10.5A3,3 0,0 1,7 7.5H18.6", "M16.2,5.1L18.6,7.5L16.2,9.9", "M20,10.8V13.5A3,3 0,0 1,17 16.5H5.4", "M7.8,14.1L5.4,16.5L7.8,18.9",
+        "M11.2,10.8L12.4,10.1V13.9", w = 1.5f)
+    val sPrevious = icon("s_prev", "M4.8,6.2h1.7v11.6H4.8zM7.2,12L13,7.1V16.9zM12.8,12L18.6,7.1V16.9z")
+    val sNext = icon("s_next", "M17.5,6.2h1.7v11.6h-1.7zM16.8,12L11,7.1V16.9zM11.2,12L5.4,7.1V16.9z")
+    val sPlay = icon("s_play", "M7.5,5.4C7.5,4.6 8.4,4.1 9.1,4.6L18.8,11.1C19.4,11.5 19.4,12.5 18.8,12.9L9.1,19.4C8.4,19.9 7.5,19.4 7.5,18.6Z")
+    val sPause = icon("s_pause", "M7,5.2h3.3v13.6H7zM13.7,5.2H17v13.6h-3.3z")
 }

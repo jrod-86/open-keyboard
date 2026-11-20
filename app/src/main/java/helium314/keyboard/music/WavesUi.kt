@@ -115,6 +115,7 @@ internal fun WavesTopBar(open: (Page) -> Unit, extra: (@Composable () -> Unit)? 
             DropdownMenu(menu, { menu = false }) {
                 DropdownMenuItem({ Text("Edit") }, { menu = false; open(Page.Edit) })
                 DropdownMenuItem({ Text("Add shortcut on Home screen") }, { menu = false; addHomeShortcut(ctx) })
+                DropdownMenuItem({ Text("Themes") }, { menu = false; open(Page.Themes) })
                 DropdownMenuItem({ Text("Sound quality and effects") }, { menu = false; open(Page.Settings) })
                 DropdownMenuItem({ Text("Fix song info") }, { menu = false; open(Page.Fixer) })
                 DropdownMenuItem({ Text("Import playlists") }, { menu = false; open(Page.Import) })

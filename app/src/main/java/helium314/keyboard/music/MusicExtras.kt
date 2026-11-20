@@ -84,24 +84,26 @@ object MusicSettings {
     var background by mutableIntStateOf(1)
     var strength by mutableFloatStateOf(1f)
     /** Customise (test 236, Jarrod): cover size (share of the screen width) and play button size */
-    var coverSize by mutableFloatStateOf(0.62f)
+    var coverSize by mutableFloatStateOf(0.5f)
     var buttonSize by mutableFloatStateOf(1f)
     /** mini player size (test 238, Jarrod: "way too small") */
     var miniSize by mutableFloatStateOf(1.25f)
     /** Apple-style blurred moving cover behind Now Playing (off = Samsung look) */
     var blurBackground by mutableStateOf(false)
+    /** Themes (test 239): -1 plain, 0..19 colour, 100+ FX (see WavesThemes) */
+    var theme by mutableIntStateOf(-1)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
         val p = prefs(ctx)
         effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg2", 0); strength = p.getFloat("fx_strength", 1f)
-        coverSize = p.getFloat("look_cover2", 0.62f); buttonSize = p.getFloat("look_buttons", 1f)
-        miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false)
+        coverSize = p.getFloat("look_cover3", 0.5f); buttonSize = p.getFloat("look_buttons", 1f)
+        miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false); theme = p.getInt("look_theme", -1)
     }
     fun save(ctx: Context) {
         prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
-            .putFloat("look_cover2", coverSize).putFloat("look_buttons", buttonSize)
-            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).apply()
+            .putFloat("look_cover3", coverSize).putFloat("look_buttons", buttonSize)
+            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme).apply()
     }
 }
 
@@ -237,12 +239,22 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
                 Tuning.choices.forEach { v -> Chip(if (v == 440f) "440 Hz (standard)" else "${v.toInt()} Hz", hz == v) { Tuning.set(ctx, v) } }
             }
         }
+        item { Section("Themes") }
+        item {
+            Row(Modifier.fillMaxWidth().clickable { open(Page.Themes) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Themes", fontWeight = FontWeight.SemiBold)
+                    Text("20 colour themes and ✨ FX themes that move. Now: " + (WavesThemes.of(MusicSettings.theme)?.name ?: "Plain"), fontSize = 13.sp)
+                }
+                Text("›", fontSize = 24.sp)
+            }
+        }
         item { Section("Customise") }
         item {
             Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Small", fontSize = 13.sp)
-                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.4f..1.0f,
+                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.35f..1.0f,
                     onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
                 Text("Big", fontSize = 13.sp)
             }
@@ -277,7 +289,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
                     }
                 }
             }
-            TextButton({ MusicSettings.coverSize = 0.62f; MusicSettings.buttonSize = 1f; MusicSettings.miniSize = 1.25f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
+            TextButton({ MusicSettings.coverSize = 0.5f; MusicSettings.buttonSize = 1f; MusicSettings.miniSize = 1.25f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
         }
         item { Section("Beat effects") }
         item {

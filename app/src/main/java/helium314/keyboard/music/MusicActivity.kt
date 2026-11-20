@@ -23,6 +23,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -135,7 +137,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-internal val Accent = Color(0xFFFA2D48) // Apple Music style pink-red
+/** the main colour: pink-red, or the chosen theme's colour (test 239) */
+internal val Accent: Color get() = WavesThemes.of(MusicSettings.theme)?.accent ?: Color(0xFFFA2D48)
 
 /**
  * Open Keyboard Music (test 229, Jarrod): an Apple Music style player for the music on your phone.
@@ -148,11 +151,18 @@ class MusicActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        MusicSettings.load(this)
         setContent {
-            val dark = isSystemInDarkTheme()
-            MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Accent, background = Color.Black, surface = Color(0xFF111111), surfaceContainer = Color(0xFF17171A))
+            val themed = MusicSettings.theme != -1
+            val dark = isSystemInDarkTheme() || themed
+            MaterialTheme(colorScheme = if (themed) darkColorScheme(primary = Accent, background = Color.Transparent, surface = Color(0xFF1C1C1E),
+                    surfaceContainer = Color.Black.copy(alpha = 0.35f), surfaceContainerHigh = Color(0xFF2A2A2E))
+                else if (dark) darkColorScheme(primary = Accent, background = Color.Black, surface = Color(0xFF111111), surfaceContainer = Color(0xFF17171A))
                 else lightColorScheme(primary = Accent, background = Color(0xFFF2F2F5), surface = Color.White, surfaceContainer = Color.White)) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { MusicApp(ui) }
+                Box(Modifier.fillMaxSize().background(if (themed) Color.Black else MaterialTheme.colorScheme.background)) {
+                    if (themed) ThemeBackground(MusicSettings.theme)
+                    Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = if (dark) Color.White else Color.Black) { MusicApp(ui) }
+                }
             }
         }
     }
@@ -285,6 +295,9 @@ internal sealed class Page {
     /** "added", "most" or "recent" */
     data class Smart(val kind: String) : Page()
     data class FolderPage(val path: String) : Page()
+    /** ringtone cutter for one song (test 239) */
+    data class Ringtone(val id: Long) : Page()
+    data object Themes : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -353,6 +366,8 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Home -> WavesHome(library, ui, pager, ::open)
                     Page.Search -> WavesSearch(library, ui, ::open, ::back)
                     Page.Edit -> EditPage(library, ::back)
+                    Page.Themes -> ThemesPage(::back)
+                    is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
                     is Page.Smart -> {
@@ -376,7 +391,7 @@ private fun MusicApp(ui: PlayerUi) {
                     is Page.ArtistPage -> library.artists.find { it.name == p.name }?.let { ArtistPage(it, ui, library, ::open, ::back) }
                 }
             }
-            if (ui.current != null && song != null && stack.last() != Page.Edit)
+            if (ui.current != null && song != null && stack.last() != Page.Edit && stack.last() !is Page.Ringtone)
                 WavesMiniPlayer(song, ui, tint, onOpen = { npMode = 0; nowPlaying = true }, onQueue = { npMode = 2; nowPlaying = true })
             Spacer(Modifier.navigationBarsPadding())
         }
@@ -490,7 +505,7 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
             DropdownMenuItem({ Text("Go to Artist") }, { open(Page.ArtistPage(song.albumArtist.ifBlank { song.artist })); menu = false })
             DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
             DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = song })
-            DropdownMenuItem({ Text("Set as ringtone") }, { menu = false; SongActions.setAsRingtone(ctx, song) })
+            DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(song.id)) })
             DropdownMenuItem({ Text("Delete") }, { menu = false; confirmDelete = true })
         }
     }
@@ -566,13 +581,17 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, onClose: () 
     val clock = rememberBeatClock(ui, MusicSettings.effectsOn && beatMap != null && ui.playing)
     val tint = remember(bmp) { bmp?.let { averageColor(it) } ?: Color(0xFF3A3A40) }
     val k = MusicSettings.buttonSize
+    var hint by remember { mutableStateOf<String?>(null) }
+    var shownHint by remember { mutableStateOf("") }
+    LaunchedEffect(hint) { hint?.let { shownHint = it; delay(1600); hint = null } }
 
     Box(Modifier.fillMaxSize().offset { IntOffset(0, drag.roundToInt()) }.background(Color.Black)
         .pointerInput(Unit) {
             detectVerticalDragGestures(onDragEnd = { if (drag > with(density) { 140.dp.toPx() }) onClose(); drag = 0f },
                 onDragCancel = { drag = 0f }) { _, d -> drag = (drag + d).coerceAtLeast(0f) }
         }) {
-        if (MusicSettings.blurBackground) MovingBackground(bmp)
+        if (MusicSettings.theme != -1) ThemeBackground(MusicSettings.theme, dim = 0.45f)
+        else if (MusicSettings.blurBackground) MovingBackground(bmp)
         else Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to tint)))
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
@@ -580,50 +599,57 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, onClose: () 
             when (mode) {
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.94f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    // Samsung layout: cover near the top, title and artist right under it, space below
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                         val liftPx = with(density) { 16.dp.toPx() }
-                        // cover size from Settings > Customise
-                        val side = minOf(maxWidth * MusicSettings.coverSize / 0.9f, maxHeight).coerceAtMost(maxWidth)
-                        if (MusicSettings.effectsOn && MusicSettings.cover == 3) Box(Modifier.requiredSize(side).graphicsLayer {
-                            val m = coverMove(beatMap, clock.ms)
-                            alpha = m.glow; scaleX = scale * (1.04f + 0.14f * m.glow); scaleY = scaleX
-                        }.blur(36.dp).clip(RoundedCornerShape(24.dp)).background(tint.copy(alpha = 1f)))
-                        Cover(song, 600, Modifier.requiredSize(side).graphicsLayer {
-                            val m = coverMove(beatMap, clock.ms)
-                            scaleX = scale * m.scale; scaleY = scale * m.scale
-                            rotationZ = m.rotation; translationY = m.lift * liftPx
-                        }.clickable { mode = 1 }, corner = 14)
+                        val side = minOf(maxWidth * MusicSettings.coverSize, maxHeight - 110.dp).coerceAtLeast(80.dp)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(Modifier.height(28.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                if (MusicSettings.effectsOn && MusicSettings.cover == 3) Box(Modifier.requiredSize(side).graphicsLayer {
+                                    val m = coverMove(beatMap, clock.ms)
+                                    alpha = m.glow; scaleX = scale * (1.04f + 0.14f * m.glow); scaleY = scaleX
+                                }.blur(36.dp).clip(RoundedCornerShape(24.dp)).background(tint.copy(alpha = 1f)))
+                                Cover(song, 600, Modifier.requiredSize(side).graphicsLayer {
+                                    val m = coverMove(beatMap, clock.ms)
+                                    scaleX = scale * m.scale; scaleY = scale * m.scale
+                                    rotationZ = m.rotation; translationY = m.lift * liftPx
+                                }.clickable { mode = 1 }, corner = 22)
+                            }
+                            Text(song?.title ?: "", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 20.dp))
+                            Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                    .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } })
+                        }
                     }
-                    Text(song?.title ?: "", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
-                    Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.65f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                            .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } })
                 }
                 1 -> { SmallHeader(song); LyricsView(song, ui, Modifier.weight(1f).clickable { mode = 0 }) }
                 else -> { SmallHeader(song); UpNext(ui, lib, Modifier.weight(1f)) }
             }
-            // queue, favourite, add to playlist
-            Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ mode = if (mode == 2) 0 else 2 }) {
-                    Icon(MusicIcons.queue, "Up Next", tint = if (mode == 2) Accent else Color.White, modifier = Modifier.size((24 * k).dp))
+            // Samsung row: queue on the left, heart in the middle, add to playlist on the right
+            Box(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+                IconButton({ mode = if (mode == 2) 0 else 2 }, Modifier.align(Alignment.CenterStart)) {
+                    Icon(MusicIcons.sQueue, "Up Next", tint = if (mode == 2) Accent else Color.White, modifier = Modifier.size((26 * k).dp))
                 }
-                IconButton({ mode = if (mode == 1) 0 else 1 }) {
-                    Icon(MusicIcons.lyrics, "Lyrics", tint = if (mode == 1) Accent else Color.White, modifier = Modifier.size((24 * k).dp))
-                }
-                Spacer(Modifier.weight(1f))
                 song?.let { s ->
                     val fav = s.id in Favourites.ids.value
-                    IconButton({ Favourites.toggle(ctx, s.id) }) {
-                        Icon(if (fav) MusicIcons.heart else MusicIcons.heartOutline, "Favourite", tint = if (fav) Accent else Color.White, modifier = Modifier.size((24 * k).dp))
+                    IconButton({ Favourites.toggle(ctx, s.id); hint = if (fav) "Removed from Favourites" else "Added to Favourites" }, Modifier.align(Alignment.Center)) {
+                        Icon(if (fav) MusicIcons.sHeartFull else MusicIcons.sHeart, "Favourite", tint = if (fav) Accent else Color.White, modifier = Modifier.size((26 * k).dp))
                     }
-                    IconButton({ if (s.durationMs > 0) PlaylistPicker.songs.value = listOf(s.id) }) {
-                        Icon(MusicIcons.plus, "Add to playlist", tint = Color.White, modifier = Modifier.size((26 * k).dp))
+                    IconButton({ if (s.durationMs > 0) PlaylistPicker.songs.value = listOf(s.id) }, Modifier.align(Alignment.CenterEnd)) {
+                        Icon(MusicIcons.sPlus, "Add to playlist", tint = Color.White, modifier = Modifier.size((26 * k).dp))
                     }
                 }
             }
             SeekBar(ui)
-            Controls(ui)
+            Controls(ui) { hint = it }
+        }
+        // a little label that says what a button just did (Jarrod: "no one knows what they are")
+        AnimatedVisibility(hint != null, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (150 * k).dp),
+            enter = fadeIn(), exit = fadeOut()) {
+            Text(shownHint, color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 8.dp))
         }
     }
 }
@@ -633,17 +659,17 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, onClose: () 
 private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
     Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClose) { Icon(MusicIcons.down, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
+        IconButton(onClose) { Icon(MusicIcons.sDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
         Spacer(Modifier.weight(1f))
         IconButton({
             runCatching { ctx.startActivity(Intent("android.settings.CAST_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
-        }) { Icon(MusicIcons.cast, "Smart View", tint = Color.White) }
+        }) { Icon(MusicIcons.sSmartView, "Smart View", tint = Color.White, modifier = Modifier.size(27.dp)) }
         IconButton({
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
-        }) { Icon(MusicIcons.volumeHigh, "Volume", tint = Color.White) }
-        IconButton({ openEqualiser(ctx) }) { Icon(MusicIcons.equalizer, "Equaliser", tint = Color.White) }
+        }) { Icon(MusicIcons.sVolume, "Volume", tint = Color.White, modifier = Modifier.size(27.dp)) }
+        IconButton({ openEqualiser(ctx) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
         MoreMenu(song, ui, open)
     }
 }
@@ -716,7 +742,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = s })
                 DropdownMenuItem({ Text("Album") }, { menu = false; open(Page.AlbumPage(s.albumId)) })
                 DropdownMenuItem({ Text("Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
-                DropdownMenuItem({ Text("Set as ringtone") }, { menu = false; SongActions.setAsRingtone(ctx, s) })
+                DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
@@ -751,7 +777,7 @@ private fun SeekBar(ui: PlayerUi) {
     var dragFrac by remember { mutableStateOf<Float?>(null) }
     val dur = ui.duration.coerceAtLeast(1)
     val frac = dragFrac ?: (ui.position.toFloat() / dur).coerceIn(0f, 1f)
-    val h by animateDpAsState(if (dragFrac != null) 12.dp else 6.dp, label = "seek")
+    val h by animateDpAsState(if (dragFrac != null) 6.dp else 4.dp, label = "seek")
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp)
             .pointerInput(dur) {
@@ -764,30 +790,36 @@ private fun SeekBar(ui: PlayerUi) {
             .pointerInput(dur) { detectTapGestures { o -> ui.seek(((o.x / size.width).coerceIn(0f, 1f) * dur).toLong()) } },
             contentAlignment = Alignment.CenterStart) {
             Box(Modifier.fillMaxWidth().height(h).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)))
-            Box(Modifier.fillMaxWidth(frac).height(h).clip(CircleShape).background(Color.White.copy(alpha = if (dragFrac != null) 1f else 0.75f)))
+            Box(Modifier.fillMaxWidth(frac).height(h).clip(CircleShape).background(Color.White))
+            val thumb = if (dragFrac != null) 22.dp else 18.dp
+            Box(Modifier.offset(x = (maxWidth - thumb) * frac).size(thumb).clip(CircleShape).background(Color.White))
         }
         val shown = ((dragFrac ?: frac) * dur).toLong()
         Row(Modifier.fillMaxWidth()) {
-            Text(time(shown), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Text(time(ui.duration), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            Text(time(shown), color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text(time(ui.duration), color = Color.White, fontSize = 14.sp)
         }
     }
 }
 
 @Composable
-private fun Controls(ui: PlayerUi) {
+private fun Controls(ui: PlayerUi, onHint: (String) -> Unit) {
     val c = ui.controller
     BoxWithConstraints(Modifier.fillMaxWidth()) {
     // big button sizes shrink a little if they would not fit across the screen
-    val k = minOf(MusicSettings.buttonSize, maxWidth.value / (188f * 1.25f))
+    val k = minOf(MusicSettings.buttonSize, maxWidth.value / (166f * 1.35f))
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Press(MusicIcons.shuffle, "Shuffle", (24 * k).toInt(), if (ui.shuffle) Accent else Color.White.copy(alpha = 0.7f)) { c?.shuffleModeEnabled = !ui.shuffle }
-        Press(MusicIcons.previous, "Previous", (40 * k).toInt()) { ui.previous() }
-        Press(if (ui.playing) MusicIcons.pause else MusicIcons.play, "Play or pause", (60 * k).toInt()) { ui.toggle() }
-        Press(MusicIcons.next, "Next", (40 * k).toInt()) { ui.next() }
-        Press(if (ui.repeat == Player.REPEAT_MODE_ONE) MusicIcons.repeatOne else MusicIcons.repeat, "Repeat", (24 * k).toInt(),
-            if (ui.repeat != Player.REPEAT_MODE_OFF) Accent else Color.White.copy(alpha = 0.7f)) {
-            c?.repeatMode = when (ui.repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
+        Press(MusicIcons.sShuffle, "Shuffle", (28 * k).toInt(), if (ui.shuffle) Accent else Color.White) {
+            val on = !ui.shuffle; c?.shuffleModeEnabled = on; onHint(if (on) "Shuffle on" else "Shuffle off")
+        }
+        Press(MusicIcons.sPrevious, "Previous", (34 * k).toInt()) { ui.previous() }
+        Press(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", (42 * k).toInt()) { ui.toggle() }
+        Press(MusicIcons.sNext, "Next", (34 * k).toInt()) { ui.next() }
+        Press(if (ui.repeat == Player.REPEAT_MODE_ONE) MusicIcons.sRepeatOne else MusicIcons.sRepeat, "Repeat", (28 * k).toInt(),
+            if (ui.repeat != Player.REPEAT_MODE_OFF) Accent else Color.White) {
+            val next = when (ui.repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
+            c?.repeatMode = next
+            onHint(when (next) { Player.REPEAT_MODE_ALL -> "Repeat all"; Player.REPEAT_MODE_ONE -> "Repeat this song"; else -> "Repeat off" })
         }
     }
     }
@@ -797,7 +829,7 @@ private fun Controls(ui: PlayerUi) {
 private fun Press(icon: ImageVector, label: String, size: Int, tint: Color = Color.White, onClick: () -> Unit) {
     var down by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (down) 0.82f else 1f, label = "press")
-    Box(Modifier.size((size * 1.25f).dp).scale(s).clip(CircleShape).background(if (down) Color.White.copy(alpha = 0.15f) else Color.Transparent)
+    Box(Modifier.size((size * 1.35f).dp).scale(s).clip(CircleShape).background(if (down) Color.White.copy(alpha = 0.15f) else Color.Transparent)
         .pointerInput(Unit) { detectTapGestures(onPress = { down = true; tryAwaitRelease(); down = false }, onTap = { onClick() }) },
         contentAlignment = Alignment.Center) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(size.dp))
