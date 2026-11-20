@@ -16,6 +16,8 @@
     <string name="ok_tile_image_maker">Local Image</string>
     <string name="ok_tile_text_to_speech">TTS</string>
     <string name="ok_tile_chat">Chat</string>
+    <string name="ok_tile_music">Music</string>
+    <string name="ok_tile_converter">Converter</string>
     <string name="ok_tile_writing_help">Writing help</string>
     <string name="ok_tile_scan_text">Scan text</string>
     <string name="ok_tile_one_handed">One-handed</string>

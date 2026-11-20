@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 object SmartCompose {
     private const val TAG = "SmartCompose"
     private const val PAUSE_MS = 650L
+    private const val COLD_PAUSE_MS = 2500L
     private const val SYSTEM = "You are the autocomplete in a phone keyboard. The user is in the middle of typing a " +
         "message. Reply with only the next few words (2 to 6) that would most likely come next. Do not repeat " +
         "what they wrote. No quotes, no explanation."
@@ -72,7 +73,9 @@ object SmartCompose {
         job?.cancel() // typing again: stop guessing for the old text
         val r = Runnable { start(ime) }
         pending = r
-        main.postDelayed(r, PAUSE_MS)
+        // Open Keyboard (test 217): loading the writing model (1.1 GB) takes the phone a few seconds of hard work. When it
+        // isn't in memory, wait for a longer pause first, so it never loads in the gap between two words you're typing.
+        main.postDelayed(r, if (WritingTools.loaded) PAUSE_MS else COLD_PAUSE_MS)
     }
 
     private fun allowed(ime: LatinIME): Boolean {
@@ -111,21 +114,15 @@ object SmartCompose {
         if (after.isNotEmpty() && after[0] != '\n') return
         if (!before.endsWith(" ") || before.endsWith("  ")) return
         val line = before.substringAfterLast('\n')
-        if (line.trim().split(Regex("\\s+")).size < 2) return
+        if (line.trim().split(SPACES).size < 2) return
         if (SlashCommands.inCommand(before)) return
         forText = before
         job = scope.launch {
             try {
-                val out = WritingTools.withEngine(ime) { engine ->
-                    // loading the model can't be stopped part way; if the mic came on meanwhile, stop here
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    if (quietForVoice) throw kotlinx.coroutines.CancellationException("voice typing")
-                    engine.startFresh()
-                    engine.setSystemPrompt(SYSTEM)
-                    val sb = StringBuilder()
-                    engine.sendUserPrompt(before.takeLast(300).trimEnd(), 16).collect { sb.append(it) }
-                    sb.toString()
-                } ?: return@launch
+                // Open Keyboard (test 221): the model runs in Chat's process; the keyboard only waits for the answer
+                if (quietForVoice) return@launch
+                val out = WritingTools.askIfIdle(ime, SYSTEM, before.takeLast(300).trimEnd(), 16) ?: return@launch
+                if (quietForVoice) return@launch
                 val guess = tidy(before, out) ?: return@launch
                 withContext(Dispatchers.Main) {
                     if (forText == before && textBefore(ime) == before) {
@@ -141,6 +138,7 @@ object SmartCompose {
         }
     }
 
+    private val SPACES = Regex("\\s+")
     private val commentary = Regex("^(it'?s likely|it is likely|it seems|it looks like|it appears|i think|i'm not sure|sure[,!]|here('s| is)|the word|the text|the sentence|you (seem|might|may|meant)|this (seems|looks|is a)|based on|as an ai|did you mean|i can|i'll|it sounds)", RegexOption.IGNORE_CASE)
 
     /** Turns the model's reply into a few clean words, or null if it's not usable. */
@@ -173,7 +171,12 @@ object SmartCompose {
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         val guess = suggestion ?: return null
         val before = forText ?: return null
-        if (textBefore(ime) != before) return null
+        // Open Keyboard (test 217): check against the keyboard's own copy of the text, not by asking the app again
+        // (this runs every time the top bar is redrawn, and asking a busy app can take a long time)
+        val conn = ime.mInputLogic.mConnection
+        if (conn.hasSelection()) return null
+        val now = conn.getTextBeforeCursor(64, 0)?.toString() ?: return null
+        if (now.isEmpty() || !before.endsWith(now)) return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
         textView.text = "→  $guess"

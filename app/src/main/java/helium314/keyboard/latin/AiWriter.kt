@@ -45,6 +45,14 @@ object AiWriter {
         private set
     @Volatile var busy = false
         private set
+    private var job: kotlinx.coroutines.Job? = null
+
+    /** Stops writing (✕ on the chip, or Writing help switched off) and takes the "Writing your message…" chip away. */
+    fun cancel(ime: LatinIME) {
+        job?.cancel(); job = null
+        busy = false
+        ime.setNeutralSuggestionStrip()
+    }
     private var lastRequest: String? = null
     private var lastResult: String? = null
     private var autoMic = false
@@ -176,12 +184,16 @@ object AiWriter {
         busy = true
         ime.setNeutralSuggestionStrip()
         toast(ime, "✨ Writing…")
-        scope.launch {
-            val out = try { write(ime, request, previous, tweak) } catch (e: Throwable) {
+        job = scope.launch {
+            // Open Keyboard (test 222): never more than 3 minutes, so the chip can't hang around forever
+            val out = try { kotlinx.coroutines.withTimeoutOrNull(180_000) { write(ime, request, previous, tweak) } } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
                 Log.w(TAG, "AI writer failed", e)
                 null
             }
             withContext(Dispatchers.Main) {
+                job = null
                 busy = false
                 if (out == null) toast(ime, "Couldn't write that, please try again")
                 else { lastRequest = request; apply(out) }
@@ -238,7 +250,9 @@ object AiWriter {
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         val text: String
         var onTap: (() -> Unit)? = null
-        if (busy) text = "✨  Writing your message…"
+        // Writing help switched off while it was writing: stop, and no chip
+        if (busy && !Plugins.isOn(ime, "writing")) { cancel(ime); return null }
+        if (busy) text = "✨  Writing your message…  (✕ to stop)"
         else {
             if (!writerActive(ime)) return null
             val before = ime.mInputLogic.mConnection.getTextBeforeCursor(200, 0)?.toString().orEmpty()
@@ -261,7 +275,7 @@ object AiWriter {
         binding.clipboardSuggestionText.setTextColor(colors.get(ColorType.KEY_TEXT))
         colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)
         onTap?.let { tap -> binding.clipboardSuggestionText.setOnClickListener { tap() } }
-        if (busy) binding.clipboardSuggestionClose.visibility = View.GONE
+        if (busy) binding.clipboardSuggestionClose.setOnClickListener { cancel(ime); toast(ime, "Stopped writing") }
         else binding.clipboardSuggestionClose.setOnClickListener {
             writerOn = false; lastResult = null
             toast(ime, "Writer mode off")
@@ -284,7 +298,7 @@ object AiWriter {
      */
     fun fromVoice(service: InputMethodService, sentence: String): Boolean {
         val ime = service as? LatinIME ?: return false
-        if (!Plugins.isOn(ime, "writing") || !WritingTools.anyDownloaded(ime)) return false
+        if (!Plugins.isOn(ime, "writing") || !helium314.keyboard.voice.VoiceCommands.isOn("vc_write") || !WritingTools.anyDownloaded(ime)) return false
         // the talk box and writer mode take the words as they are
         if (ime.currentInputEditorInfo?.packageName == ime.packageName || writerActive(ime)) return false
         val request = sentence.trim()

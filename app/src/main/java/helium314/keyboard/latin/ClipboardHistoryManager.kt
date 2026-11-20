@@ -248,8 +248,12 @@ class ClipboardHistoryManager(
         var content: CharSequence = clipItem.coerceToText(latinIME)
         // Open Keyboard: in a number field offer just the code, even if it was copied as "123 456"
         // or inside a sentence. Codes stay on offer a bit longer, since you switch apps to get them.
-        val code = if (hasText) codeIn(content) else null
+        // Open Keyboard (test 219): a copied phone number, email, link or address gets a small sign on the chip, and a
+        // phone / email / web address box gets just that part of what was copied. A phone number isn't a code.
+        val smart = if (hasText && !isClipSensitive(inputType)) SmartClip.of(content) else null
+        val code = if (hasText && smart?.kind != SmartClip.Kind.PHONE) codeIn(content) else null
         if (hasText && InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber() && code != null) content = code
+        if (code == null) smart?.forField(inputType)?.let { content = it }
         val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)
         val window = if (code != null && InputTypeUtils.isNumberInputType(inputType)) RECENT_CODE_MILLIS else RECENT_TIME_MILLIS
         if (System.currentTimeMillis() - timeStamp > window) return no("9")
@@ -265,7 +269,7 @@ class ClipboardHistoryManager(
             if (InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber()) return no("11")
             val shortenedContent = content.take(200) // for display only
             KeyboardTypeface.applyToTextView(textView)
-            textView.text = (if (isClipSensitive(inputType)) "*".repeat(shortenedContent.length) else shortenedContent)
+            textView.text = (if (isClipSensitive(inputType)) "*".repeat(shortenedContent.length) else (if (code == null) smart?.kind?.badge ?: "" else "") + shortenedContent)
         }
         val onClickListener = View.OnClickListener {
             dontShowCurrentSuggestion = true

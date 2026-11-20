@@ -24,7 +24,7 @@ object Plugins {
 
     val builtIn = listOf(
         Plugin("slash", "/ commands", "Type /calc, /convert, /date, /roll and more, or = 12*7, and tap the answer"),
-        Plugin("voice_commands", "Voice commands", "Say \"delete that\", \"send\", \"comma\" or \"new line\" while voice typing"),
+        Plugin("voice_commands", "Voice commands", "Say \"delete that\", \"send message\", \"comma\" or \"new line\" while voice typing. Pick which ones below"),
         Plugin("shortcuts", "Text shortcuts", "Type a shortcut like @@ and press space to get the full text"),
         Plugin("translate", "Translate", "Translate what you type, all on the phone"),
         Plugin("writing", "Writing help", "Fix, shorten or change the tone of your text with on-phone AI"),
@@ -36,14 +36,65 @@ object Plugins {
         Plugin("app_actions", "Actions from your apps", "Apps on your phone that work on text appear in the keyboard menu"),
     )
 
+    /**
+     * Open Keyboard (test 218, Jarrod): the bigger apps in the app drawer are plugins too. Switched off, an app's tile
+     * leaves the app drawer and the top bar, and none of its code or models load.
+     */
+    val apps = listOf(
+        Plugin("app_chat", "💬 Chat", "Chat for fun with an AI that lives on your phone"),
+        Plugin("app_tts", "🔊 TTS", "Read text out loud and make your own voices"),
+        Plugin("app_image", "🖼️ Local Image", "Make pictures on your phone"),
+        Plugin("app_sticker_maker", "✂️ Sticker maker", "Turn a photo into a sticker"),
+        Plugin("app_fancy_text", "𝓕 Fancy text", "Type in 50 fancy letter styles"),
+        Plugin("app_music", "🎵 Music", "Play the music on your phone, Apple Music style"),
+        Plugin("app_converter", "🔄 Converter", "Change documents into other types, like Word to PDF (offline)"),
+    )
+
     private var prefs: SharedPreferences? = null
 
     fun init(ctx: Context) { if (prefs == null) prefs = ctx.applicationContext.prefs() }
 
     private fun key(id: String) = "open_keyboard_plugin_$id"
 
-    /** Whether a plugin is on. Plugins are on until switched off. */
-    fun isOn(id: String) = prefs?.getBoolean(key(id), true) ?: true
+    /**
+     * Whether a plugin is on. The keyboard's own plugins are on until switched off.
+     * Open Keyboard (test 223, Jarrod: "keyboard first"): plugins from other apps ("cmd:" commands, "app:" text actions)
+     * start OFF when they're new, so nothing new can surprise you or slow the keyboard. Ones you already had before
+     * this version keep working (they were on).
+     */
+    fun isOn(id: String): Boolean {
+        val p = prefs ?: return !isOutside(id)
+        if (!isOutside(id)) return p.getBoolean(key(id), true)
+        if (p.contains(key(id))) return p.getBoolean(key(id), false)
+        return !p.getBoolean(seededKey(id), false) // not looked at yet since updating: as before (on)
+    }
+
+    private fun isOutside(id: String) = id.startsWith("cmd:") || id.startsWith("app:")
+    private fun seededKey(id: String) = "open_keyboard_plugins_seeded_" + id.substringBefore(':')
+
+    /** A new outside plugin that hasn't been switched on or off yet (the Plugins screen marks it "New"). */
+    fun isNew(ctx: Context, id: String): Boolean { init(ctx); return isOutside(id) && prefs?.contains(key(id)) == false }
+
+    /**
+     * Called with every outside plugin found. The first time after updating, the ones already there are kept on;
+     * from then on, anything new starts off.
+     */
+    fun seedOutside(ctx: Context, plugins: List<Pair<String, String>>) {
+        init(ctx)
+        val p = prefs ?: return
+        val kind = plugins.firstOrNull()?.first ?: return
+        if (p.getBoolean(seededKey(kind), false)) return
+        // test 227: only apps that were there before this keyboard version stay on; one installed since starts off
+        val pm = ctx.packageManager
+        val updated = runCatching { pm.getPackageInfo(ctx.packageName, 0).lastUpdateTime }.getOrDefault(Long.MAX_VALUE)
+        p.edit().apply {
+            plugins.forEach { (id, pkg) ->
+                val installed = runCatching { pm.getPackageInfo(pkg, 0).firstInstallTime }.getOrDefault(Long.MAX_VALUE)
+                if (!p.contains(key(id)) && installed < updated) putBoolean(key(id), true)
+            }
+            putBoolean(seededKey(kind), true)
+        }.apply()
+    }
     fun isOn(ctx: Context, id: String): Boolean { init(ctx); return isOn(id) }
     fun set(ctx: Context, id: String, on: Boolean) { init(ctx); prefs?.edit()?.putBoolean(key(id), on)?.apply() }
 
@@ -60,7 +111,18 @@ object Plugins {
         if (app.isBlank() || action.contains(app, ignoreCase = true)) action else "$action ($app)"
 
     /** Apps that offer a text action, excluding this app. */
-    fun appActions(ctx: Context): List<AppAction> {
+    fun appActions(ctx: Context, fresh: Boolean = false): List<AppAction> {
+        // Open Keyboard (test 217): the top bar and the app drawer ask for this every time they're built, and looking
+        // through all the phone's apps (with their names and icons) is slow. Kept for 10 minutes, or until the Plugins
+        // screen asks again.
+        val now = android.os.SystemClock.uptimeMillis()
+        val cached = appActionsCache
+        if (!fresh && cached != null && now - cached.first < 10 * 60_000) return cached.second
+        return findAppActions(ctx).also { appActionsCache = now to it }
+    }
+    @Volatile private var appActionsCache: Pair<Long, List<AppAction>>? = null
+
+    private fun findAppActions(ctx: Context): List<AppAction> {
         val pm = ctx.packageManager
         return runCatching { pm.queryIntentActivities(processTextIntent(), 0) }.getOrDefault(emptyList())
             .filter { it.activityInfo.packageName != ctx.packageName && it.activityInfo.exported }
@@ -69,6 +131,7 @@ object Plugins {
                 runCatching { it.loadIcon(pm) }.getOrNull()) }
             .distinctBy { it.id }
             .sortedBy { it.label.lowercase() }
+            .also { list -> if (list.isNotEmpty()) seedOutside(ctx, list.map { it.id to it.component.packageName }) }
     }
 
     /** App actions that are switched on, for the menu. */

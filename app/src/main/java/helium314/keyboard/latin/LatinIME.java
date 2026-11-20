@@ -846,6 +846,7 @@ public class LatinIME extends InputMethodService implements
 
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
         KeyboardMenu.INSTANCE.setKeepToolbar(false);
+        SpeedMeter.INSTANCE.openStarted(); // Open Keyboard: opening time for the speed meter (test 219)
         LagWatch.INSTANCE.start(); // Open Keyboard: notes short freezes in the log (Bug report > logs)
         if (mVoiceInput != null) mVoiceInput.prepare(); // Open Keyboard: voice model ready before the mic is tapped
         super.onStartInputView(editorInfo, restarting);
@@ -1870,11 +1871,24 @@ public class LatinIME extends InputMethodService implements
             KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
             mKeyboardSwitcher.trimMemory();
             VoiceEngine.INSTANCE.releaseIfIdle(0); // Open Keyboard: never while a voice session still uses them
+            freeForLowMemory(level);
         } else if (level >= TRIM_MEMORY_RUNNING_LOW) {
             // Open Keyboard: the keyboard stays "running" while hidden, so it rarely gets the level above;
             // the phone is short of memory, so give back the voice models if they're resting
             VoiceEngine.INSTANCE.releaseIfIdle(30_000);
+            freeForLowMemory(level);
         }
+    }
+
+    /**
+     * Open Keyboard (test 219): the phone is short of memory. AI plugins give their models back first (the writing model
+     * if nothing is using it), so Android doesn't close the keyboard itself, which made the next opening slow.
+     */
+    private void freeForLowMemory(int level) {
+        final boolean writing = WritingTools.INSTANCE.getLoaded();
+        WritingTools.INSTANCE.freeIfIdle(this);
+        SpeedMeter.INSTANCE.lowMemory("phone short of memory (level " + level + ")"
+                + (writing ? ": writing model freed" : "") + "; voice models freed if resting");
     }
 
     public void setGestureDataGatheringMode(EditorInfo editorInfo, boolean restarting) {

@@ -18,6 +18,10 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Open Keyboard Music (test 229): see and play the music on the phone -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
@@ -139,6 +143,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
             android:taskAffinity="io.github.jrod86.openkeyboard.stickermaker"
+            android:process=":tools"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
         <activity android:name="helium314.keyboard.latin.AiWriterActivity"
@@ -157,6 +162,65 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:exported="false" />
+        <!-- Open Keyboard (test 230): home screen shortcuts to app drawer apps open through this -->
+        <activity android:name="helium314.keyboard.latin.ShortcutActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:exported="true" />
+        <!-- Open Keyboard (test 221): the writing model runs here, in Chat's process, never in the keyboard's -->
+        <service android:name="helium314.keyboard.latin.WriterService"
+            android:process=":chat"
+            android:exported="false" />
+        <!-- Open Keyboard Music (test 229): own process so playing music never slows typing.
+             Exported only so a home screen shortcut can open it. -->
+        <activity android:name="helium314.keyboard.music.MusicActivity"
+            android:label="Music"
+            android:icon="@drawable/ic_music_shortcut"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:taskAffinity="io.github.jrod86.openkeyboard.music"
+            android:process=":music"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="true" />
+        <service android:name="helium314.keyboard.music.MusicService"
+            android:process=":music"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+        <!-- Open Keyboard Converter (test 233): own process so converting never slows typing.
+             Exported so a home screen shortcut can open it and other apps can Share files to it. -->
+        <activity android:name="helium314.keyboard.convert.ConverterActivity"
+            android:label="Converter"
+            android:icon="@drawable/ic_converter_shortcut"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:taskAffinity="io.github.jrod86.openkeyboard.convert"
+            android:process=":convert"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter android:label="Convert">
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
         <activity android:name="helium314.keyboard.latin.ClipboardSearchActivity"
             android:label="Search clipboard"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
@@ -169,8 +233,17 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:label="Scan text"
             android:theme="@android:style/Theme.DeviceDefault.DayNight"
             android:excludeFromRecents="true"
+            android:process=":tools"
             android:exported="false" />
 
+        <!-- Open Keyboard (test 224): shared AI models for plugin apps you've switched on (read only) -->
+        <provider android:name="helium314.keyboard.latin.ModelProvider"
+            android:authorities="${applicationId}.models"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.jrod86.openkeyboard.MODELS" />
+            </intent-filter>
+        </provider>
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.media"
             android:exported="false"
@@ -267,6 +340,10 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Open Keyboard (test 225): the plugin store opens F-Droid when it's installed -->
+        <package android:name="org.fdroid.fdroid" />
+        <!-- test 228: the APK Installer plugin app installs store plugins -->
+        <package android:name="io.github.jrod86.okinstaller" />
         <!-- To detect other IMEs -->
         <intent>
             <!-- changed to * as it's supposed to help with finding other keyboard apps, see https://github.com/HeliBorg/HeliBoard/issues/1340 -->
