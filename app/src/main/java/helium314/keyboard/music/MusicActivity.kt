@@ -156,7 +156,7 @@ class MusicActivity : ComponentActivity() {
             val themed = MusicSettings.theme != -1
             val dark = isSystemInDarkTheme() || themed
             MaterialTheme(colorScheme = if (themed) darkColorScheme(primary = Accent, background = Color.Transparent, surface = Color(0xFF1C1C1E),
-                    surfaceContainer = Color.Black.copy(alpha = 0.35f), surfaceContainerHigh = Color(0xFF2A2A2E))
+                    surfaceContainer = Color(0xFF232327), surfaceContainerHigh = Color(0xFF2A2A2E), surfaceContainerHighest = Color(0xFF303035), surfaceContainerLow = Color(0xFF1C1C1F))
                 else if (dark) darkColorScheme(primary = Accent, background = Color.Black, surface = Color(0xFF111111), surfaceContainer = Color(0xFF17171A))
                 else lightColorScheme(primary = Accent, background = Color(0xFFF2F2F5), surface = Color.White, surfaceContainer = Color.White)) {
                 Box(Modifier.fillMaxSize().background(if (themed) Color.Black else MaterialTheme.colorScheme.background)) {

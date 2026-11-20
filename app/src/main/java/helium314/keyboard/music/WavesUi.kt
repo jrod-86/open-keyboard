@@ -163,7 +163,7 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
         else WavesTopBar(open, extra = if (pager.currentPage == 1) ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
         WavesTabHeader(pager)
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
+            .background(if (MusicSettings.theme != -1) Color.Black.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
             when (page) {
                 0 -> FavouritesTab(lib, ui, open)
                 1 -> PlaylistsTab(lib, ui, open)
