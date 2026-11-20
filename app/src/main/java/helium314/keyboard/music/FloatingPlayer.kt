@@ -386,14 +386,14 @@ private class FloatParts(
     /** 2. Pill: a slim bar like the mini player. Tap the cover to open Open Waves. */
     @Composable
     fun Pill() {
-        Panel(RoundedCornerShape((32 * k).dp), Modifier.width((270 * k).dp)) {
+        Panel(RoundedCornerShape((32 * k).dp), Modifier.width((300 * k).dp)) {
             Row(Modifier.padding(horizontal = (8 * k).dp, vertical = (7 * k).dp), verticalAlignment = Alignment.CenterVertically) {
                 FloatCover(42f, round = true, modifier = Modifier.clip(CircleShape).clickable { onOpen() })
                 Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                     Text(title, color = Color.White, fontSize = (13.5f * k).sp, maxLines = 1, modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
                     ShineText(artist, Color.White.copy(alpha = 0.75f), 11f * k)
                 }
-                PlayPause(26f); Next(); Close()
+                Prev(); PlayPause(26f); Next(); Close()
             }
         }
     }
@@ -464,7 +464,7 @@ private class FloatParts(
     /** 5. Beat bars: a bar with a little equaliser that jumps with the song. */
     @Composable
     fun Bars() {
-        Panel(RoundedCornerShape((24 * k).dp), Modifier.width((270 * k).dp)) {
+        Panel(RoundedCornerShape((24 * k).dp), Modifier.width((300 * k).dp)) {
             Row(Modifier.padding(horizontal = (8 * k).dp, vertical = (7 * k).dp), verticalAlignment = Alignment.CenterVertically) {
                 FloatCover(44f, round = false, modifier = Modifier.clip(RoundedCornerShape((8 * k).dp)).clickable { onOpen() })
                 Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
@@ -487,7 +487,7 @@ private class FloatParts(
                         }
                     }
                 }
-                PlayPause(26f); Next(); Close()
+                Prev(); PlayPause(26f); Next(); Close()
             }
         }
     }
