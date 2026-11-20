@@ -361,7 +361,7 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         order.clear(); order.addAll(if (by == 1) Playlists.all.value.sortedBy { it.name.lowercase() } else Playlists.all.value)
     }
     PlaylistSelect.total = order.size; PlaylistSelect.allIds = order.map { it.id }
-    val state = rememberLazyListState()
+    val state = TabScroll.playlists
     var dragId by remember { mutableStateOf<Long?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var moved by remember { mutableStateOf(false) }
@@ -522,7 +522,7 @@ private fun TracksTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ctx = LocalContext.current
     val by = Sorts.trackSort.intValue
     val songs = remember(lib, by) { sortedTracks(lib, by) }
-    val state = rememberLazyListState()
+    val state = TabScroll.tracks
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         SortBar(Sorts.tracks, by, { Sorts.trackSort.intValue = it; Sorts.save(ctx) }) {
@@ -550,7 +550,7 @@ private fun AlbumsTab(lib: Library, open: (Page) -> Unit) {
     val ctx = LocalContext.current
     val by = Sorts.albumSort.intValue
     val albums = remember(lib, by) { sortedAlbums(lib, by) }
-    val grid = rememberLazyGridState()
+    val grid = TabScroll.albums
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         SortBar(Sorts.albums, by, { Sorts.albumSort.intValue = it; Sorts.save(ctx) })
@@ -575,7 +575,7 @@ private fun ArtistsTab(lib: Library, open: (Page) -> Unit) {
     val ctx = LocalContext.current
     val by = Sorts.artistSort.intValue
     val artists = remember(lib, by) { if (by == 1) lib.artists.sortedByDescending { it.songs.size } else lib.artists }
-    val state = rememberLazyListState()
+    val state = TabScroll.artists
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         SortBar(Sorts.artists, by, { Sorts.artistSort.intValue = it; Sorts.save(ctx) })
@@ -607,7 +607,7 @@ private fun shortPath(p: String) = p.replace(Regex("^/storage/emulated/0"), "/In
 @Composable
 private fun FoldersTab(lib: Library, open: (Page) -> Unit) {
     val list = remember(lib) { folders(lib) }
-    val state = rememberLazyListState()
+    val state = TabScroll.folders
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         SortBar(listOf("Name"), 0, {})
@@ -945,3 +945,13 @@ internal fun RollText(text: String, color: Color, size: Float) {
 @Suppress("unused") private fun unusedState(l: LazyListState, g: LazyGridState) = l to g
 @Suppress("unused") private val unusedCrop = ContentScale.Crop
 @Suppress("unused") private val unusedSpan = GridItemSpan(1)
+
+/** Test 278 (Jarrod): where each tab was scrolled to, kept while you look inside a playlist, album or artist,
+ *  so Back brings you to the same spot instead of the top. */
+internal object TabScroll {
+    val playlists = LazyListState()
+    val tracks = LazyListState()
+    val artists = LazyListState()
+    val folders = LazyListState()
+    val albums = LazyGridState()
+}
