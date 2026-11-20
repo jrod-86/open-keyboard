@@ -19,6 +19,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Open Keyboard Music (test 229): see and play the music on the phone -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -176,7 +177,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
         <!-- Open Keyboard Music (test 229): own process so playing music never slows typing.
              Exported only so a home screen shortcut can open it. -->
         <activity android:name="helium314.keyboard.music.MusicActivity"
-            android:label="Music"
+            android:label="Open Waves"
             android:icon="@drawable/ic_music_shortcut"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"

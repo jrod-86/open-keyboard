@@ -559,7 +559,7 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure { android.widget.Toast.makeText(context, "Chat couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
             },
-            Item(tr("Music", R.string.ok_tile_music), ownIcon(R.drawable.ic_menu_music), plugin = "app_music", idOverride = "music") {
+            Item(tr("Open Waves", R.string.ok_tile_music), ownIcon(R.drawable.open_waves_tile), plugin = "app_music", tint = false, idOverride = "music") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.music.MusicActivity::class.java)

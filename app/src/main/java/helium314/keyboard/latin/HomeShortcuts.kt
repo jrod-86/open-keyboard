@@ -41,7 +41,7 @@ object HomeShortcuts {
         val open = Intent(ctx, ShortcutActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra(EXTRA, id)
         val info = ShortcutInfo.Builder(ctx, "tile_" + id.replace(' ', '_'))
             .setShortLabel(label)
-            .setIcon(Icon.createWithAdaptiveBitmap(iconBitmap(icon)))
+            .setIcon(if (id == "music") ownLogo(ctx) ?: Icon.createWithAdaptiveBitmap(iconBitmap(icon)) else Icon.createWithAdaptiveBitmap(iconBitmap(icon)))
             .setIntent(open)
             .build()
         runCatching { sm.requestPinShortcut(info, null) }
@@ -62,6 +62,10 @@ object HomeShortcuts {
         }
         return bmp
     }
+
+    /** Open Waves (music) has its own full-colour logo (test 238). */
+    private fun ownLogo(ctx: Context): Icon? =
+        android.graphics.BitmapFactory.decodeResource(ctx.resources, helium314.keyboard.latin.R.drawable.open_waves_icon)?.let { Icon.createWithBitmap(it) }
 
     const val EXTRA = "open_tile"
 }

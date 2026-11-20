@@ -46,7 +46,7 @@ object Plugins {
         Plugin("app_image", "🖼️ Local Image", "Make pictures on your phone"),
         Plugin("app_sticker_maker", "✂️ Sticker maker", "Turn a photo into a sticker"),
         Plugin("app_fancy_text", "𝓕 Fancy text", "Type in 50 fancy letter styles"),
-        Plugin("app_music", "🎵 Music", "Play the music on your phone, Apple Music style"),
+        Plugin("app_music", "🎵 Open Waves", "Music player for the songs on your phone"),
         Plugin("app_converter", "🔄 Converter", "Change documents into other types, like Word to PDF (offline)"),
     )
 

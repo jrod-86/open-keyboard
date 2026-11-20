@@ -27,6 +27,8 @@ object MusicState {
     val embeddedLyrics = MutableStateFlow<Pair<Long, String>?>(null)
     /** when the sleep timer stops the music (System.currentTimeMillis), 0 = off; -1 = at the end of this song */
     val sleepAt = MutableStateFlow(0L)
+    /** the player's audio session, for the phone's equaliser */
+    @Volatile var audioSession = 0
 }
 
 /**
@@ -58,7 +60,15 @@ class MusicService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true) // headphones unplugged: pause
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        MusicState.audioSession = player.audioSessionId
+        var counted = -1L
+        // Most played / Recently played (test 238): count a song once each time it starts playing
+        fun count() {
+            val id = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
+            if (player.isPlaying && id != counted) { counted = id; PlayStats.record(this, id) }
+        }
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) { MusicState.audioSession = audioSessionId }
             override fun onTracksChanged(tracks: Tracks) {
                 val id = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
                 val metas = tracks.groups.flatMap { g -> (0 until g.length).mapNotNull { g.getTrackFormat(it).metadata } }
@@ -71,8 +81,9 @@ class MusicService : MediaSessionService() {
                 }
                 save()
                 leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
+                counted = -1L; count()
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count() }
         })
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),

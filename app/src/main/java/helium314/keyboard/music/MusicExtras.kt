@@ -84,18 +84,24 @@ object MusicSettings {
     var background by mutableIntStateOf(1)
     var strength by mutableFloatStateOf(1f)
     /** Customise (test 236, Jarrod): cover size (share of the screen width) and play button size */
-    var coverSize by mutableFloatStateOf(1f)
+    var coverSize by mutableFloatStateOf(0.62f)
     var buttonSize by mutableFloatStateOf(1f)
+    /** mini player size (test 238, Jarrod: "way too small") */
+    var miniSize by mutableFloatStateOf(1.25f)
+    /** Apple-style blurred moving cover behind Now Playing (off = Samsung look) */
+    var blurBackground by mutableStateOf(false)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
         val p = prefs(ctx)
-        effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg", 1); strength = p.getFloat("fx_strength", 1f)
-        coverSize = p.getFloat("look_cover", 1f); buttonSize = p.getFloat("look_buttons", 1f)
+        effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg2", 0); strength = p.getFloat("fx_strength", 1f)
+        coverSize = p.getFloat("look_cover2", 0.62f); buttonSize = p.getFloat("look_buttons", 1f)
+        miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false)
     }
     fun save(ctx: Context) {
-        prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg", background).putFloat("fx_strength", strength)
-            .putFloat("look_cover", coverSize).putFloat("look_buttons", buttonSize).apply()
+        prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
+            .putFloat("look_cover2", coverSize).putFloat("look_buttons", buttonSize)
+            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).apply()
     }
 }
 
@@ -236,7 +242,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
             Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Small", fontSize = 13.sp)
-                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.5f..1.12f,
+                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.4f..1.0f,
                     onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
                 Text("Big", fontSize = 13.sp)
             }
@@ -247,7 +253,21 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
                     onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
                 Text("Big", fontSize = 13.sp)
             }
-            // live preview of the two sizes
+            Text("Mini player size (bottom bar)", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Small", fontSize = 13.sp)
+                Slider(MusicSettings.miniSize, { MusicSettings.miniSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 1.0f..2.0f,
+                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                Text("Big", fontSize = 13.sp)
+            }
+            Row(Modifier.fillMaxWidth().clickable { MusicSettings.blurBackground = !MusicSettings.blurBackground; changed() }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Blurred moving cover background", fontWeight = FontWeight.SemiBold)
+                    Text("Off gives the plain Samsung-style look", fontSize = 13.sp)
+                }
+                Switch(MusicSettings.blurBackground, { MusicSettings.blurBackground = it; changed() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            }
+            // live preview of the sizes
             Row(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1C1C1E)).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 Box(Modifier.size((90 * MusicSettings.coverSize).dp).clip(RoundedCornerShape(8.dp)).background(Brush.linearGradient(listOf(Accent, Color(0xFF7C4DFF)))))
@@ -257,7 +277,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
                     }
                 }
             }
-            TextButton({ MusicSettings.coverSize = 1f; MusicSettings.buttonSize = 1f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
+            TextButton({ MusicSettings.coverSize = 0.62f; MusicSettings.buttonSize = 1f; MusicSettings.miniSize = 1.25f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
         }
         item { Section("Beat effects") }
         item {
