@@ -248,6 +248,22 @@ object SongFixer {
     }
 
     /** Makes a downloaded cover the song's artwork. */
+    /** Your own picture as the song's artwork (test 254): squared from the middle, max 800 px, saved as JPEG. */
+    fun ownCover(ctx: Context, id: Long, uri: android.net.Uri): String? = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 800) sample *= 2 // big phone photos: decode smaller
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        val src = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) } ?: return null
+        val side = minOf(src.width, src.height)
+        val sq = android.graphics.Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+        val out = if (side > 800) android.graphics.Bitmap.createScaledBitmap(sq, 800, 800, true) else sq
+        val dest = artFile(ctx, id).apply { parentFile?.mkdirs() }
+        dest.outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+        dest.absolutePath
+    }.getOrNull()
+
     fun keepCover(ctx: Context, id: Long, partPath: String): String {
         val dest = artFile(ctx, id)
         File(partPath).renameTo(dest)

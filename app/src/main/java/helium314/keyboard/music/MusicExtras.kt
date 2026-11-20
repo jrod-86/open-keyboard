@@ -2,6 +2,7 @@
 package helium314.keyboard.music
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
@@ -439,6 +440,21 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     // Test 251 (Jarrod): each match can be saved on its own. Saved rows leave the list straight away; the library
     // reloads when you leave the page, so other songs' look-ups aren't lost.
     var dirty by remember { mutableStateOf(false) }
+    // Test 254 (Jarrod): put your own picture on a song when no artwork is found
+    var picking by remember { mutableStateOf<FixRow?>(null) }
+    val picker = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        val r = picking ?: return@rememberLauncherForActivityResult
+        picking = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val path = withContext(Dispatchers.IO) { SongFixer.ownCover(ctx, r.song.id, uri) }
+            if (path == null) { android.widget.Toast.makeText(ctx, "Couldn't use that picture", android.widget.Toast.LENGTH_SHORT).show(); return@launch }
+            withContext(Dispatchers.IO) { SongFixer.save(ctx, mapOf(r.song.id to SongFix(r.song.title, r.song.artist, r.song.album, r.song.year, path))) }
+            applied += 1
+            dirty = true
+            rows = rows?.filter { it.song.id != r.song.id }
+        }
+    }
     DisposableEffect(Unit) { onDispose { if (dirty) { Covers.clear(); onChanged() } } }
     fun saveRows(chosen: List<FixRow>) {
         if (chosen.isEmpty()) return
@@ -525,6 +541,9 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         val (t, a) = if (title != null) title to (artist ?: "") else SongFixer.guess(r.song)
         // never let a bad search result crash the app (test 249)
         r.matches = try { SongFixer.search(r.song, t, a) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { r.note = "Search failed. Try again."; emptyList() }
+        // test 254 (Jarrod: "after you change the name nothing happens"): say clearly what was searched
+        if (title != null && r.matches.isNullOrEmpty() && r.note == null)
+            r.note = "Nothing found for \"$t\"" + (if (a.isNotBlank()) " by $a" else "") + ". Try other words, or just the song name."
         r.pick = 0
         r.selected = r.match?.confident(r.song) == true
         r.busy = false
@@ -585,7 +604,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                         SongFixer.skip(ctx, r.song.id, true); rows = rows?.minus(r)
                     }, onUndo = {
                         SongFixer.undo(ctx, r.song.id); Covers.clear(); onChanged()
-                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly)
+                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly, onPick = {
+                        picking = r
+                        picker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    })
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 }
             }
@@ -619,10 +641,10 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
 }
 
 @Composable
-private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false) {
+private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onPick: () -> Unit = {}) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.clickable { onPick() }, verticalAlignment = Alignment.CenterVertically) { // tap the song to pick a picture
             Cover(r.song, 160, Modifier.size(48.dp), corner = 6)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -635,15 +657,17 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
         val m = r.match
         when {
             r.busy -> Text("Looking…", Modifier.padding(top = 6.dp, start = 60.dp), fontSize = 13.sp, color = dim)
-            r.matches == null -> Row(Modifier.padding(start = 52.dp)) {
+            r.matches == null -> FlowRow(Modifier.padding(start = 52.dp)) {
                 TextButton(onFind) { Text("Find info", color = Accent) }
                 TextButton(onSearch) { Text("Search…", color = Accent) }
+                TextButton(onPick) { Text("Pick picture", color = Accent) }
                 if (r.song.fixed) TextButton(onUndo) { Text("Undo fix", color = Accent) }
                 else TextButton(onSkip) { Text("Skip", color = dim) }
             }
             m == null -> Row(Modifier.padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(r.note ?: "No match found.", Modifier.weight(1f, fill = false), fontSize = 13.sp, color = dim)
                 TextButton(onSearch) { Text("Search…", color = Accent) }
+                TextButton(onPick) { Text("Pick picture", color = Accent) }
                 TextButton(onSkip) { Text("Skip", color = dim) }
             }
             else -> {
@@ -666,12 +690,13 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                         Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim)
                     }
                 }
-                Row(Modifier.padding(start = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(Modifier.padding(start = 40.dp), verticalArrangement = Arrangement.Center) {
                     Button(onSave, enabled = !artOnly || r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
                         Text(if (artOnly) "Save artwork" else "Save")
                     }
                     if ((r.matches?.size ?: 0) > 1) TextButton(onOther) { Text("Other (${r.pick + 1}/${r.matches!!.size})", color = Accent) }
                     TextButton(onSearch) { Text("Search…", color = Accent) }
+                    TextButton(onPick) { Text("Pick picture", color = Accent) }
                     TextButton(onSkip) { Text("Skip", color = dim) }
                 }
             }
