@@ -696,12 +696,20 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(t, { t = it }, label = { Text("Song name") }, singleLine = true)
                     OutlinedTextField(a, { a = it }, label = { Text("Artist (if you know it)") }, singleLine = true)
+                    Spacer(Modifier.height(12.dp))
+                    // Test 259 (Jarrod): two clear choices instead of clearing the song name by hand
+                    Button({ editing = null; scope.launch { lookUp(r, t, a) } }, enabled = t.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                        Text("Search by title and artist")
+                    }
                     Spacer(Modifier.height(6.dp))
-                    Text("Tip: clear the song name to see all album covers by this artist and pick one.", fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    OutlinedButton({ editing = null; scope.launch { lookUp(r, "", a) } }, enabled = a.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text("Search by artist (pick any album cover)", color = if (a.isNotBlank()) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                    }
                 }
             },
-            confirmButton = { TextButton({ editing = null; scope.launch { lookUp(r, t, a) } }) { Text("Search", color = Accent) } },
+            confirmButton = {},
             dismissButton = { TextButton({ editing = null }) { Text("Cancel") } })
     }
 }
