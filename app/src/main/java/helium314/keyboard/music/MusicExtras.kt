@@ -71,6 +71,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.cos
@@ -407,7 +410,8 @@ private fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 // Fix song info
 // ----------------------------------------------------------------------------------------------------------------
 
-private class FixRow(val song: Song, val problems: List<String>) {
+private class FixRow(val song: Song, problems: List<String>) {
+    var problems by mutableStateOf(problems)
     var matches by mutableStateOf<List<Match>?>(null)
     var pick by mutableIntStateOf(0)
     var cover by mutableStateOf<String?>(null) // downloaded cover for the picked match
@@ -428,17 +432,42 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     var editing by remember { mutableStateOf<FixRow?>(null) }
     var applied by remember { mutableIntStateOf(0) }
 
+    var checking by remember { mutableStateOf("") }
     LaunchedEffect(lib, showAll) {
+        // Test 247 (Jarrod: "loading for ages"): songs with missing names show straight away, then artwork is checked
+        // 8 songs at a time in chunks, adding rows as it goes. Songs known to have artwork are remembered, so the
+        // next visit is quick.
         rows = null
         val skipped = SongFixer.skipped(ctx)
-        rows = withContext(Dispatchers.IO) {
-            lib.songs.mapNotNull { s ->
-                if (s.fixed && !showAll) return@mapNotNull null
-                val p = SongFixer.problems(s).toMutableList()
-                if (!Covers.has(ctx, s)) p += "No artwork"
-                if ((p.isEmpty() || s.id in skipped) && !showAll) null else FixRow(s, p)
-            }
+        val hasArt = withContext(Dispatchers.IO) { ArtCheck.load(ctx) }
+        val songs = lib.songs.filter { !(it.fixed && !showAll) && (showAll || it.id !in skipped) }
+        val byId = HashMap<Long, FixRow>()
+        val first = ArrayList<FixRow>()
+        val toCheck = ArrayList<Song>()
+        for (s in songs) {
+            val p = SongFixer.problems(s)
+            if (p.isNotEmpty() || showAll) FixRow(s, p).also { first += it; byId[s.id] = it }
+            if (s.artFile.isEmpty() && s.id !in hasArt) toCheck += s
         }
+        rows = first
+        val found = HashSet<Long>()
+        val sem = kotlinx.coroutines.sync.Semaphore(8)
+        toCheck.chunked(48).forEachIndexed { ci, chunk ->
+            checking = "Checking artwork ${minOf((ci + 1) * 48, toCheck.size)} of ${toCheck.size}…"
+            val results = kotlinx.coroutines.coroutineScope {
+                chunk.map { s -> async(Dispatchers.IO) { sem.withPermit { s to Covers.has(ctx, s) } } }.awaitAll()
+            }
+            val added = ArrayList<FixRow>()
+            for ((s, has) in results) {
+                if (has) { found += s.id; continue }
+                val r = byId[s.id]
+                if (r != null) r.problems = r.problems + "No artwork"
+                else FixRow(s, listOf("No artwork")).also { added += it; byId[s.id] = it }
+            }
+            if (added.isNotEmpty()) rows = rows.orEmpty() + added
+        }
+        checking = ""
+        if (found.isNotEmpty()) withContext(Dispatchers.IO) { ArtCheck.add(ctx, found) }
     }
 
     suspend fun lookUp(r: FixRow, title: String? = null, artist: String? = null) {
@@ -447,8 +476,9 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         r.matches = SongFixer.search(r.song, t, a)
         r.pick = 0
         r.selected = r.match?.confident(r.song) == true
-        loadCover(ctx, r)
         r.busy = false
+        // the cover comes from a different, slower site: fetch it alongside the next lookup instead of waiting
+        scope.launch { loadCover(ctx, r) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -486,10 +516,12 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                 }
             }, enabled = chosen > 0, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Use ticked ($chosen)") }
         }
+        if (checking.isNotEmpty() && !list.isNullOrEmpty()) Text(checking, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
         if (progress.isNotEmpty()) Text(progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
         if (applied > 0) Text("Updated $applied songs.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
         when {
             list == null -> Text("Checking your songs…", Modifier.padding(16.dp))
+            list.isEmpty() && checking.isNotEmpty() -> Text(checking, Modifier.padding(16.dp))
             list.isEmpty() -> Text("All your songs have their info and artwork. 🎉", Modifier.padding(16.dp))
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(list, key = { it.song.id }) { r ->
@@ -591,3 +623,12 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
     }
 }
 
+
+/** Songs already found to have artwork, so Fix song info doesn't read every file again (test 247). */
+internal object ArtCheck {
+    private fun file(ctx: Context) = java.io.File(ctx.filesDir, "music/has_art.txt")
+    fun load(ctx: Context): Set<Long> = runCatching { file(ctx).readLines().mapNotNull { it.toLongOrNull() }.toHashSet() }.getOrDefault(emptySet())
+    fun add(ctx: Context, ids: Set<Long>) {
+        runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText((load(ctx) + ids).joinToString("\n")) }
+    }
+}
