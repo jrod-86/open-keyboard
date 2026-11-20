@@ -368,11 +368,13 @@ private class FixRow(val song: Song, problems: List<String>) {
 }
 
 @Composable
-internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) {
+internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onChanged: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showAll by remember { mutableStateOf(false) }
-    var artOnly by remember { mutableStateOf(false) } // test 252 (Jarrod): find covers only, leave names alone
+    // test 252 (Jarrod): find covers only, leave names alone. Test 267: [only] = one song from Now Playing's
+    // "Add artwork" menu, straight into artwork mode for that song.
+    var artOnly by remember { mutableStateOf(only != null) }
     var rows by remember { mutableStateOf<List<FixRow>?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var progress by remember { mutableStateOf("") }
@@ -458,6 +460,11 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         // 8 songs at a time in chunks, adding rows as it goes. Songs known to have artwork are remembered, so the
         // next visit is quick.
         rows = null
+        if (only != null) {
+            val s1 = lib.byId[only]
+            rows = listOfNotNull(s1?.let { FixRow(it, listOf("Artwork")) })
+            return@LaunchedEffect
+        }
         val skipped = SongFixer.skipped(ctx)
         val hasArt = withContext(Dispatchers.IO) { ArtCheck.load(ctx) }
         val songs = lib.songs.filter { (artOnly || showAll || !it.fixed) && (showAll || it.id !in skipped) }
@@ -536,9 +543,15 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         scope.launch { loadCover(ctx, r) }
     }
 
+    // test 267: one song from Now Playing: start looking straight away
+    val firstRow = rows?.firstOrNull()
+    LaunchedEffect(firstRow) { if (only != null && firstRow != null && firstRow.matches == null) lookUp(firstRow) }
+
     Column(Modifier.fillMaxSize()) {
-        Header("Fix song info", onBack)
-        Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
+        Header(if (only != null) "Add artwork" else "Fix song info", onBack)
+        if (only != null) Text("Open Waves is looking for this song's cover. Pick one, use Search… (try \"Search by artist\" to pick any of their album covers), or use your own picture.",
+            Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+        else Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
             "then tick the ones you want. When you save, you choose whether to change the music file too.",
             Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
         // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
@@ -553,13 +566,13 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             Button({ AcoustId.setKey(ctx, keyText.trim()); AcoustId.keyRejected = false; hasKey = AcoustId.available(ctx) }, enabled = keyText.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
         }
-        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (only == null) FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Needs fixing", !showAll && !artOnly) { showAll = false; artOnly = false }
             Chip("Artwork only", artOnly) { artOnly = true; showAll = false }
             Chip("All songs", showAll) { showAll = true; artOnly = false }
         }
         val list = rows
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (only == null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (job?.isActive == true) OutlinedButton({ job?.cancel() }) { Text("Stop") }
             else Button({
                 val todo = list.orEmpty().filter { it.matches == null }.take(if (showAll) 50 else 500)
@@ -580,6 +593,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         when {
             list == null -> Text("Checking your songs…", Modifier.padding(16.dp))
             list.isEmpty() && checking.isNotEmpty() -> Text(checking, Modifier.padding(16.dp))
+            list.isEmpty() && only != null -> Column(Modifier.padding(16.dp)) {
+                Text(if (applied > 0) "Artwork saved. ✓" else "Song not found.", fontSize = 17.sp)
+                TextButton(onBack) { Text("Back to the song", color = Accent) }
+            }
             list.isEmpty() -> Text("All your songs have their info and artwork. 🎉", Modifier.padding(16.dp))
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(list, key = { it.song.id }) { r ->

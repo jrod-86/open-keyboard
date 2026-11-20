@@ -318,6 +318,8 @@ internal sealed class Page {
     data object Themes : Page()
     /** Design studio (test 264): every look setting in one place */
     data object Studio : Page()
+    /** "Add artwork" for one song, from the Now Playing menu (test 267) */
+    data class FixOne(val id: Long) : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -408,6 +410,7 @@ private fun MusicApp(ui: PlayerUi) {
                     is Page.PlaylistPage -> PlaylistPage(p.id, library, ui, ::open, ::back)
                     Page.Settings -> SettingsPage(::open, ::back) { reload() }
                     Page.Fixer -> FixerPage(library, onBack = ::back) { reload() }
+                    is Page.FixOne -> FixerPage(library, onBack = ::back, only = p.id) { reload() }
                     Page.Artists -> ArtistsPage(library, ::open, ::back)
                     is Page.AlbumPage -> library.albums.find { it.id == p.id }?.let { AlbumPage(it, ui, library, ::open, ::back) }
                     is Page.ArtistPage -> library.artists.find { it.name == p.name }?.let { ArtistPage(it, ui, library, ::open, ::back) }
@@ -790,13 +793,15 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Delete") }, { menu = false; confirmDelete = true })
                 DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(s)) })
                 DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = s })
+                // test 267 (Jarrod): playing a song with no cover? add one right here
+                DropdownMenuItem({ Text("Add or change artwork") }, { menu = false; open(Page.FixOne(s.id)) })
                 DropdownMenuItem({ Text("Album") }, { menu = false; open(Page.AlbumPage(s.albumId)) })
                 DropdownMenuItem({ Text("Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
                 DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
-            DropdownMenuItem({ Text("Beat effects") }, { menu = false; open(Page.Settings) })
+            DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })
             DropdownMenuItem({ Text("Settings") }, { menu = false; open(Page.Settings) })
         }
         DropdownMenu(sleep, { sleep = false }) {
