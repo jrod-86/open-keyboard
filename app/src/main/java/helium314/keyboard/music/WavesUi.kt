@@ -109,11 +109,11 @@ private val dimText @Composable get() = MaterialTheme.colorScheme.onSurface.copy
 
 /** "♫ Open Waves" — Jarrod's logo first, then the name. */
 @Composable
-internal fun WavesTopBar(open: (Page) -> Unit, extra: (@Composable () -> Unit)? = null) {
+internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: (@Composable () -> Unit)? = null) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(helium314.keyboard.latin.R.drawable.open_waves_mark), "Open Waves", Modifier.height(34.dp).aspectRatio(384f / 232f))
+        WavesLogo(playing, 34.dp)
         Spacer(Modifier.width(6.dp))
         Text(buildAnnotatedString {
             withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append("Open ") }
@@ -160,7 +160,7 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
     LaunchedEffect(pager.currentPage) { if (pager.currentPage != 1) PlaylistSelect.clear() }
     Column(Modifier.fillMaxSize()) {
         if (selecting) SelectHeader()
-        else WavesTopBar(open, extra = if (pager.currentPage == 1) ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
+        else WavesTopBar(open, ui.playing, extra = if (pager.currentPage == 1) ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
         WavesTabHeader(pager)
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
             .background(if (MusicSettings.theme != -1) Color.Black.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
