@@ -280,10 +280,21 @@ object OpenWavesIcon {
         }
     }
 
+    /**
+     * Test 285 (Jarrod: nothing showed up on the home screen): the icon is taken away for a moment and put back, so the phone
+     * sees it as a newly installed app. Samsung's Home screen (with "Add new apps to Home screen" on, the usual setting)
+     * then puts it on the home screen by itself. Still no badge.
+     */
     fun add(ctx: Context) {
-        set(ctx, true)
-        android.widget.Toast.makeText(ctx, "Open Waves now has its own icon in your apps list. Press and hold it there, then drag it to your Home screen.",
-            android.widget.Toast.LENGTH_LONG).show()
+        val app = ctx.applicationContext
+        val wasOn = isOn(app)
+        if (wasOn) set(app, false)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            set(app, true)
+            android.widget.Toast.makeText(app, "Open Waves icon added. If it isn't on your Home screen in a few seconds: press and hold an empty " +
+                "spot on the Home screen, tap Settings, turn on \"Add new apps to Home screen\", then try again. It's also in your apps list.",
+                android.widget.Toast.LENGTH_LONG).show()
+        }, if (wasOn) 2500L else 0L)
     }
 }
 
