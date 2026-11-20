@@ -402,7 +402,7 @@ private fun MusicApp(ui: PlayerUi) {
             else npAnim.animateTo(0f, spring(dampingRatio = 1f, stiffness = 380f))
         }
         if (nowPlaying || npAnim.value > 0.002f) {
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = npAnim.value }.background(Color.Black.copy(alpha = 0.55f)))
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = npAnim.value.coerceIn(0f, 1f) }.background(Color.Black.copy(alpha = 0.55f)))
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val hPx = with(LocalDensity.current) { maxHeight.toPx() }
                 NowPlaying(ui, library, npMode, progress = { npAnim.value },
@@ -605,13 +605,14 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
     val cornerPx = with(density) { 36.dp.toPx() }
     Box(Modifier.fillMaxSize()
         .graphicsLayer {
-            val p = progress()
+            // the spring can overshoot past 1 a little: keep everything in range (negative corners crashed test 240)
+            val p = progress().coerceIn(0f, 1f)
             translationY = (1f - p) * size.height * 0.9f
             val sc = 0.86f + 0.14f * p
             scaleX = sc; scaleY = sc
             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
             alpha = (p * 2.2f).coerceIn(0f, 1f)
-            shape = RoundedCornerShape(((1f - p) * 4f).coerceAtMost(1f) * cornerPx)
+            shape = RoundedCornerShape(((1f - p) * 4f).coerceIn(0f, 1f) * cornerPx)
             clip = true
         }
         .background(Color.Black)
