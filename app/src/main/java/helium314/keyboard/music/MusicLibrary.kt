@@ -202,20 +202,13 @@ object AlbumRules {
     private val noise = Regex("(?i)\\s*[(\\[][^)\\]]*(official|video|audio|lyrics?|visuali[sz]er|hq|hd|4k)[^)\\]]*[)\\]]")
     fun titleKey(t: String) = noise.replace(t, "").lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
-    fun unique(songs: List<Song>): List<Song> {
-        val out = ArrayList<Song>(songs.size)
-        songs.groupBy { titleKey(it.title).ifEmpty { "#" + it.id } + "|" + mainArtist(it.artist) }.values.forEach { same ->
-            if (same.size == 1) { out += same[0]; return@forEach }
-            // split into groups of about the same length (a live or extended version is a different song)
-            var group = ArrayList<Song>()
-            for (s in same.sortedBy { it.durationMs }) {
-                if (group.isNotEmpty() && s.durationMs - group.first().durationMs > 3000) { out += best(group); group = ArrayList() }
-                group += s
-            }
-            if (group.isNotEmpty()) out += best(group)
-        }
-        return out
-    }
+    /** artist for spotting copies: main artist, without "The" and punctuation ("The Smashing Pumpkins" = "Smashing Pumpkins") */
+    private fun artistKey(a: String) = mainArtist(a).removePrefix("the ").replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+    fun unique(songs: List<Song>): List<Song> =
+        // test 284 (Jarrod: still doubles): the same song from a different album (e.g. a Greatest Hits) can differ in length
+        // by more than a few seconds, so the length no longer matters; live / remix / extended versions say so in the name
+        songs.groupBy { titleKey(it.title).ifEmpty { "#" + it.id } + "|" + artistKey(it.artist) }.values.map { best(it) }
 
     /** the copy with the best info: fixed in Fix song info, has its own artwork, a real album artist and year, then the oldest */
     private fun best(copies: List<Song>): Song = copies.sortedWith(compareByDescending<Song> { it.fixed }
