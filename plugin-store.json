@@ -2,6 +2,17 @@
   "about": "Open Keyboard plugin store. Free, open source apps only. To add yours, open a pull request adding an entry here.",
   "plugins": [
     {
+      "package": "io.github.jrod86.okinstaller",
+      "name": "APK Installer",
+      "emoji": "📦",
+      "description": "Install apps from APK files, and plugins from this store in one tap. Shows what an app can use before you install.",
+      "author": "Open Keyboard",
+      "source": "https://github.com/jrod-86/open-keyboard/tree/claude/project-thread-t657j2/installer-plugin",
+      "download": "https://github.com/jrod-86/open-keyboard/raw/apk/OpenKeyboard-plugin-installer.apk",
+      "offline": false,
+      "size": "1 MB"
+    },
+    {
       "package": "com.example.okplugin",
       "name": "Hello plugin (example)",
       "emoji": "👋",
