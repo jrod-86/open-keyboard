@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import android.content.Context
 import android.content.Intent
@@ -768,8 +769,11 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
         .pointerInput(Unit) { detectVerticalDragGestures { _, d -> if (d < -20) onOpen() } }
     if (big) {
         Column(outer.padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                modifier = Modifier.fillMaxWidth().basicMarquee(initialDelayMillis = 1500), textAlign = TextAlign.Center)
+            // test 262 (Jarrod): scroll long names like the small player does (fillMaxWidth on the text itself stopped it)
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
+            }
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Cover(song, 300, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
@@ -777,8 +781,9 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { Buttons() }
             }
             Spacer(Modifier.height(4.dp))
-            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f)
+            }
         }
         return
     }
@@ -789,9 +794,66 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             // text grows a bit less than the rest, and long names scroll across so you can read them (test 242)
             val tk = 1f + (k - 1f) * 0.6f
             Text(song.title, color = Color.White, fontSize = (15 * tk).sp, maxLines = 1, modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
-            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = (12.5f * tk).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12.5f * tk)
         }
         Buttons()
+    }
+}
+
+/** Test 262 (Jarrod): the artist name sits still for about 6 s, then plays a 3 s effect and settles again.
+ *  The effects take turns: a bright shine sweeping across (with a soft glow), then the letters dissolving away
+ *  one by one in a random order and reappearing the same way (Jarrod: "dissolve and then reappear"). */
+@Composable
+private fun ShineText(text: String, color: Color, size: Float) {
+    val p = remember { androidx.compose.animation.core.Animatable(-1f) }
+    var round by remember { mutableIntStateOf(0) }
+    LaunchedEffect(text) {
+        p.snapTo(-1f)
+        while (true) {
+            kotlinx.coroutines.delay(6000)
+            p.snapTo(0f)
+            p.animateTo(1f, androidx.compose.animation.core.tween(3000, easing = androidx.compose.animation.core.LinearEasing))
+            p.snapTo(-1f)
+            round++
+        }
+    }
+    // each letter gets its own moment to vanish and to come back
+    val order = remember(text) { val rnd = java.util.Random(text.hashCode().toLong()); FloatArray(text.length) { rnd.nextFloat() } }
+    var w by remember { mutableIntStateOf(1) }
+    val v = p.value
+    val bump = if (v < 0f) 0f else kotlin.math.sin(Math.PI * v).toFloat() // 0 → 1 → 0 over the 3 s
+    val shine = round % 2 == 0
+    val mod = Modifier.onSizeChanged { w = it.width.coerceAtLeast(1) }
+    when {
+        v < 0f -> Text(text, color = color, fontSize = size.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = mod)
+        shine -> {
+            val x = (-0.5f + 2f * v) * w // the shine travels from left of the text to past its right side
+            val band = 0.35f * w
+            val style = TextStyle(fontSize = size.sp,
+                brush = Brush.linearGradient(listOf(color, Color.White, Accent, Color.White, color),
+                    start = androidx.compose.ui.geometry.Offset(x - band, 0f), end = androidx.compose.ui.geometry.Offset(x + band, 0f)),
+                shadow = androidx.compose.ui.graphics.Shadow(Accent.copy(alpha = 0.8f * bump), blurRadius = 14f * bump))
+            val scale = 1f + 0.06f * bump
+            Text(text, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = mod.graphicsLayer { scaleX = scale; scaleY = scale })
+        }
+        else -> {
+            val shown = androidx.compose.ui.text.buildAnnotatedString {
+                text.forEachIndexed { i, c ->
+                    val r = order[i]
+                    val out = ((v - r * 0.35f) / 0.12f).coerceIn(0f, 1f)          // fades away between 0 and ~0.47
+                    val back = ((v - (0.55f + r * 0.33f)) / 0.12f).coerceIn(0f, 1f) // comes back between 0.55 and 1
+                    val a = 1f - out + back
+                    // a letter on its way out or in flashes in the theme colour
+                    val flash = if (a in 0.05f..0.95f) Accent else color
+                    pushStyle(androidx.compose.ui.text.SpanStyle(color = flash.copy(alpha = color.alpha * a.coerceIn(0f, 1f))))
+                    append(c)
+                    pop()
+                }
+            }
+            Text(shown, fontSize = size.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = mod.graphicsLayer { translationY = -3f * bump })
+        }
     }
 }
 
