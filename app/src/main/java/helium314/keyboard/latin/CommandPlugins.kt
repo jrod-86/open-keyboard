@@ -66,7 +66,7 @@ object CommandPlugins {
                     Provider(authority, p.packageName, info.loadLabel(pm).toString(), names, usages).also { known[authority] = updated to it }
                 }
             providers = found
-            if (found.isNotEmpty()) Plugins.seedOutside(app, found.map { it.id })
+            if (found.isNotEmpty()) Plugins.seedOutside(app, found.map { it.id to it.packageName })
             main.post {
                 SlashCommands.setExternal("apps", found.filter { Plugins.isOn(app, "app_commands") && Plugins.isOn(app, it.id) }
                     .flatMap { prov -> prov.names.mapIndexedNotNull { i, name ->

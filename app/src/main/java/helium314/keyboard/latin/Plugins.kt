@@ -77,13 +77,19 @@ object Plugins {
      * Called with every outside plugin found. The first time after updating, the ones already there are kept on;
      * from then on, anything new starts off.
      */
-    fun seedOutside(ctx: Context, ids: List<String>) {
+    fun seedOutside(ctx: Context, plugins: List<Pair<String, String>>) {
         init(ctx)
         val p = prefs ?: return
-        val kind = ids.firstOrNull() ?: return
+        val kind = plugins.firstOrNull()?.first ?: return
         if (p.getBoolean(seededKey(kind), false)) return
+        // test 227: only apps that were there before this keyboard version stay on; one installed since starts off
+        val pm = ctx.packageManager
+        val updated = runCatching { pm.getPackageInfo(ctx.packageName, 0).lastUpdateTime }.getOrDefault(Long.MAX_VALUE)
         p.edit().apply {
-            ids.forEach { if (!p.contains(key(it))) putBoolean(key(it), true) }
+            plugins.forEach { (id, pkg) ->
+                val installed = runCatching { pm.getPackageInfo(pkg, 0).firstInstallTime }.getOrDefault(Long.MAX_VALUE)
+                if (!p.contains(key(id)) && installed < updated) putBoolean(key(id), true)
+            }
             putBoolean(seededKey(kind), true)
         }.apply()
     }
@@ -123,7 +129,7 @@ object Plugins {
                 runCatching { it.loadIcon(pm) }.getOrNull()) }
             .distinctBy { it.id }
             .sortedBy { it.label.lowercase() }
-            .also { list -> if (list.isNotEmpty()) seedOutside(ctx, list.map { it.id }) }
+            .also { list -> if (list.isNotEmpty()) seedOutside(ctx, list.map { it.id to it.component.packageName }) }
     }
 
     /** App actions that are switched on, for the menu. */

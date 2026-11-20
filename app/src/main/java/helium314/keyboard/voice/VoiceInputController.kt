@@ -582,15 +582,19 @@ class VoiceInputController(
             VoiceCommands.Action.STOP -> stop()
             VoiceCommands.Action.SEND -> {
                 stop()
-                val editorAction = (ime.currentInputEditorInfo?.imeOptions ?: 0) and android.view.inputmethod.EditorInfo.IME_MASK_ACTION
-                val sendLike = editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                val options = ime.currentInputEditorInfo?.imeOptions ?: 0
+                val editorAction = options and android.view.inputmethod.EditorInfo.IME_MASK_ACTION
+                // Open Keyboard (test 227, Jarrod: "send message closed the keyboard and didn't send"): Done only closes
+                // the keyboard, it never sends. Most messaging apps have their own send button that a keyboard can't
+                // press, so in those the text just stays for you to send.
+                val sendLike = options and android.view.inputmethod.EditorInfo.IME_FLAG_NO_ENTER_ACTION == 0 && (
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
                         editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
-                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
-                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH)
                 main.postDelayed({
                     ic()?.finishComposingText()
                     if (sendLike) ic()?.performEditorAction(editorAction)
-                    else toast("This app needs its own send button tapped")
+                    else toast("This app doesn't let keyboards send. Tap its send button.")
                 }, 300)
             }
         }
