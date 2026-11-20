@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -440,7 +441,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             pendingWrite = listOf(FileFixer.Item(r.song, "", "", "", 0, path))
         }
     }
-    DisposableEffect(Unit) { onDispose { if (dirty) { Covers.clear(); onChanged() } } }
+    DisposableEffect(Unit) { onDispose { FixPreview.stop(); if (dirty) { Covers.clear(); onChanged() } } }
     // test 272 (Jarrod): you know the right name but the database doesn't have the song: save what you typed
     fun saveTyped(r: FixRow, title: String, artist: String) {
         val t = title.trim(); val a = artist.trim().ifBlank { r.song.artist }
@@ -605,6 +606,8 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             else Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
                 "then tick the ones you want. When you save, you choose whether to change the music file too.",
                 Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            Text("Tap ▶ on a song's cover to listen to it (from about a third of the way in) and check the match. Tap again to stop.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
             Text("Each match says how it was found: 🎵 by sound is the exact song, 🔤 by name is a best guess worth checking.",
                 Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
             // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
@@ -749,6 +752,48 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
     r.coverTried = true
 }
 
+/**
+ * Test 273 (Jarrod): listen to a song in Fix song info to check a match. Plays from about a third of the way in
+ * (the part people recognise), one song at a time. Asks for audio focus so the main player pauses meanwhile.
+ */
+object FixPreview {
+    var playingId by mutableLongStateOf(-1L)
+        private set
+    private var mp: android.media.MediaPlayer? = null
+    private var focus: android.media.AudioFocusRequest? = null
+    private var am: android.media.AudioManager? = null
+
+    fun toggle(ctx: Context, song: Song) {
+        if (playingId == song.id) { stop(); return }
+        stop()
+        val attrs = android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build()
+        am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        focus = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attrs)
+            .setOnAudioFocusChangeListener { if (it == android.media.AudioManager.AUDIOFOCUS_LOSS) stop() }.build()
+        focus?.let { am?.requestAudioFocus(it) }
+        playingId = song.id
+        mp = runCatching {
+            android.media.MediaPlayer().apply {
+                setAudioAttributes(attrs)
+                setDataSource(ctx, song.uri)
+                setOnPreparedListener { p -> if (song.durationMs > 60_000) p.seekTo((song.durationMs / 3).toInt()); p.start() }
+                setOnCompletionListener { stop() }
+                setOnErrorListener { _, _, _ -> stop(); true }
+                prepareAsync()
+            }
+        }.getOrElse { stop(); null }
+    }
+
+    fun stop() {
+        mp?.let { runCatching { it.stop() }; it.release() }
+        mp = null
+        focus?.let { am?.abandonAudioFocusRequest(it) }
+        focus = null
+        playingId = -1L
+    }
+}
+
 /** A small text button without the big built-in padding of TextButton (test 270). */
 @Composable
 private fun LinkButton(label: String, color: Color, onClick: () -> Unit) {
@@ -761,7 +806,15 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
     // test 270 (Jarrod: "very big space between the lines"): tighter rows and compact link buttons
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(Modifier.clickable { onPick() }, verticalAlignment = Alignment.CenterVertically) { // tap the song to pick a picture
-            Cover(r.song, 160, Modifier.size(48.dp), corner = 6)
+            // test 273 (Jarrod): play button on the cover, to listen and check a match is the right song
+            val ctx = LocalContext.current
+            val playing = FixPreview.playingId == r.song.id
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).clickable { FixPreview.toggle(ctx, r.song) }, contentAlignment = Alignment.Center) {
+                Cover(r.song, 160, Modifier.size(48.dp), corner = 6)
+                Box(Modifier.size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                    Icon(if (playing) MusicIcons.pause else MusicIcons.play, if (playing) "Stop" else "Listen", tint = if (playing) Accent else Color.White, modifier = Modifier.size(20.dp))
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(r.song.title, maxLines = 1, fontSize = 15.sp)
