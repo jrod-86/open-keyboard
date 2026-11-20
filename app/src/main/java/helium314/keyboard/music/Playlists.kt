@@ -62,6 +62,14 @@ object Playlists {
         write(ctx, ids.mapNotNull { byId[it] } + all.value.filter { it.id !in ids })
     }
     fun delete(ctx: Context, id: Long) = write(ctx, all.value.filter { it.id != id })
+    /** test 289: the playlist's songs in a new order (after dragging, or Move to top / bottom) */
+    fun setSongs(ctx: Context, id: Long, songs: List<Long>) = write(ctx, all.value.map { if (it.id == id) it.copy(songs = songs) else it })
+    /** test 289: chosen playlists to the top or the bottom of the list, keeping their own order */
+    fun moveToEdge(ctx: Context, ids: Collection<Long>, top: Boolean) {
+        val chosen = all.value.filter { it.id in ids }
+        val rest = all.value.filter { it.id !in ids }
+        write(ctx, if (top) chosen + rest else rest + chosen)
+    }
     fun add(ctx: Context, id: Long, songs: List<Long>) = write(ctx, all.value.map { if (it.id == id) it.copy(songs = it.songs + songs) else it })
     fun removeAt(ctx: Context, id: Long, index: Int) =
         write(ctx, all.value.map { if (it.id == id) it.copy(songs = it.songs.filterIndexed { i, _ -> i != index }) else it })

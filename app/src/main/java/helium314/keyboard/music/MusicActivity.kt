@@ -542,13 +542,17 @@ internal fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Unit, number: Int? = null,
-                     extra: List<Pair<String, () -> Unit>> = emptyList(), onClick: () -> Unit) {
+                     extra: List<Pair<String, () -> Unit>> = emptyList(), menuState: androidx.compose.runtime.MutableState<Boolean>? = null,
+                     holdForMenu: Boolean = true, onClick: () -> Unit) {
     val ctx = LocalContext.current
-    var menu by remember { mutableStateOf(false) }
+    // test 289: inside a playlist, holding a song starts dragging it, and the menu opens from outside when you let go without moving
+    val ownMenu = remember { mutableStateOf(false) }
+    val menuS: androidx.compose.runtime.MutableState<Boolean> = menuState ?: ownMenu
+    var menu by menuS
     var confirmDelete by remember { mutableStateOf(false) }
     val isCurrent = ui.currentId == song.id
     Box {
-        Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 16.dp, vertical = 7.dp),
+        Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = if (holdForMenu) ({ menu = true }) else null).padding(horizontal = 16.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically) {
             if (number != null) Text(if (isCurrent) "♪" else "$number", Modifier.width(28.dp), color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             else { Cover(song, 160, Modifier.size(48.dp), corner = 6); Spacer(Modifier.width(12.dp)) }

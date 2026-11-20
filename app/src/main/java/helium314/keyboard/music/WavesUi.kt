@@ -478,6 +478,17 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             }
             if (order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
         }
+        // test 289 (Jarrod): send the chosen playlists straight to the top or the bottom
+        if (PlaylistSelect.active) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly) {
+            fun edge(top: Boolean) {
+                Playlists.moveToEdge(ctx, PlaylistSelect.ids.toList(), top)
+                if (Sorts.playlistSort.intValue != 0) { Sorts.playlistSort.intValue = 0; Sorts.save(ctx) }
+                scope.launch { state.scrollToItem(if (top) head else (head + order.size - 1).coerceAtLeast(0)) }
+            }
+            TextButton({ edge(true) }, enabled = PlaylistSelect.ids.isNotEmpty()) { Text("⤒  Move to top", color = Accent) }
+            TextButton({ edge(false) }, enabled = PlaylistSelect.ids.isNotEmpty()) { Text("⤓  Move to bottom", color = Accent) }
+        }
         // Samsung's bottom bar while playlists are selected
         if (PlaylistSelect.active) {
             val chosen = order.filter { it.id in PlaylistSelect.ids }
