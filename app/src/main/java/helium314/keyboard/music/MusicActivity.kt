@@ -266,6 +266,9 @@ internal sealed class Page {
     data class ArtistPage(val name: String) : Page()
     data object Settings : Page()
     data object Fixer : Page()
+    data object Playlists : Page()
+    data object Import : Page()
+    data class PlaylistPage(val id: Long) : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -294,7 +297,7 @@ private fun MusicApp(ui: PlayerUi) {
     }
     var lib by remember { mutableStateOf(Library.cached) }
     val appScope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { Favourites.load(ctx); MusicSettings.load(ctx); lib = Library.load(ctx, fresh = true) }
+    LaunchedEffect(Unit) { Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); lib = Library.load(ctx, fresh = true) }
     // keep the seek bar moving
     LaunchedEffect(ui.controller) { while (true) { ui.controller?.let { ui.position = it.currentPosition; ui.positionAt = android.os.SystemClock.elapsedRealtime() }; delay(250) } }
 
@@ -322,6 +325,9 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Songs -> SongsPage("Songs", library.songs, ui, library, ::open, onBack = { stack.removeAt(stack.lastIndex) })
                     Page.Favs -> SongsPage("Favourites", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, onBack = { stack.removeAt(stack.lastIndex) })
                     Page.Albums -> AlbumsPage("Albums", library.albums, ::open) { stack.removeAt(stack.lastIndex) }
+                    Page.Playlists -> PlaylistsPage(library, ::open) { stack.removeAt(stack.lastIndex) }
+                    Page.Import -> ImportPage(library, ::open) { stack.removeAt(stack.lastIndex) }
+                    is Page.PlaylistPage -> PlaylistPage(p.id, library, ui, ::open) { stack.removeAt(stack.lastIndex) }
                     Page.Settings -> SettingsPage(::open) { stack.removeAt(stack.lastIndex) }
                     Page.Fixer -> FixerPage(library, onBack = { stack.removeAt(stack.lastIndex) }) { appScope.launch { lib = Library.load(ctx, fresh = true) } }
                     Page.Artists -> ArtistsPage(library, ::open) { stack.removeAt(stack.lastIndex) }
@@ -335,6 +341,7 @@ private fun MusicApp(ui: PlayerUi) {
         AnimatedVisibility(nowPlaying, enter = slideInVertically(tween(320)) { it }, exit = slideOutVertically(tween(260)) { it }) {
             NowPlaying(ui, library, onClose = { nowPlaying = false }, open = ::open)
         }
+        PlaylistPickerDialog()
     }
 }
 
@@ -382,7 +389,7 @@ private fun HomePage(lib: Library, open: (Page) -> Unit) {
     LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item(span = { GridItemSpan(2) }) { Header("Library", null, onSettings = { open(Page.Settings) }) }
         val rows = listOf(
-            Triple("Favourites", MusicIcons.heart, Page.Favs), Triple("Artists", MusicIcons.person, Page.Artists),
+            Triple("Playlists", MusicIcons.queue, Page.Playlists), Triple("Favourites", MusicIcons.heart, Page.Favs), Triple("Artists", MusicIcons.person, Page.Artists),
             Triple("Albums", MusicIcons.album, Page.Albums), Triple("Songs", MusicIcons.note, Page.Songs),
         )
         rows.forEach { (label, icon, page) ->
@@ -441,7 +448,7 @@ private fun ArtistsPage(lib: Library, open: (Page) -> Unit, onBack: () -> Unit) 
 }
 
 @Composable
-private fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
+internal fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val bg = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
         listOf(Triple("Play", MusicIcons.play, false), Triple("Shuffle", MusicIcons.shuffle, true)).forEach { (label, icon, sh) ->
@@ -456,7 +463,8 @@ private fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Unit, number: Int? = null, onClick: () -> Unit) {
+internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Unit, number: Int? = null,
+                     extra: List<Pair<String, () -> Unit>> = emptyList(), onClick: () -> Unit) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val isCurrent = ui.currentId == song.id
@@ -476,6 +484,8 @@ private fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Unit
         DropdownMenu(menu, { menu = false }) {
             DropdownMenuItem({ Text("Play Next") }, { ui.playNext(song); menu = false })
             DropdownMenuItem({ Text("Play Last") }, { ui.playLast(song); menu = false })
+            DropdownMenuItem({ Text("Add to Playlist…") }, { PlaylistPicker.songs.value = listOf(song.id); menu = false })
+            extra.forEach { (label, action) -> DropdownMenuItem({ Text(label) }, { menu = false; action() }) }
             DropdownMenuItem({ Text(if (song.id in Favourites.ids.value) "Remove from Favourites" else "Favourite") }, { Favourites.toggle(ctx, song.id); menu = false })
             DropdownMenuItem({ Text("Go to Album") }, { open(Page.AlbumPage(song.albumId)); menu = false })
             DropdownMenuItem({ Text("Go to Artist") }, { open(Page.ArtistPage(song.albumArtist.ifBlank { song.artist })); menu = false })
@@ -726,6 +736,7 @@ private fun MoreMenu(song: Song?, open: (Page) -> Unit) {
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
             DropdownMenuItem({ Text("Beat effects") }, { menu = false; open(Page.Settings) })
+            song?.takeIf { it.durationMs > 0 }?.let { s -> DropdownMenuItem({ Text("Add to Playlist…") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) }) }
             DropdownMenuItem({ Text("Add to Home screen") }, { menu = false; addHomeShortcut(ctx) })
         }
         DropdownMenu(sleep, { sleep = false }) {
