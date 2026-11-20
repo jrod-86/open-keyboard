@@ -28,6 +28,8 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -770,10 +772,8 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
     if (big) {
         Column(outer.padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // test 262 (Jarrod): scroll long names like the small player does (fillMaxWidth on the text itself stopped it)
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                    modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
-            }
+            // test 263 (Jarrod): the name fits on the big player, so the normal marquee never moved; this one always rolls
+            RollText(song.title, Color.White, 14f)
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Cover(song, 300, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
@@ -824,15 +824,19 @@ private fun ShineText(text: String, color: Color, size: Float) {
     val bump = if (v < 0f) 0f else kotlin.math.sin(Math.PI * v).toFloat() // 0 → 1 → 0 over the 3 s
     val shine = round % 2 == 0
     val mod = Modifier.onSizeChanged { w = it.width.coerceAtLeast(1) }
-    when {
-        v < 0f -> Text(text, color = color, fontSize = size.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = mod)
+    // test 263 (Jarrod: "the size of the box changes"): the shine used its own text style with a different line
+    // height, so the player grew during it. Same base style for every effect, inside a fixed-height box.
+    val base = androidx.compose.material3.LocalTextStyle.current
+    val lineH = with(androidx.compose.ui.platform.LocalDensity.current) { (size * 1.45f).sp.toDp() }
+    Box(Modifier.height(lineH), contentAlignment = Alignment.Center) { when {
+        v < 0f -> Text(text, color = color, fontSize = size.sp, lineHeight = (size * 1.45f).sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = mod)
         shine -> {
             val x = (-0.5f + 2f * v) * w // the shine travels from left of the text to past its right side
             val band = 0.35f * w
-            val style = TextStyle(fontSize = size.sp,
+            val style = base.merge(TextStyle(fontSize = size.sp, lineHeight = (size * 1.45f).sp,
                 brush = Brush.linearGradient(listOf(color, Color.White, Accent, Color.White, color),
                     start = androidx.compose.ui.geometry.Offset(x - band, 0f), end = androidx.compose.ui.geometry.Offset(x + band, 0f)),
-                shadow = androidx.compose.ui.graphics.Shadow(Accent.copy(alpha = 0.8f * bump), blurRadius = 14f * bump))
+                shadow = androidx.compose.ui.graphics.Shadow(Accent.copy(alpha = 0.8f * bump), blurRadius = 14f * bump)))
             val scale = 1f + 0.06f * bump
             Text(text, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = mod.graphicsLayer { scaleX = scale; scaleY = scale })
@@ -851,8 +855,42 @@ private fun ShineText(text: String, color: Color, size: Float) {
                     pop()
                 }
             }
-            Text(shown, fontSize = size.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Text(shown, fontSize = size.sp, lineHeight = (size * 1.45f).sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = mod.graphicsLayer { translationY = -3f * bump })
+        }
+    }
+    }
+}
+
+/** Test 263: a name that always rolls across: rests 2 s in the middle, slides out left while it comes back in from the right. */
+@Composable
+private fun RollText(text: String, color: Color, size: Float) {
+    BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
+        val cw = constraints.maxWidth.toFloat()
+        val dens = androidx.compose.ui.platform.LocalDensity.current
+        var tw by remember(text) { mutableIntStateOf(0) }
+        val gap = with(dens) { 48.dp.toPx() }
+        val d = maxOf(tw + gap, cw)
+        val start = if (tw < cw) (cw - tw) / 2f else 0f
+        val off = remember(text) { androidx.compose.animation.core.Animatable(0f) }
+        LaunchedEffect(text, tw, cw) {
+            if (tw == 0) return@LaunchedEffect
+            off.snapTo(0f)
+            val ms = (d / with(dens) { 32.dp.toPx() } * 1000).toInt() // about 32 dp a second
+            while (true) {
+                kotlinx.coroutines.delay(2000)
+                off.animateTo(d, androidx.compose.animation.core.tween(ms, easing = androidx.compose.animation.core.LinearEasing))
+                off.snapTo(0f)
+            }
+        }
+        @Composable fun copy(x: Float, measure: Boolean) = Text(text, color = color, fontSize = size.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, softWrap = false,
+            modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
+                .then(if (measure) Modifier.onSizeChanged { tw = it.width } else Modifier)
+                .offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), 0) })
+        Box(Modifier.fillMaxWidth()) {
+            copy(start - off.value, true)
+            if (off.value > 0f) copy(start - off.value + d, false)
         }
     }
 }
