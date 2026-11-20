@@ -316,6 +316,8 @@ internal sealed class Page {
     /** ringtone cutter for one song (test 239) */
     data class Ringtone(val id: Long) : Page()
     data object Themes : Page()
+    /** Design studio (test 264): every look setting in one place */
+    data object Studio : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -386,6 +388,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Search -> WavesSearch(library, ui, ::open, ::back)
                     Page.Edit -> EditPage(library, ::back)
                     Page.Themes -> ThemesPage(::back)
+                    Page.Studio -> StudioPage(::open, ::back)
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)

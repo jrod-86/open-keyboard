@@ -99,6 +99,11 @@ object MusicSettings {
     var blurBackground by mutableStateOf(false)
     /** Themes (test 239): -1 plain, 0..19 colour, 100+ FX (see WavesThemes) */
     var theme by mutableIntStateOf(-1)
+    /** Design studio (test 264, Jarrod): the mini player's own background. -3 song colour (as before), -2 same as the app,
+     *  -1 plain black, 0.. colour theme, 100+ FX theme */
+    var miniTheme by mutableIntStateOf(-3)
+    /** how the mini player's cover moves to the beat, index into [coverEffects] (0 = still) */
+    var miniCover by mutableIntStateOf(0)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -106,12 +111,14 @@ object MusicSettings {
         effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg2", 0); strength = p.getFloat("fx_strength", 1f)
         coverSize = p.getFloat("look_cover3", 0.5f); buttonSize = p.getFloat("look_buttons", 1f)
         miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false); theme = p.getInt("look_theme", -1)
+        miniTheme = p.getInt("mini_theme", -3); miniCover = p.getInt("mini_cover", 0)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
         prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
             .putFloat("look_cover3", coverSize).putFloat("look_buttons", buttonSize)
-            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme).apply()
+            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme)
+            .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover).apply()
     }
 }
 
@@ -129,11 +136,11 @@ fun rememberBeatClock(ui: PlayerUi, running: Boolean): BeatClock {
 
 /** Loads (or works out, once) the beats of the song that's playing. */
 @Composable
-fun rememberBeatMap(song: Song?): BeatMap? {
+fun rememberBeatMap(song: Song?, on: Boolean = MusicSettings.effectsOn): BeatMap? {
     val ctx = LocalContext.current
     var map by remember(song?.id) { mutableStateOf<BeatMap?>(null) }
-    LaunchedEffect(song?.id, MusicSettings.effectsOn) {
-        if (song == null || song.durationMs <= 0 || !MusicSettings.effectsOn) return@LaunchedEffect
+    LaunchedEffect(song?.id, on) {
+        if (song == null || song.durationMs <= 0 || !on) return@LaunchedEffect
         map = withContext(Dispatchers.IO) { BeatMap.cached(ctx, song.id) } ?: BeatMap.analyze(ctx, song)
     }
     return map
@@ -142,12 +149,12 @@ fun rememberBeatMap(song: Song?): BeatMap? {
 /** How much the cover moves right now: scale, sideways tilt, up-down, glow (0..1). */
 data class CoverMove(val scale: Float, val rotation: Float, val lift: Float, val glow: Float)
 
-fun coverMove(map: BeatMap?, ms: Long): CoverMove {
-    if (map == null || !MusicSettings.effectsOn) return CoverMove(1f, 0f, 0f, 0f)
+fun coverMove(map: BeatMap?, ms: Long, effect: Int = if (MusicSettings.effectsOn) MusicSettings.cover else 0): CoverMove {
+    if (map == null || effect == 0) return CoverMove(1f, 0f, 0f, 0f)
     val k = MusicSettings.strength
     val p = map.pulse(ms) * k
     val b = map.bass(ms) * k
-    return when (MusicSettings.cover) {
+    return when (effect) {
         1 -> CoverMove(1f + 0.055f * p + 0.025f * b, 0f, 0f, 0f)
         2 -> CoverMove(1f + 0.02f * p, 0f, -1f * p, 0f)
         3 -> CoverMove(1f + 0.015f * p, 0f, 0f, (0.35f * b + 0.65f * p).coerceIn(0f, 1f))
@@ -247,86 +254,16 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
                 Tuning.choices.forEach { v -> Chip(if (v == 440f) "440 Hz (standard)" else "${v.toInt()} Hz", hz == v) { Tuning.set(ctx, v) } }
             }
         }
-        item { Section("Themes") }
+        item { Section("Look") }
         item {
-            Row(Modifier.fillMaxWidth().clickable { open(Page.Themes) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            // test 264 (Jarrod): themes, sizes and beat effects all live together in the Design studio
+            Row(Modifier.fillMaxWidth().clickable { open(Page.Studio) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Themes", fontWeight = FontWeight.SemiBold)
-                    Text("20 colour themes and ✨ FX themes that move. Now: " + (WavesThemes.of(MusicSettings.theme)?.name ?: "Plain"), fontSize = 13.sp)
-                }
-                Text("›", fontSize = 24.sp)
-            }
-        }
-        item { Section("Customise") }
-        item {
-            Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Small", fontSize = 13.sp)
-                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.35f..1.0f,
-                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
-                Text("Big", fontSize = 13.sp)
-            }
-            Text("Play buttons size", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Small", fontSize = 13.sp)
-                Slider(MusicSettings.buttonSize, { MusicSettings.buttonSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.7f..1.5f,
-                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
-                Text("Big", fontSize = 13.sp)
-            }
-            Text("Mini player size (bottom bar)", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Small", fontSize = 13.sp)
-                Slider(MusicSettings.miniSize, { MusicSettings.miniSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 1.0f..2.0f,
-                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
-                Text("Big", fontSize = 13.sp)
-            }
-            Row(Modifier.fillMaxWidth().clickable { MusicSettings.blurBackground = !MusicSettings.blurBackground; changed() }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Blurred moving cover background", fontWeight = FontWeight.SemiBold)
-                    Text("Off gives the plain Samsung-style look", fontSize = 13.sp)
-                }
-                Switch(MusicSettings.blurBackground, { MusicSettings.blurBackground = it; changed() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
-            }
-            // live preview of the sizes
-            Row(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1C1C1E)).padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                Box(Modifier.size((90 * MusicSettings.coverSize).dp).clip(RoundedCornerShape(8.dp)).background(Brush.linearGradient(listOf(Accent, Color(0xFF7C4DFF)))))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    listOf(MusicIcons.previous to 22, MusicIcons.play to 32, MusicIcons.next to 22).forEach { (ic, sz) ->
-                        Icon(ic, null, tint = Color.White, modifier = Modifier.padding(horizontal = 4.dp).size((sz * MusicSettings.buttonSize).dp))
-                    }
-                }
-            }
-            TextButton({ MusicSettings.coverSize = 0.5f; MusicSettings.buttonSize = 1f; MusicSettings.miniSize = 1.25f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
-        }
-        item { Section("Beat effects") }
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Move to the music", fontSize = 17.sp)
-                    Text("The cover and background move to the beat. Music works out the beats on your phone.", fontSize = 13.sp,
+                    Text("🎨 Design studio", fontSize = 17.sp)
+                    Text("Themes, mini player look, sizes and beat effects, all in one place", fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 }
-                Switch(MusicSettings.effectsOn, { MusicSettings.effectsOn = it; changed() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
-            }
-        }
-        if (MusicSettings.effectsOn) {
-            item {
-                Text("Album cover", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
-                FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.cover == i) { MusicSettings.cover = i; changed() } }
-                }
-            }
-            item {
-                Text("Background", Modifier.padding(start = 16.dp, top = 14.dp), fontWeight = FontWeight.SemiBold)
-                FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MusicSettings.backgroundEffects.forEachIndexed { i, name -> if (i != 2) Chip(name, MusicSettings.background == i) { MusicSettings.background = i; changed() } }
-                }
-            }
-            item {
-                Text("Strength", Modifier.padding(start = 16.dp, top = 14.dp), fontWeight = FontWeight.SemiBold)
-                Slider(MusicSettings.strength, { MusicSettings.strength = it }, Modifier.padding(horizontal = 16.dp), valueRange = 0.3f..1.8f,
-                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
             }
         }
         item { Section("Your music") }
@@ -396,13 +333,13 @@ private fun VolumeSettings() {
 }
 
 @Composable
-private fun Section(t: String) {
+internal fun Section(t: String) {
     Text(t.uppercase(), Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 }
 
 @Composable
-private fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
+internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
     Box(Modifier.padding(vertical = 4.dp).clip(RoundedCornerShape(18.dp))
         .background(if (on) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)).clickable { onClick() }
         .padding(horizontal = 14.dp, vertical = 8.dp)) {

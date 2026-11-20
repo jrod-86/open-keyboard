@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -129,7 +130,7 @@ internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: 
             DropdownMenu(menu, { menu = false }) {
                 DropdownMenuItem({ Text("Edit") }, { menu = false; open(Page.Edit) })
                 DropdownMenuItem({ Text("Add to Home screen") }, { menu = false; addHomeShortcut(ctx) })
-                DropdownMenuItem({ Text("Themes") }, { menu = false; open(Page.Themes) })
+                DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })
                 DropdownMenuItem({ Text("Sound quality and effects") }, { menu = false; open(Page.Settings) })
                 DropdownMenuItem({ Text("Fix song info") }, { menu = false; open(Page.Fixer) })
                 DropdownMenuItem({ Text("Import playlists") }, { menu = false; open(Page.Import) })
@@ -766,17 +767,38 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
         B(MusicIcons.sNext, "Next", 24f) { ui.next() }
         B(MusicIcons.sQueue, "Queue", 24f) { onQueue() }
     }
+    // Design studio (test 264): the mini player can have its own theme, and its cover can move to the beat
+    val mt = MusicSettings.miniTheme.let { if (it == -2) MusicSettings.theme else it }
+    val bg = when { mt == -3 || (MusicSettings.miniTheme == -2 && mt == -1) -> tint; mt == -1 -> Color(0xFF111114); else -> Color.Transparent }
+    val beatMap = rememberBeatMap(song, MusicSettings.miniCover != 0)
+    val clock = rememberBeatClock(ui, MusicSettings.miniCover != 0 && beatMap != null && ui.playing)
     val outer = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp).clip(RoundedCornerShape((26 * k).dp))
-        .background(tint).clickable { onOpen() }
+        .background(bg)
+        .clickable { onOpen() }
         .pointerInput(Unit) { detectVerticalDragGestures { _, d -> if (d < -20) onOpen() } }
+    @Composable fun MiniCover(px: Int) {
+        val liftPx = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.toPx() }
+        Box(contentAlignment = Alignment.Center) {
+            if (MusicSettings.miniCover == 3) Box(Modifier.size((46 * k).dp).graphicsLayer {
+                val m = coverMove(beatMap, clock.ms, 3)
+                alpha = m.glow; scaleX = 1.05f + 0.25f * m.glow; scaleY = scaleX
+            }.then(Modifier.blur(14.dp)).clip(CircleShape).background(Accent))
+            Cover(song, px, Modifier.size((46 * k).dp).graphicsLayer {
+                val m = coverMove(beatMap, clock.ms, MusicSettings.miniCover)
+                scaleX = m.scale; scaleY = m.scale; rotationZ = m.rotation; translationY = m.lift * liftPx
+            }, corner = (23 * k).roundToInt())
+        }
+    }
+    Box(outer) {
+    if (mt >= 0) ThemeBackground(mt, Modifier.matchParentSize(), dim = 0.4f, preview = true)
     if (big) {
-        Column(outer.padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // test 262 (Jarrod): scroll long names like the small player does (fillMaxWidth on the text itself stopped it)
             // test 263 (Jarrod): the name fits on the big player, so the normal marquee never moved; this one always rolls
             RollText(song.title, Color.White, 14f)
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Cover(song, 300, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
+                MiniCover(300)
                 Spacer(Modifier.width(8.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { Buttons() }
             }
@@ -785,10 +807,8 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
                 ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f)
             }
         }
-        return
-    }
-    Row(outer.padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {
-        Cover(song, 200, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
+    } else Row(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {
+        MiniCover(200)
         Spacer(Modifier.width((10 * k).dp))
         Column(Modifier.weight(1f).widthIn(min = 60.dp)) {
             // text grows a bit less than the rest, and long names scroll across so you can read them (test 242)
@@ -797,6 +817,7 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12.5f * tk)
         }
         Buttons()
+    }
     }
 }
 
