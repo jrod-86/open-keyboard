@@ -354,6 +354,19 @@ internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 // Fix song info
 // ----------------------------------------------------------------------------------------------------------------
 
+/** Test 268 (Jarrod): says whether a match came from the song's sound (exact) or from its name (a guess). */
+@Composable
+private fun ViaBadge(via: String) {
+    val (label, col) = when (via) {
+        "sound" -> "🎵 Matched by sound" to Color(0xFF2ECC71)
+        "name" -> "🔤 Matched by name" to Color(0xFFFFB74D)
+        "artist" -> "🎤 Artist's albums" to Color(0xFF64B5F6)
+        else -> return
+    }
+    Text(label, Modifier.padding(start = 8.dp).clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 1.dp),
+        fontSize = 11.sp, color = col)
+}
+
 private class FixRow(val song: Song, problems: List<String>) {
     var problems by mutableStateOf(problems)
     var matches by mutableStateOf<List<Match>?>(null)
@@ -364,6 +377,8 @@ private class FixRow(val song: Song, problems: List<String>) {
     var busy by mutableStateOf(false)
     var note by mutableStateOf<String?>(null) // e.g. "Not in the music database" (test 248)
     var artistPicks by mutableStateOf(false) // matches are an artist's albums, only their covers are used (test 258)
+    /** test 268 (Jarrod): how the matches were found: "sound" (AcoustID fingerprint), "name" or "artist" */
+    var via by mutableStateOf("")
     val match: Match? get() = matches?.let { if (artistPicks && pick < 0) it.firstOrNull() else it.getOrNull(pick) }
 }
 
@@ -505,7 +520,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         if (title != null && title.isBlank() && !artist.isNullOrBlank()) {
             r.matches = try { SongFixer.artistAlbums(artist) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() }
             r.pick = -1; r.cover = null; r.coverTried = false; r.selected = false
-            r.artistPicks = !r.matches.isNullOrEmpty()
+            r.artistPicks = !r.matches.isNullOrEmpty(); r.via = "artist"
             if (!r.artistPicks) r.note = if (SongFixer.lastFailed) "The music database didn't answer. Tap Search… to try again."
                 else "No albums found for \"$artist\". Check the spelling."
             r.busy = false
@@ -516,7 +531,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             val res = try { AcoustId.lookUp(ctx, r.song) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { AcoustId.Result.Failed("Sound matching failed") }
             when (res) {
                 is AcoustId.Result.Found -> {
-                    r.matches = res.matches; r.pick = 0
+                    r.matches = res.matches; r.pick = 0; r.via = "sound"
                     r.selected = r.match?.confident(r.song) == true
                     r.busy = false
                     scope.launch { loadCover(ctx, r) }
@@ -536,7 +551,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         // test 254 (Jarrod: "after you change the name nothing happens"): say clearly what was searched
         if (title != null && r.matches.isNullOrEmpty() && r.note == null)
             r.note = "Nothing found for \"$t\"" + (if (a.isNotBlank()) " by $a" else "") + ". Try other words, or just the song name."
-        r.pick = 0
+        r.pick = 0; r.via = "name"
         r.selected = r.match?.confident(r.song) == true
         r.busy = false
         // the cover comes from a different, slower site: fetch it alongside the next lookup instead of waiting
@@ -731,7 +746,10 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                         Text(m.artist, maxLines = 1, fontSize = 13.sp)
                         Text(m.album + (if (m.year > 0) " · ${m.year}" else ""), maxLines = 1, fontSize = 12.sp, color = dim)
                         val len = if (m.lengthMs > 0) " · ${time(m.lengthMs)} (yours ${time(r.song.durationMs)})" else ""
-                        Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim)
+                            ViaBadge(r.via)
+                        }
                     }
                 }
                 FlowRow(Modifier.padding(start = 40.dp), verticalArrangement = Arrangement.Center) {
