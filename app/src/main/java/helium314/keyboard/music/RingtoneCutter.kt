@@ -125,7 +125,7 @@ object RingtoneMaker {
 
     class Pcm(val data: ShortArray, val rate: Int, val channels: Int)
 
-    private suspend fun decodeRange(ctx: Context, uri: Uri, startMs: Long, endMs: Long): Pcm? {
+    internal suspend fun decodeRange(ctx: Context, uri: Uri, startMs: Long, endMs: Long): Pcm? {
         val ex = MediaExtractor()
         var codec: MediaCodec? = null
         try {

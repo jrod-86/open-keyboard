@@ -418,6 +418,7 @@ private class FixRow(val song: Song, problems: List<String>) {
     var coverTried by mutableStateOf(false)
     var selected by mutableStateOf(false)
     var busy by mutableStateOf(false)
+    var note by mutableStateOf<String?>(null) // e.g. "Not in the music database" (test 248)
     val match: Match? get() = matches?.getOrNull(pick)
 }
 
@@ -472,6 +473,25 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
 
     suspend fun lookUp(r: FixRow, title: String? = null, artist: String? = null) {
         r.busy = true
+        r.note = null
+        // Test 248 (Jarrod): the musical fingerprint first, it finds the exact song. Search… (with a title) uses names.
+        if (title == null && AcoustId.available(ctx)) {
+            when (val res = AcoustId.lookUp(ctx, r.song)) {
+                is AcoustId.Result.Found -> {
+                    r.matches = res.matches; r.pick = 0
+                    r.selected = r.match?.confident(r.song) == true
+                    r.busy = false
+                    scope.launch { loadCover(ctx, r) }
+                    return
+                }
+                AcoustId.Result.NotInDatabase -> {
+                    r.matches = emptyList(); r.note = "Not in the music database. Use Search… to fix it by hand."
+                    r.busy = false
+                    return
+                }
+                is AcoustId.Result.Failed -> r.note = res.why + ", so it searched by name."
+            }
+        }
         val (t, a) = if (title != null) title to (artist ?: "") else SongFixer.guess(r.song)
         r.matches = SongFixer.search(r.song, t, a)
         r.pick = 0
@@ -483,9 +503,18 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
 
     Column(Modifier.fillMaxSize()) {
         Header("Fix song info", onBack)
-        Text("Songs below are missing a name, artist, album or artwork. Tap Find info to look them up on MusicBrainz, a free music database, " +
+        Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
             "then tick the ones you want. Your music files aren't changed: Music keeps the fixes.",
             Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+        // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
+        var keyText by remember { mutableStateOf("") }
+        var hasKey by remember { mutableStateOf(AcoustId.available(ctx)) }
+        if (!hasKey) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(keyText, { keyText = it }, Modifier.weight(1f), label = { Text("AcoustID key (for sound matching)") }, singleLine = true)
+            Spacer(Modifier.width(8.dp))
+            Button({ AcoustId.setKey(ctx, keyText); hasKey = AcoustId.available(ctx) }, enabled = keyText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
+        }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Chip("Needs fixing", !showAll) { showAll = false }
             Chip("All songs", showAll) { showAll = true }
@@ -589,7 +618,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 else TextButton(onSkip) { Text("Skip", color = dim) }
             }
             m == null -> Row(Modifier.padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("No match found.", fontSize = 13.sp, color = dim)
+                Text(r.note ?: "No match found.", Modifier.weight(1f, fill = false), fontSize = 13.sp, color = dim)
                 TextButton(onSearch) { Text("Search…", color = Accent) }
                 TextButton(onSkip) { Text("Skip", color = dim) }
             }

@@ -136,10 +136,48 @@ object SongFixer {
     /** Up to 5 possible matches, best first. */
     suspend fun search(song: Song, title: String, artist: String): List<Match> {
         if (title.isBlank()) return emptyList()
-        val q = buildString {
-            append("recording:\"").append(esc(title)).append('"')
-            if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
+        // Test 248 (Jarrod got "No match found"): try the exact name first, then without "ft. …"/"(Remix)" bits,
+        // then a fuzzy search that forgives small typos ("Womam" finds "Woman").
+        val clean = cleanTitle(title)
+        val cleanArtist = artist.replace(Regex("""(?i)\s+(ft\.?|feat\.?|featuring|&|x|,)\s+.*$"""), "").trim()
+        val tries = LinkedHashSet<String>()
+        tries += exact(title, artist)
+        if (clean.isNotBlank()) tries += exact(clean, cleanArtist)
+        fuzzy(clean.ifBlank { title }, cleanArtist)?.let { tries += it }
+        if (cleanArtist.isNotBlank()) fuzzy(clean.ifBlank { title }, "")?.let { tries += it } // artist may be wrong
+        for (q in tries) {
+            val found = searchQuery(song, q)
+            if (found.isNotEmpty()) return found
         }
+        return emptyList()
+    }
+
+    private fun exact(title: String, artist: String) = buildString {
+        append("recording:\"").append(esc(title)).append('"')
+        if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
+    }
+
+    private fun words(s: String) = s.lowercase().split(Regex("""[^\p{L}\p{N}']+""")).filter { it.isNotBlank() }
+
+    /** Every word may be off by a letter or two (Lucene fuzzy search). */
+    private fun fuzzy(title: String, artist: String): String? {
+        val tw = words(title).ifEmpty { return null }
+        return buildString {
+            append("recording:(").append(tw.joinToString(" AND ") { w -> esc(w) + if (w.length >= 4) "~" else "" }).append(')')
+            val aw = words(artist)
+            if (aw.isNotEmpty()) append(" AND artist:(").append(aw.joinToString(" AND ") { w -> esc(w) + if (w.length >= 4) "~" else "" }).append(')')
+        }
+    }
+
+    /** Drops "ft. Someone", "(Remix)", "[Live]" and similar from a title. */
+    internal fun cleanTitle(t: String): String = t
+        .replace(Regex("""\([^)]*\)|\[[^]]*]"""), " ")
+        .replace(Regex("""(?i)\s+(ft\.?|feat\.?|featuring)\s+.*$"""), "")
+        .replace(Regex("""(?i)\b(remix|remaster(ed)?|radio edit|extended mix|live|explicit|clean)\b"""), " ")
+        .replace(Regex("""\s+-\s*$"""), "")
+        .replace(Regex("""\s+"""), " ").trim()
+
+    private suspend fun searchQuery(song: Song, q: String): List<Match> {
         val body = get("https://musicbrainz.org/ws/2/recording?fmt=json&limit=10&query=" + URLEncoder.encode(q, "UTF-8"))
             ?: return emptyList()
         val recs = runCatching { JSONObject(body).getJSONArray("recordings") }.getOrNull() ?: return emptyList()
