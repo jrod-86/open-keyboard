@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,6 +100,7 @@ object MusicSettings {
         effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg2", 0); strength = p.getFloat("fx_strength", 1f)
         coverSize = p.getFloat("look_cover3", 0.5f); buttonSize = p.getFloat("look_buttons", 1f)
         miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false); theme = p.getInt("look_theme", -1)
+        if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
         prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
@@ -227,7 +229,7 @@ private fun Color.compositeWhite(f: Float) = Color(red + (1 - red) * f, green + 
 internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
     fun changed() = MusicSettings.save(ctx)
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize().statusBarsPadding()) {
         item { Header("Settings", onBack) }
         item { VolumeSettings() }
         item {
@@ -312,7 +314,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
             item {
                 Text("Background", Modifier.padding(start = 16.dp, top = 14.dp), fontWeight = FontWeight.SemiBold)
                 FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MusicSettings.backgroundEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.background == i) { MusicSettings.background = i; changed() } }
+                    MusicSettings.backgroundEffects.forEachIndexed { i, name -> if (i != 2) Chip(name, MusicSettings.background == i) { MusicSettings.background = i; changed() } }
                 }
             }
             item {

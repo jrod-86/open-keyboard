@@ -347,6 +347,7 @@ private fun MusicApp(ui: PlayerUi) {
     val pager = rememberPagerState(initialPage = 2) { WavesTabs.size }
     var nowPlaying by remember { mutableStateOf(false) }
     var npMode by remember { mutableIntStateOf(0) }
+    val npAnim = remember { androidx.compose.animation.core.Animatable(0f) }
     val library = lib
     BackHandler(enabled = nowPlaying || stack.size > 1) {
         if (nowPlaying) nowPlaying = false else stack.removeAt(stack.lastIndex)
@@ -395,8 +396,23 @@ private fun MusicApp(ui: PlayerUi) {
                 WavesMiniPlayer(song, ui, tint, onOpen = { npMode = 0; nowPlaying = true }, onQueue = { npMode = 2; nowPlaying = true })
             Spacer(Modifier.navigationBarsPadding())
         }
-        AnimatedVisibility(nowPlaying, enter = slideInVertically(tween(320)) { it }, exit = slideOutVertically(tween(260)) { it }) {
-            NowPlaying(ui, library, npMode, onClose = { nowPlaying = false }, open = ::open)
+        // Now Playing grows out of the mini player and shrinks back into it, following your finger (test 240)
+        LaunchedEffect(nowPlaying) {
+            if (nowPlaying) npAnim.animateTo(1f, spring(dampingRatio = 0.82f, stiffness = 320f))
+            else npAnim.animateTo(0f, spring(dampingRatio = 1f, stiffness = 380f))
+        }
+        if (nowPlaying || npAnim.value > 0.002f) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = npAnim.value }.background(Color.Black.copy(alpha = 0.55f)))
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val hPx = with(LocalDensity.current) { maxHeight.toPx() }
+                NowPlaying(ui, library, npMode, progress = { npAnim.value },
+                    onDrag = { d -> appScope.launch { npAnim.snapTo((npAnim.value - d / hPx).coerceIn(0f, 1f)) } },
+                    onRelease = {
+                        if (npAnim.value < 0.82f) { if (nowPlaying) nowPlaying = false else appScope.launch { npAnim.animateTo(0f) } }
+                        else appScope.launch { npAnim.animateTo(1f, spring(dampingRatio = 0.75f, stiffness = 400f)) }
+                    },
+                    onClose = { nowPlaying = false }, open = ::open)
+            }
         }
         PlaylistPickerDialog()
         TrackDetailsDialog()
@@ -568,11 +584,11 @@ private fun songOf(ui: PlayerUi, lib: Library?): Song? = lib?.byId?.get(ui.curre
 }
 
 @Composable
-private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, onClose: () -> Unit, open: (Page) -> Unit) {
+private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: () -> Float, onDrag: (Float) -> Unit, onRelease: () -> Unit,
+                       onClose: () -> Unit, open: (Page) -> Unit) {
     val ctx = LocalContext.current
     val song = songOf(ui, lib)
     var mode by remember(startMode) { mutableIntStateOf(startMode) } // 0 cover, 1 lyrics, 2 up next
-    var drag by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val bmp by produceState<Bitmap?>(null, song?.id, song?.artFile) { value = song?.let { Covers.load(ctx, it, 600) } }
     BackHandler(enabled = mode != 0) { mode = 0 }
@@ -585,10 +601,22 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, onClose: () 
     var shownHint by remember { mutableStateOf("") }
     LaunchedEffect(hint) { hint?.let { shownHint = it; delay(1600); hint = null } }
 
-    Box(Modifier.fillMaxSize().offset { IntOffset(0, drag.roundToInt()) }.background(Color.Black)
+    // minimise (test 240): the whole screen follows your finger, shrinking into a rounded card that drops into the mini player
+    val cornerPx = with(density) { 36.dp.toPx() }
+    Box(Modifier.fillMaxSize()
+        .graphicsLayer {
+            val p = progress()
+            translationY = (1f - p) * size.height * 0.9f
+            val sc = 0.86f + 0.14f * p
+            scaleX = sc; scaleY = sc
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+            alpha = (p * 2.2f).coerceIn(0f, 1f)
+            shape = RoundedCornerShape(((1f - p) * 4f).coerceAtMost(1f) * cornerPx)
+            clip = true
+        }
+        .background(Color.Black)
         .pointerInput(Unit) {
-            detectVerticalDragGestures(onDragEnd = { if (drag > with(density) { 140.dp.toPx() }) onClose(); drag = 0f },
-                onDragCancel = { drag = 0f }) { _, d -> drag = (drag + d).coerceAtLeast(0f) }
+            detectVerticalDragGestures(onDragEnd = onRelease, onDragCancel = onRelease) { change, d -> change.consume(); onDrag(d) }
         }) {
         if (MusicSettings.theme != -1) ThemeBackground(MusicSettings.theme, dim = 0.45f)
         else if (MusicSettings.blurBackground) MovingBackground(bmp)
