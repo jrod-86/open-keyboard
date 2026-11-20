@@ -562,6 +562,19 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
     val firstRow = rows?.firstOrNull()
     LaunchedEffect(firstRow) { if (only != null && firstRow != null && firstRow.matches == null) lookUp(firstRow) }
 
+    // test 271 (Jarrod): look-ahead. The top 3 songs of the list are always being looked up in the background, one at a
+    // time (the music sites allow about one question a second), so the next song is ready when you get to it. Saving,
+    // skipping or hiding a song moves the next one up, and that one starts straight away. On by default.
+    val prefs = remember { ctx.getSharedPreferences("music", Context.MODE_PRIVATE) }
+    var ahead by remember { mutableStateOf(prefs.getBoolean("fix_ahead", true)) }
+    LaunchedEffect(ahead, only) {
+        if (!ahead || only != null) return@LaunchedEffect
+        while (true) {
+            val next = if (job?.isActive == true) null else rows?.take(3)?.firstOrNull { it.matches == null && !it.busy }
+            if (next != null) lookUp(next) else kotlinx.coroutines.delay(400)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Header(if (only != null) "Add artwork" else "Fix song info", onBack)
         // test 269 (Jarrod): the explanation folds away so the songs get the room; tap to read it
@@ -600,13 +613,21 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             Chip("Artwork only", artOnly) { artOnly = true; showAll = false }
             Chip("All songs", showAll) { showAll = true; artOnly = false }
         }
+        if (only == null) Row(Modifier.fillMaxWidth().clickable { ahead = !ahead; prefs.edit().putBoolean("fix_ahead", ahead).apply() }
+            .padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Get the next 3 songs ready", fontSize = 14.sp)
+                Text("Looks them up while you check the one on top", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            }
+            Switch(ahead, { ahead = it; prefs.edit().putBoolean("fix_ahead", it).apply() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
         val list = rows
         if (only == null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (job?.isActive == true) OutlinedButton({ job?.cancel() }) { Text("Stop") }
             else Button({
                 val todo = list.orEmpty().filter { it.matches == null }.take(if (showAll) 50 else 500)
                 job = scope.launch {
-                    todo.forEachIndexed { i, r -> progress = "Looking up ${i + 1} of ${todo.size}…"; lookUp(r) }
+                    todo.forEachIndexed { i, r -> progress = "Looking up ${i + 1} of ${todo.size}…"; if (r.matches == null && !r.busy) lookUp(r) }
                     progress = ""
                 }
             }, enabled = !list.isNullOrEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Find info") }
