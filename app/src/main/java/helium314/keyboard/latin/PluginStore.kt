@@ -54,8 +54,18 @@ object PluginStore {
 
     fun isInstalled(ctx: Context, item: Item) = runCatching { ctx.packageManager.getPackageInfo(item.packageName, 0) }.isSuccess
 
-    /** F-Droid if it's there (and F-Droid is installed), otherwise the download page. */
+    /** The APK Installer plugin app (test 228): installs store plugins in one tap, without a browser. */
+    const val INSTALLER = "io.github.jrod86.okinstaller"
+    fun hasInstaller(ctx: Context) = runCatching { ctx.packageManager.getPackageInfo(INSTALLER, 0) }.isSuccess
+
+    /** F-Droid if it's there (and F-Droid is installed), then the APK Installer app, otherwise the download page. */
     fun get(ctx: Context, item: Item) {
+        val apk = item.download?.takeIf { it.startsWith("https://") && it.endsWith(".apk") }
+        if (item.fdroid == null && apk != null && hasInstaller(ctx)) {
+            val install = Intent("io.github.jrod86.openkeyboard.INSTALL", Uri.parse(apk)).setPackage(INSTALLER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { ctx.startActivity(install) }.isSuccess) return
+        }
         val fdroid = item.fdroid?.let { Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$it")).setPackage("org.fdroid.fdroid") }
         val intent = fdroid?.takeIf { it.resolveActivity(ctx.packageManager) != null }
             ?: Intent(Intent.ACTION_VIEW, Uri.parse(item.download ?: item.source ?: return))
