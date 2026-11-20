@@ -748,10 +748,41 @@ internal fun TrackDetailsDialog() {
 @Composable
 internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -> Unit, onQueue: () -> Unit) {
     val k = MusicSettings.miniSize
-    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp).clip(RoundedCornerShape((26 * k).dp))
+    // Test 261 (Jarrod): past about a third of the size slider the name got squeezed out by the big buttons,
+    // so then the song name goes on top and the artist underneath, in a smaller font that fits.
+    val big = k > 1.33f
+    @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onClick: () -> Unit) {
+        val bk = if (big) minOf(k, 1.65f) else k
+        Box(Modifier.size((36 * bk).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
+            Icon(icon, label, Modifier.size((size * bk).dp), tint = Color.White)
+        }
+    }
+    @Composable fun Buttons() {
+        B(MusicIcons.sPrevious, "Previous", 24f) { ui.previous() }
+        B(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", 28f) { ui.toggle() }
+        B(MusicIcons.sNext, "Next", 24f) { ui.next() }
+        B(MusicIcons.sQueue, "Queue", 24f) { onQueue() }
+    }
+    val outer = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp).clip(RoundedCornerShape((26 * k).dp))
         .background(tint).clickable { onOpen() }
         .pointerInput(Unit) { detectVerticalDragGestures { _, d -> if (d < -20) onOpen() } }
-        .padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {
+    if (big) {
+        Column(outer.padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                modifier = Modifier.fillMaxWidth().basicMarquee(initialDelayMillis = 1500), textAlign = TextAlign.Center)
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Cover(song, 300, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
+                Spacer(Modifier.width(8.dp))
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { Buttons() }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        }
+        return
+    }
+    Row(outer.padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {
         Cover(song, 200, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
         Spacer(Modifier.width((10 * k).dp))
         Column(Modifier.weight(1f).widthIn(min = 60.dp)) {
@@ -760,15 +791,7 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             Text(song.title, color = Color.White, fontSize = (15 * tk).sp, maxLines = 1, modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
             Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = (12.5f * tk).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onClick: () -> Unit) {
-            Box(Modifier.size((36 * k).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
-                Icon(icon, label, Modifier.size((size * k).dp), tint = Color.White)
-            }
-        }
-        B(MusicIcons.sPrevious, "Previous", 24f) { ui.previous() }
-        B(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", 28f) { ui.toggle() }
-        B(MusicIcons.sNext, "Next", 24f) { ui.next() }
-        B(MusicIcons.sQueue, "Queue", 24f) { onQueue() }
+        Buttons()
     }
 }
 
