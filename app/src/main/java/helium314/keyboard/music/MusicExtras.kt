@@ -428,6 +428,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showAll by remember { mutableStateOf(false) }
+    var artOnly by remember { mutableStateOf(false) } // test 252 (Jarrod): find covers only, leave names alone
     var rows by remember { mutableStateOf<List<FixRow>?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var progress by remember { mutableStateOf("") }
@@ -446,6 +447,12 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             withContext(Dispatchers.IO) {
                 chosen.forEach { r ->
                     val m = r.match ?: return@forEach
+                    if (artOnly) {
+                        // artwork only: keep the song's own name, artist and album
+                        val cover = r.cover ?: return@forEach
+                        out[r.song.id] = SongFix(r.song.title, r.song.artist, r.song.album, r.song.year, SongFixer.keepCover(ctx, r.song.id, cover))
+                        return@forEach
+                    }
                     val art = r.cover?.let { SongFixer.keepCover(ctx, r.song.id, it) } ?: r.song.artFile
                     out[r.song.id] = SongFix(m.title, m.artist, m.album, m.year, art)
                 }
@@ -456,20 +463,20 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             rows = rows?.filter { it.song.id !in out }
         }
     }
-    LaunchedEffect(lib, showAll) {
+    LaunchedEffect(lib, showAll, artOnly) {
         // Test 247 (Jarrod: "loading for ages"): songs with missing names show straight away, then artwork is checked
         // 8 songs at a time in chunks, adding rows as it goes. Songs known to have artwork are remembered, so the
         // next visit is quick.
         rows = null
         val skipped = SongFixer.skipped(ctx)
         val hasArt = withContext(Dispatchers.IO) { ArtCheck.load(ctx) }
-        val songs = lib.songs.filter { !(it.fixed && !showAll) && (showAll || it.id !in skipped) }
+        val songs = lib.songs.filter { (artOnly || showAll || !it.fixed) && (showAll || it.id !in skipped) }
         val byId = HashMap<Long, FixRow>()
         val first = ArrayList<FixRow>()
         val toCheck = ArrayList<Song>()
         for (s in songs) {
             val p = SongFixer.problems(s)
-            if (p.isNotEmpty() || showAll) FixRow(s, p).also { first += it; byId[s.id] = it }
+            if (!artOnly && (p.isNotEmpty() || showAll)) FixRow(s, p).also { first += it; byId[s.id] = it }
             if (s.artFile.isEmpty() && s.id !in hasArt) toCheck += s
         }
         rows = first
@@ -539,9 +546,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             Button({ AcoustId.setKey(ctx, keyText); hasKey = AcoustId.available(ctx) }, enabled = keyText.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("Needs fixing", !showAll) { showAll = false }
-            Chip("All songs", showAll) { showAll = true }
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Needs fixing", !showAll && !artOnly) { showAll = false; artOnly = false }
+            Chip("Artwork only", artOnly) { artOnly = true; showAll = false }
+            Chip("All songs", showAll) { showAll = true; artOnly = false }
         }
         val list = rows
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -574,7 +582,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                         SongFixer.skip(ctx, r.song.id, true); rows = rows?.minus(r)
                     }, onUndo = {
                         SongFixer.undo(ctx, r.song.id); Covers.clear(); onChanged()
-                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) })
+                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly)
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 }
             }
@@ -608,7 +616,7 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
 }
 
 @Composable
-private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit) {
+private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -656,7 +664,9 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                     }
                 }
                 Row(Modifier.padding(start = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onSave, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
+                    Button(onSave, enabled = !artOnly || r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                        Text(if (artOnly) "Save artwork" else "Save")
+                    }
                     if ((r.matches?.size ?: 0) > 1) TextButton(onOther) { Text("Other (${r.pick + 1}/${r.matches!!.size})", color = Accent) }
                     TextButton(onSearch) { Text("Search…", color = Accent) }
                     TextButton(onSkip) { Text("Skip", color = dim) }
