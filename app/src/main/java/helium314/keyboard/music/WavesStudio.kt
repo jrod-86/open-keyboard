@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloat
@@ -103,6 +104,69 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             Text("Size", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
             SizeSlider(MusicSettings.miniSize, 1.0f..2.0f, { MusicSettings.miniSize = it }) { changed() }
             Text("Past about a third, the song name moves above the buttons and the artist below.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+        }
+
+        // ---------------- floating player ----------------
+        // test 277 (Jarrod): our own player floating over other apps, 5 styles, same themes as the mini player
+        item { Section("Floating player (over other apps)") }
+        item {
+            var allowed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(canFloat(ctx)) }
+            androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { allowed = canFloat(ctx); kotlinx.coroutines.delay(1000) } }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Show over other apps", fontSize = 17.sp)
+                    Text("When you leave Open Waves while music plays, a little player floats over your other apps. Drag it anywhere. Drag it to the bottom of the screen to close it.",
+                        fontSize = 13.sp, color = dim)
+                }
+                Switch(MusicSettings.floatOn, {
+                    MusicSettings.floatOn = it; changed()
+                    if (it && !canFloat(ctx)) askFloat(ctx)
+                }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            }
+            if (MusicSettings.floatOn && !allowed) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+                .background(Color(0x33FFB300)).clickable { askFloat(ctx) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Android needs your OK first. Tap here, then turn on \"Appear on top\" (or \"Allow display over other apps\") for Open Keyboard.",
+                    Modifier.weight(1f), fontSize = 13.sp)
+            }
+        }
+        item {
+            Text("Style", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MusicSettings.floatStyles.forEachIndexed { i, name -> Chip(name, MusicSettings.floatStyle == i) { MusicSettings.floatStyle = i; changed() } }
+            }
+            // live preview of the chosen style, look and size (Bubble: tap it to see it open)
+            val previewUi = androidx.compose.runtime.remember { PlayerUi() }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(14.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF2B3A55), Color(0xFF1C1C1E)))).padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
+                FloatPlayerView(previewUi, MusicSettings.floatStyle, preview = true, onOpen = {}, onClose = {})
+            }
+            if (MusicSettings.floatStyle == 0) Text("Tap the bubble to open its buttons.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+        }
+        item {
+            Text("Background", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
+            val choices = listOf(-3, -2, -1) + WavesThemes.colour.indices.toList() + WavesThemes.fx.indices.map { 100 + it }
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                items(choices.size) { n ->
+                    val id = choices[n]
+                    val name = when (id) { -3 -> "Song colour"; -2 -> "Same as app"; -1 -> "Plain"; else -> WavesThemes.of(id)?.name ?: "" }
+                    MiniTile(name, MusicSettings.floatTheme == id, {
+                        when (id) {
+                            -3 -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF2E7D32), Color(0xFF6A1B9A)))))
+                            -2 -> if (MusicSettings.theme == -1) Box(Modifier.fillMaxSize().background(Color.Black)) else ThemeBackground(MusicSettings.theme, dim = 0.1f, preview = true)
+                            -1 -> Box(Modifier.fillMaxSize().background(Color(0xFF111114)))
+                            else -> ThemeBackground(id, dim = 0.1f, preview = true)
+                        }
+                    }) { MusicSettings.floatTheme = id; changed() }
+                }
+            }
+        }
+        item {
+            Text("Size", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
+            SizeSlider(MusicSettings.floatSize, 0.8f..1.5f, { MusicSettings.floatSize = it }) { changed() }
+            Text("Cover moves to the beat", Modifier.padding(start = 16.dp, top = 8.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.floatCover == i) { MusicSettings.floatCover = i; changed() } }
+            }
         }
 
         // ---------------- album cover ----------------
@@ -241,5 +305,17 @@ private fun MovePreview(effect: Int, round: Boolean) {
         }
         Text(if (effect == 0) "Still" else MusicSettings.coverEffects.getOrElse(effect) { "" } + " preview",
             Modifier.padding(start = 20.dp), fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
+    }
+}
+
+/** "Appear on top" is allowed for the floating player. */
+private fun canFloat(ctx: android.content.Context) =
+    android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(ctx)
+
+/** Opens Android's "Appear on top" page for this app. */
+private fun askFloat(ctx: android.content.Context) {
+    runCatching {
+        ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            android.net.Uri.parse("package:" + ctx.packageName)))
     }
 }

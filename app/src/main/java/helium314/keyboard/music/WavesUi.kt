@@ -368,25 +368,51 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     var releasedAt by remember { mutableLongStateOf(0L) }
     val head = 3 // items above the playlists: smart tiles, buttons, sort bar
 
-    fun dragBy(d: Float) {
-        val id = dragId ?: return
-        dragOffset += d
+    fun swapOnce(): Boolean {
+        val id = dragId ?: return false
         val info = state.layoutInfo.visibleItemsInfo
         val i = order.indexOfFirst { it.id == id }
-        val me = info.find { it.key == id } ?: return
+        if (i < 0) return false
         // swap with the neighbour once the dragged row passes half of it
         if (dragOffset > 0 && i < order.size - 1) {
             val next = info.find { it.key == order[i + 1].id }
-            if (next != null && dragOffset > next.size / 2f) { order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true }
+            if (next != null && dragOffset > next.size / 2f) { order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true; return true }
         } else if (dragOffset < 0 && i > 0) {
             val prev = info.find { it.key == order[i - 1].id }
-            if (prev != null && -dragOffset > prev.size / 2f) { order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true }
+            if (prev != null && -dragOffset > prev.size / 2f) { order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true; return true }
         }
-        // near the top or bottom edge: scroll so you can keep going
-        val y = me.offset + dragOffset
-        val edge = 120f
-        if (y + me.size > state.layoutInfo.viewportEndOffset - edge) scope.launch { state.scrollBy(18f) }
-        else if (y < state.layoutInfo.viewportStartOffset + edge && state.firstVisibleItemIndex > 0) scope.launch { state.scrollBy(-18f) }
+        return false
+    }
+    fun swapIfNeeded() { repeat(30) { if (!swapOnce()) return } }
+    fun dragBy(d: Float) {
+        if (dragId == null) return
+        dragOffset += d
+        swapIfNeeded()
+    }
+    // Test 277 (Jarrod: "it just stops"): hold a playlist near the top or bottom edge and the list keeps scrolling by
+    // itself, faster the closer you are to the edge and the longer you hold it there; the playlist moves along with it.
+    LaunchedEffect(dragId) {
+        if (dragId == null) return@LaunchedEffect
+        var heldMs = 0f
+        var last = 0L
+        while (dragId != null) {
+            val now = androidx.compose.runtime.withFrameNanos { it }
+            val dt = if (last == 0L) 16f else ((now - last) / 1e6f).coerceIn(1f, 50f)
+            last = now
+            val me = state.layoutInfo.visibleItemsInfo.find { it.key == dragId } ?: continue
+            val y = me.offset + dragOffset
+            val zone = 150f
+            val top = state.layoutInfo.viewportStartOffset + zone - y
+            val bottom = y + me.size - (state.layoutInfo.viewportEndOffset - zone)
+            val depth = when { top > 0 -> -(top / zone).coerceAtMost(1.5f); bottom > 0 -> (bottom / zone).coerceAtMost(1.5f); else -> 0f }
+            if (depth == 0f) { heldMs = 0f; continue }
+            heldMs += dt
+            val speed = (0.25f + 1.6f * depth * depth) * (1f + (heldMs / 800f).coerceAtMost(2.5f)) // px per ms
+            val used = state.scrollBy((if (depth < 0) -speed else speed) * dt)
+            if (used == 0f) continue
+            dragOffset += used // the row stays under your finger while the list slides past
+            swapIfNeeded()
+        }
     }
     fun endDrag() {
         if (moved) { Playlists.reorder(ctx, order.map { it.id }); if (Sorts.playlistSort.intValue != 0) { Sorts.playlistSort.intValue = 0; Sorts.save(ctx) } }
@@ -825,7 +851,7 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
  *  The effects take turns: a bright shine sweeping across (with a soft glow), then the letters dissolving away
  *  one by one in a random order and reappearing the same way (Jarrod: "dissolve and then reappear"). */
 @Composable
-private fun ShineText(text: String, color: Color, size: Float) {
+internal fun ShineText(text: String, color: Color, size: Float) {
     val p = remember { androidx.compose.animation.core.Animatable(-1f) }
     var round by remember { mutableIntStateOf(0) }
     LaunchedEffect(text) {
@@ -885,7 +911,7 @@ private fun ShineText(text: String, color: Color, size: Float) {
 
 /** Test 263: a name that always rolls across: rests 2 s in the middle, slides out left while it comes back in from the right. */
 @Composable
-private fun RollText(text: String, color: Color, size: Float) {
+internal fun RollText(text: String, color: Color, size: Float) {
     BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
         val cw = constraints.maxWidth.toFloat()
         val dens = androidx.compose.ui.platform.LocalDensity.current

@@ -169,12 +169,14 @@ class MusicActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        MusicState.appVisible = true; MusicState.floatClosed = false
         val f = MediaController.Builder(this, SessionToken(this, ComponentName(this, MusicService::class.java))).buildAsync()
         future = f
         f.addListener({ runCatching { ui.attach(f.get()) } }, ContextCompat.getMainExecutor(this))
     }
 
     override fun onStop() {
+        MusicState.appVisible = false
         ui.detach()
         future?.let { MediaController.releaseFuture(it) }
         future = null
@@ -184,7 +186,7 @@ class MusicActivity : ComponentActivity() {
 
 /** What the screen shows about playback, kept in step with the player. */
 class PlayerUi {
-    var controller by mutableStateOf<MediaController?>(null)
+    var controller by mutableStateOf<Player?>(null)
     var playing by mutableStateOf(false)
     var currentId by mutableLongStateOf(-1L)
     var current by mutableStateOf<MediaItem?>(null)
@@ -199,7 +201,7 @@ class PlayerUi {
         override fun onEvents(player: Player, events: Player.Events) = refresh()
     }
 
-    fun attach(c: MediaController) { controller = c; c.addListener(listener); refresh() }
+    fun attach(c: Player) { controller = c; c.addListener(listener); refresh() }
     fun detach() { controller?.removeListener(listener); controller = null }
 
     fun refresh() {
@@ -602,7 +604,7 @@ private fun ArtistPage(a: Artist, ui: PlayerUi, lib: Library, open: (Page) -> Un
 @Composable
 private fun SectionTitle(t: String) = Text(t, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 4.dp))
 
-private fun songOf(ui: PlayerUi, lib: Library?): Song? = lib?.byId?.get(ui.currentId) ?: ui.current?.let { m ->
+internal fun songOf(ui: PlayerUi, lib: Library?): Song? = lib?.byId?.get(ui.currentId) ?: ui.current?.let { m ->
     Song(ui.currentId, m.mediaMetadata.title?.toString() ?: "", m.mediaMetadata.artist?.toString() ?: "", m.mediaMetadata.albumTitle?.toString() ?: "",
         -1, "", 0, 0, 0, 0, 0, "")
 }

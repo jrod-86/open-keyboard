@@ -29,6 +29,10 @@ object MusicState {
     val sleepAt = MutableStateFlow(0L)
     /** the player's audio session, for the phone's equaliser */
     @Volatile var audioSession = 0
+    /** Open Waves is on screen (the floating player hides then) */
+    @Volatile var appVisible = false
+    /** the floating player was dragged away to close it; it comes back next time Open Waves is opened */
+    @Volatile var floatClosed = false
 }
 
 /**
@@ -39,6 +43,7 @@ object MusicState {
 class MusicService : MediaSessionService() {
     private var session: MediaSession? = null
     private var leveler: LevelApplier? = null
+    private var floating: FloatingPlayer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
     private val saveTick = object : Runnable {
@@ -107,6 +112,8 @@ class MusicService : MediaSessionService() {
         scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
         scope.launch { Library.load(this@MusicService); kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
         restore(player)
+        MusicSettings.load(this)
+        floating = FloatingPlayer(this, player).also { it.start() }
         handler.postDelayed(saveTick, 15_000)
         handler.post(sleepTick)
     }
@@ -123,6 +130,7 @@ class MusicService : MediaSessionService() {
         save()
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
+        floating?.stop(); floating = null
         leveler?.release(); leveler = null
         session?.run { player.release(); release() }
         session = null

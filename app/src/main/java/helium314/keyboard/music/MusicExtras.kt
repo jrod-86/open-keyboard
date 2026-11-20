@@ -105,6 +105,14 @@ object MusicSettings {
     var miniTheme by mutableIntStateOf(-3)
     /** how the mini player's cover moves to the beat, index into [coverEffects] (0 = still) */
     var miniCover by mutableIntStateOf(0)
+    /** Floating player over other apps (test 277, Jarrod): on/off, style (index into [floatStyles]), its own theme
+     *  (same choices as [miniTheme]), size, and how its cover moves to the beat */
+    val floatStyles = listOf("Bubble", "Pill", "Card", "Vinyl", "Beat bars")
+    var floatOn by mutableStateOf(false)
+    var floatStyle by mutableIntStateOf(1)
+    var floatTheme by mutableIntStateOf(-3)
+    var floatSize by mutableFloatStateOf(1f)
+    var floatCover by mutableIntStateOf(1)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -113,13 +121,17 @@ object MusicSettings {
         coverSize = p.getFloat("look_cover3", 0.5f); buttonSize = p.getFloat("look_buttons", 1f)
         miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false); theme = p.getInt("look_theme", -1)
         miniTheme = p.getInt("mini_theme", -3); miniCover = p.getInt("mini_cover", 0)
+        floatOn = p.getBoolean("float_on", false); floatStyle = p.getInt("float_style", 1); floatTheme = p.getInt("float_theme", -3)
+        floatSize = p.getFloat("float_size", 1f); floatCover = p.getInt("float_cover", 1)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
         prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
             .putFloat("look_cover3", coverSize).putFloat("look_buttons", buttonSize)
             .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme)
-            .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover).apply()
+            .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
+            .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
+            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).apply()
     }
 }
 
