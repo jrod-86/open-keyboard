@@ -162,6 +162,13 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:exported="false" />
+        <!-- Open Keyboard (test 230): home screen shortcuts to app drawer apps open through this -->
+        <activity android:name="helium314.keyboard.latin.ShortcutActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:exported="true" />
         <!-- Open Keyboard (test 221): the writing model runs here, in Chat's process, never in the keyboard's -->
         <service android:name="helium314.keyboard.latin.WriterService"
             android:process=":chat"

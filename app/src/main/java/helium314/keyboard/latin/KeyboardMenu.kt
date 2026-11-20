@@ -108,6 +108,62 @@ object KeyboardMenu {
         view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), LiftedShadow(view), state, 0)
     }
 
+    // ---- holding a tile still: "Add to home screen" (test 230) ----
+    private var holdCheck: Runnable? = null
+    private var holdMoved = false
+    private var holdX = 0f
+    private var holdY = 0f
+
+    private fun watchHold(tile: View, id: String, label: String, icon: () -> android.graphics.drawable.Drawable?) {
+        holdCheck?.let { tile.removeCallbacks(it) }
+        holdMoved = false
+        val r = Runnable {
+            holdCheck = null
+            if (holdMoved) return@Runnable
+            tile.cancelDragAndDrop()
+            showHoldOption(tile, id, label, icon)
+        }
+        holdCheck = r
+        tile.postDelayed(r, 900) // after the 0.5 s long press: about a second and a half in all
+    }
+
+    private fun trackHold(event: android.view.DragEvent) {
+        when (event.action) {
+            android.view.DragEvent.ACTION_DRAG_STARTED -> { holdX = event.x; holdY = event.y }
+            android.view.DragEvent.ACTION_DRAG_LOCATION ->
+                if (Math.hypot((event.x - holdX).toDouble(), (event.y - holdY).toDouble()) > 40) holdMoved = true
+            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DROP -> holdMoved = true
+        }
+    }
+
+    private fun showHoldOption(tile: View, id: String, label: String, icon: () -> android.graphics.drawable.Drawable?) {
+        val ctx = tile.context
+        tile.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val colors = Settings.getValues().mColors
+        val text = TextView(ctx).apply {
+            this.text = "📌  Add to home screen"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextColor(colors.get(ColorType.KEY_TEXT))
+            val p = dp(ctx, 14f).toInt()
+            setPadding(p, dp(ctx, 10f).toInt(), p, dp(ctx, 10f).toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(ctx, 18f)
+                setColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
+                setStroke(dp(ctx, 1f).toInt(), ColorUtils.setAlphaComponent(colors.get(ColorType.KEY_TEXT), 90))
+            }
+            elevation = dp(ctx, 6f)
+        }
+        val popup = android.widget.PopupWindow(text, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false)
+        // not focusable: the keyboard must never take focus away from the app's text box
+        popup.isOutsideTouchable = true
+        text.setOnClickListener {
+            popup.dismiss()
+            hide()
+            HomeShortcuts.pin(ctx, id, label, icon())
+        }
+        runCatching { popup.showAsDropDown(tile, 0, -tile.height - dp(ctx, 48f).toInt()) }
+    }
+
     private fun draggedItem(event: android.view.DragEvent): String? =
         (event.localState as? String)?.takeIf { it.startsWith("item:") || it.startsWith("baritem:") }?.substringAfter(":")
 
@@ -394,6 +450,7 @@ object KeyboardMenu {
 
     /** Drops on the menu: take a button off the bar, or move a menu button to another spot. */
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
+        trackHold(event)
         val itemId = draggedItem(event)
         val (from, key) = if (itemId != null) (if (draggedFromBar(event)) "bar" else "menu") to null else (dragged(event) ?: return false)
         val pager = currentGrid ?: return false
@@ -596,7 +653,12 @@ object KeyboardMenu {
                     if (item.label != "Resize") hide()
                     item.action()
                 }
-                setOnLongClickListener { if (item.key != null) startDrag(it, "menu", item.key) else startItemDrag(it, item.id); true }
+                setOnLongClickListener {
+                    if (item.key != null) startDrag(it, "menu", item.key) else startItemDrag(it, item.id)
+                    // test 230: keep holding without moving and "Add to home screen" comes up
+                    if (HomeShortcuts.canPin(item.id)) watchHold(it, item.id, item.label, item.icon)
+                    true
+                }
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
