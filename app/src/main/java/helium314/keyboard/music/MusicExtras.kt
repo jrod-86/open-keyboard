@@ -476,7 +476,8 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         r.note = null
         // Test 248 (Jarrod): the musical fingerprint first, it finds the exact song. Search… (with a title) uses names.
         if (title == null && AcoustId.available(ctx)) {
-            when (val res = AcoustId.lookUp(ctx, r.song)) {
+            val res = try { AcoustId.lookUp(ctx, r.song) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { AcoustId.Result.Failed("Sound matching failed") }
+            when (res) {
                 is AcoustId.Result.Found -> {
                     r.matches = res.matches; r.pick = 0
                     r.selected = r.match?.confident(r.song) == true
@@ -493,7 +494,8 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             }
         }
         val (t, a) = if (title != null) title to (artist ?: "") else SongFixer.guess(r.song)
-        r.matches = SongFixer.search(r.song, t, a)
+        // never let a bad search result crash the app (test 249)
+        r.matches = try { SongFixer.search(r.song, t, a) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { r.note = "Search failed. Try again."; emptyList() }
         r.pick = 0
         r.selected = r.match?.confident(r.song) == true
         r.busy = false

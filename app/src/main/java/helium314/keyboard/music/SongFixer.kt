@@ -195,7 +195,7 @@ object SongFixer {
         }
         // closest length first among the high scores
         return out.distinctBy { it.title.lowercase() + it.artist.lowercase() + it.album.lowercase() }
-            .sortedWith(compareByDescending<Match> { it.score / 10 }.thenBy { if (it.lengthMs > 0) abs(it.lengthMs - song.durationMs) else 99_999 })
+            .sortedWith(compareByDescending<Match> { it.score / 10 }.thenBy { if (it.lengthMs > 0) abs(it.lengthMs - song.durationMs) else Long.MAX_VALUE })
             .take(5)
     }
 
