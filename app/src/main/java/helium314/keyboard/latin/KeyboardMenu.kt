@@ -567,6 +567,14 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure { android.widget.Toast.makeText(context, "Music couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
             },
+            Item(tr("Converter", R.string.ok_tile_converter), ownIcon(R.drawable.ic_menu_converter), plugin = "app_converter", idOverride = "converter") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, helium314.keyboard.convert.ConverterActivity::class.java)
+                        // its own task (and process), so Back goes to the app you were in
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Converter couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
+            },
             Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), plugin = "app_sticker_maker", idOverride = "sticker maker") {
                 hide()
                 runCatching {

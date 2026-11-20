@@ -28,6 +28,7 @@ object HomeShortcuts {
         "sticker maker" to ("helium314.keyboard.media.StickerMakerActivity" to "app_sticker_maker"),
         "Scan text" to ("helium314.keyboard.latin.ScanTextActivity" to "scan"),
         "music" to ("helium314.keyboard.music.MusicActivity" to "app_music"),
+        "converter" to ("helium314.keyboard.convert.ConverterActivity" to "app_converter"),
     )
 
     fun canPin(id: String) = id in targets
