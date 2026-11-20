@@ -127,7 +127,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val Accent = Color(0xFFFA2D48) // Apple Music style pink-red
+internal val Accent = Color(0xFFFA2D48) // Apple Music style pink-red
 
 /**
  * Open Keyboard Music (test 229, Jarrod): an Apple Music style player for the music on your phone.
@@ -171,6 +171,8 @@ class PlayerUi {
     var currentId by mutableLongStateOf(-1L)
     var current by mutableStateOf<MediaItem?>(null)
     var position by mutableLongStateOf(0L)
+    /** when [position] was read (elapsedRealtime), so effects can move smoothly between reads */
+    var positionAt = 0L
     var duration by mutableLongStateOf(0L)
     var shuffle by mutableStateOf(false)
     var repeat by mutableIntStateOf(Player.REPEAT_MODE_OFF)
@@ -187,7 +189,7 @@ class PlayerUi {
         playing = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)
         current = c.currentMediaItem
         currentId = c.currentMediaItem?.mediaId?.toLongOrNull() ?: -1L
-        position = c.currentPosition
+        position = c.currentPosition; positionAt = android.os.SystemClock.elapsedRealtime()
         duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
         shuffle = c.shuffleModeEnabled
         repeat = c.repeatMode
@@ -227,7 +229,10 @@ class PlayerUi {
     fun toggle() { controller?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } } }
     fun previous() { controller?.let { if (it.currentPosition > 3000 || !it.hasPreviousMediaItem()) it.seekTo(0) else it.seekToPreviousMediaItem() } }
     fun next() { controller?.seekToNextMediaItem() }
-    fun seek(ms: Long) { controller?.seekTo(ms); position = ms }
+    fun seek(ms: Long) { controller?.seekTo(ms); position = ms; positionAt = android.os.SystemClock.elapsedRealtime() }
+
+    /** Where the song is right now, smoothly (for beat effects). */
+    fun now(): Long = if (playing) position + (android.os.SystemClock.elapsedRealtime() - positionAt) else position
 }
 
 /** Puts a Music icon on the home screen that opens the player straight away. */
@@ -251,7 +256,7 @@ object Favourites {
     }
 }
 
-private sealed class Page {
+internal sealed class Page {
     data object Home : Page()
     data object Songs : Page()
     data object Albums : Page()
@@ -259,11 +264,13 @@ private sealed class Page {
     data object Favs : Page()
     data class AlbumPage(val id: Long) : Page()
     data class ArtistPage(val name: String) : Page()
+    data object Settings : Page()
+    data object Fixer : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
 
-private fun time(ms: Long): String {
+internal fun time(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s / 60) % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
 }
@@ -286,9 +293,10 @@ private fun MusicApp(ui: PlayerUi) {
         return
     }
     var lib by remember { mutableStateOf(Library.cached) }
-    LaunchedEffect(Unit) { Favourites.load(ctx); lib = Library.load(ctx, fresh = true) }
+    val appScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { Favourites.load(ctx); MusicSettings.load(ctx); lib = Library.load(ctx, fresh = true) }
     // keep the seek bar moving
-    LaunchedEffect(ui.controller) { while (true) { ui.controller?.let { ui.position = it.currentPosition }; delay(250) } }
+    LaunchedEffect(ui.controller) { while (true) { ui.controller?.let { ui.position = it.currentPosition; ui.positionAt = android.os.SystemClock.elapsedRealtime() }; delay(250) } }
 
     val stack = remember { mutableStateListOf<Page>(Page.Home) }
     var tab by remember { mutableIntStateOf(0) }
@@ -314,6 +322,8 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Songs -> SongsPage("Songs", library.songs, ui, library, ::open, onBack = { stack.removeAt(stack.lastIndex) })
                     Page.Favs -> SongsPage("Favourites", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, onBack = { stack.removeAt(stack.lastIndex) })
                     Page.Albums -> AlbumsPage("Albums", library.albums, ::open) { stack.removeAt(stack.lastIndex) }
+                    Page.Settings -> SettingsPage(::open) { stack.removeAt(stack.lastIndex) }
+                    Page.Fixer -> FixerPage(library, onBack = { stack.removeAt(stack.lastIndex) }) { appScope.launch { lib = Library.load(ctx, fresh = true) } }
                     Page.Artists -> ArtistsPage(library, ::open) { stack.removeAt(stack.lastIndex) }
                     is Page.AlbumPage -> library.albums.find { it.id == p.id }?.let { AlbumPage(it, ui, library, ::open) { stack.removeAt(stack.lastIndex) } }
                     is Page.ArtistPage -> library.artists.find { it.name == p.name }?.let { ArtistPage(it, ui, library, ::open) { stack.removeAt(stack.lastIndex) } }
@@ -344,9 +354,9 @@ private fun BottomTabs(tab: Int, onTab: (Int) -> Unit) {
 }
 
 @Composable
-private fun Cover(song: Song?, size: Int, modifier: Modifier, corner: Int = 8) {
+internal fun Cover(song: Song?, size: Int, modifier: Modifier, corner: Int = 8) {
     val ctx = LocalContext.current
-    val bmp by produceState(song?.let { Covers.cached(it, size) }, song?.albumId, size) { value = song?.let { Covers.load(ctx, it, size) } }
+    val bmp by produceState(song?.let { Covers.cached(it, size) }, song?.albumId, song?.artFile, size) { value = song?.let { Covers.load(ctx, it, size) } }
     Box(modifier.clip(RoundedCornerShape(corner.dp)).background(Brush.linearGradient(listOf(Color(0xFF3A3A3C), Color(0xFF1C1C1E)))), contentAlignment = Alignment.Center) {
         val b = bmp
         if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -355,9 +365,11 @@ private fun Cover(song: Song?, size: Int, modifier: Modifier, corner: Int = 8) {
 }
 
 @Composable
-private fun Header(title: String, onBack: (() -> Unit)?) {
+internal fun Header(title: String, onBack: (() -> Unit)?, onSettings: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp)) {
-        if (onBack != null) Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { onBack() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (onSettings != null) Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onSettings) { Icon(MusicIcons.settings, "Settings", tint = Accent) }
+        } else if (onBack != null) Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { onBack() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(MusicIcons.back, "Back", tint = Accent, modifier = Modifier.size(20.dp)); Text("Library", color = Accent, fontSize = 17.sp)
         } else Spacer(Modifier.height(36.dp))
         Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -368,7 +380,7 @@ private fun Header(title: String, onBack: (() -> Unit)?) {
 @Composable
 private fun HomePage(lib: Library, open: (Page) -> Unit) {
     LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-        item(span = { GridItemSpan(2) }) { Header("Library", null) }
+        item(span = { GridItemSpan(2) }) { Header("Library", null, onSettings = { open(Page.Settings) }) }
         val rows = listOf(
             Triple("Favourites", MusicIcons.heart, Page.Favs), Triple("Artists", MusicIcons.person, Page.Artists),
             Triple("Albums", MusicIcons.album, Page.Albums), Triple("Songs", MusicIcons.note, Page.Songs),
@@ -585,8 +597,12 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, onClose: () -> Unit, open: (
     var mode by remember { mutableIntStateOf(0) } // 0 cover, 1 lyrics, 2 up next
     var drag by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
-    val bmp by produceState<Bitmap?>(null, song?.albumId) { value = song?.let { Covers.load(ctx, it, 600) } }
+    val bmp by produceState<Bitmap?>(null, song?.id, song?.artFile) { value = song?.let { Covers.load(ctx, it, 600) } }
     BackHandler(enabled = mode != 0) { mode = 0 }
+    // beat effects (test 234): beats worked out once per song, then everything moves with the song's position
+    val beatMap = rememberBeatMap(song)
+    val clock = rememberBeatClock(ui, MusicSettings.effectsOn && beatMap != null && ui.playing)
+    val tint = remember(bmp) { bmp?.let { averageColor(it) } ?: Color(0xFF8E8E93) }
 
     Box(Modifier.fillMaxSize().offset { IntOffset(0, drag.roundToInt()) }.background(Color(0xFF1C1C1E))
         .pointerInput(Unit) {
@@ -594,6 +610,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, onClose: () -> Unit, open: (
                 onDragCancel = { drag = 0f }) { _, d -> drag = (drag + d).coerceAtLeast(0f) }
         }) {
         MovingBackground(bmp)
+        BeatBackground(beatMap, clock, tint, if (mode == 0) 0.38f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Box(Modifier.fillMaxWidth().height(28.dp).clickable { onClose() }, contentAlignment = Alignment.Center) {
                 Box(Modifier.width(40.dp).height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.45f)))
@@ -602,7 +619,16 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, onClose: () -> Unit, open: (
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.8f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Cover(song, 600, Modifier.fillMaxWidth().aspectRatio(1f).scale(scale).shadow((24 * scale).dp, RoundedCornerShape(12.dp)), corner = 12)
+                        val liftPx = with(density) { 16.dp.toPx() }
+                        if (MusicSettings.effectsOn && MusicSettings.cover == 3) Box(Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                            val m = coverMove(beatMap, clock.ms)
+                            alpha = m.glow; scaleX = scale * (1.04f + 0.14f * m.glow); scaleY = scaleX
+                        }.blur(36.dp).clip(RoundedCornerShape(24.dp)).background(tint.copy(alpha = 1f)))
+                        Cover(song, 600, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                            val m = coverMove(beatMap, clock.ms)
+                            scaleX = scale * m.scale; scaleY = scale * m.scale
+                            rotationZ = m.rotation; translationY = m.lift * liftPx
+                        }.shadow((24 * scale).dp, RoundedCornerShape(12.dp)), corner = 12)
                     }
                     TitleRow(song, ui, open, onClose)
                 }
@@ -694,11 +720,12 @@ private fun MoreMenu(song: Song?, open: (Page) -> Unit) {
     Box {
         IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Color.White) }
         DropdownMenu(menu, { menu = false }) {
-            song?.takeIf { it.albumId >= 0 }?.let { s ->
+            song?.takeIf { it.durationMs > 0 }?.let { s ->
                 DropdownMenuItem({ Text("Go to Album") }, { menu = false; open(Page.AlbumPage(s.albumId)) })
                 DropdownMenuItem({ Text("Go to Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
+            DropdownMenuItem({ Text("Beat effects") }, { menu = false; open(Page.Settings) })
             DropdownMenuItem({ Text("Add to Home screen") }, { menu = false; addHomeShortcut(ctx) })
         }
         DropdownMenu(sleep, { sleep = false }) {

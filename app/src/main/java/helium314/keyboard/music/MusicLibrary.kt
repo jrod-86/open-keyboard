@@ -30,9 +30,14 @@ data class Song(
     val year: Int,
     val dateAdded: Long,
     val path: String,
+    /** artwork you picked in "Fix song info" (a file in Music's own folder) */
+    val artFile: String = "",
+    /** true when some of this song's info comes from "Fix song info" */
+    val fixed: Boolean = false,
 ) {
     val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-    val artUri: Uri get() = ContentUris.withAppendedId("content://media/external/audio/albumart".toUri(), albumId)
+    val artUri: Uri get() = if (artFile.isNotEmpty()) Uri.fromFile(java.io.File(artFile))
+        else ContentUris.withAppendedId("content://media/external/audio/albumart".toUri(), albumId)
 
     fun toMediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id.toString())
@@ -119,6 +124,8 @@ class Library(val songs: List<Song>) {
                     }
                 }
             }
+            val fixes = SongFixer.all(ctx)
+            if (fixes.isNotEmpty()) for (i in out.indices) if (out[i].id in fixes) out[i] = SongFixer.apply(ctx, out[i])
             Library(out.sortedBy { it.title.lowercase() }).also { cached = it }
         }
     }
@@ -131,14 +138,20 @@ object Covers {
     }
     private val missing = HashSet<String>()
 
-    fun cached(song: Song, size: Int): Bitmap? = cache.get("${song.albumId}/$size")
+    private fun key(song: Song, size: Int) = if (song.artFile.isNotEmpty()) "f${song.id}/$size" else "${song.albumId}/$size"
+    fun cached(song: Song, size: Int): Bitmap? = cache.get(key(song, size))
+    fun clear() { cache.evictAll(); synchronized(missing) { missing.clear() } }
+
+    /** Whether the song has any artwork (reads the file, so call off the main thread). */
+    suspend fun has(ctx: Context, song: Song) = load(ctx, song, 96) != null
 
     suspend fun load(ctx: Context, song: Song, size: Int): Bitmap? = withContext(Dispatchers.IO) {
-        val key = "${song.albumId}/$size"
+        val key = key(song, size)
         cache.get(key)?.let { return@withContext it }
         synchronized(missing) { if (key in missing) return@withContext null }
         val bmp = runCatching {
-            if (Build.VERSION.SDK_INT >= 29) ctx.contentResolver.loadThumbnail(song.uri, Size(size, size), null)
+            if (song.artFile.isNotEmpty()) BitmapFactory.decodeFile(song.artFile)?.let { Bitmap.createScaledBitmap(it, size, size, true) }
+            else if (Build.VERSION.SDK_INT >= 29) ctx.contentResolver.loadThumbnail(song.uri, Size(size, size), null)
             else ctx.contentResolver.openInputStream(song.artUri)?.use { s ->
                 val o = BitmapFactory.Options().apply { inSampleSize = 1 }
                 BitmapFactory.decodeStream(s, null, o)?.let { Bitmap.createScaledBitmap(it, size, size, true) }
