@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -422,7 +423,8 @@ private class FixRow(val song: Song, problems: List<String>) {
     var selected by mutableStateOf(false)
     var busy by mutableStateOf(false)
     var note by mutableStateOf<String?>(null) // e.g. "Not in the music database" (test 248)
-    val match: Match? get() = matches?.getOrNull(pick)
+    var artistPicks by mutableStateOf(false) // matches are an artist's albums, only their covers are used (test 258)
+    val match: Match? get() = matches?.let { if (artistPicks && pick < 0) it.firstOrNull() else it.getOrNull(pick) }
 }
 
 @Composable
@@ -489,7 +491,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             withContext(Dispatchers.IO) {
                 chosen.forEach { r ->
                     val m = r.match ?: return@forEach
-                    if (artOnly) {
+                    if (artOnly || r.artistPicks) {
                         // artwork only: keep the song's own name, artist and album
                         val cover = r.cover ?: return@forEach
                         out[r.song.id] = SongFix(r.song.title, r.song.artist, r.song.album, r.song.year, SongFixer.keepCover(ctx, r.song.id, cover))
@@ -506,7 +508,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             pendingWrite = chosen.filter { it.song.id in out }.map { r ->
                 val f = out[r.song.id]!!
                 val cover = f.art.takeIf { it.isNotEmpty() }
-                if (artOnly) FileFixer.Item(r.song, "", "", "", 0, cover)
+                if (artOnly || r.artistPicks) FileFixer.Item(r.song, "", "", "", 0, cover)
                 else FileFixer.Item(r.song, f.title, f.artist, f.album, f.year, cover)
             }.takeIf { it.isNotEmpty() }
         }
@@ -551,6 +553,16 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     suspend fun lookUp(r: FixRow, title: String? = null, artist: String? = null) {
         r.busy = true
         r.note = null
+        r.artistPicks = false
+        // Test 258 (Jarrod): song name left empty in Search… = show this artist's album covers to pick from
+        if (title != null && title.isBlank() && !artist.isNullOrBlank()) {
+            r.matches = try { SongFixer.artistAlbums(artist) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() }
+            r.pick = -1; r.cover = null; r.coverTried = false; r.selected = false
+            r.artistPicks = !r.matches.isNullOrEmpty()
+            if (!r.artistPicks) r.note = "No albums found for \"$artist\". Check the spelling."
+            r.busy = false
+            return
+        }
         // Test 248 (Jarrod): the musical fingerprint first, it finds the exact song. Search… (with a title) uses names.
         if (title == null && AcoustId.usable(ctx)) {
             val res = try { AcoustId.lookUp(ctx, r.song) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { AcoustId.Result.Failed("Sound matching failed") }
@@ -684,6 +696,9 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(t, { t = it }, label = { Text("Song name") }, singleLine = true)
                     OutlinedTextField(a, { a = it }, label = { Text("Artist (if you know it)") }, singleLine = true)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Tip: clear the song name to see all album covers by this artist and pick one.", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 }
             },
             confirmButton = { TextButton({ editing = null; scope.launch { lookUp(r, t, a) } }) { Text("Search", color = Accent) } },
@@ -732,6 +747,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                     TextButton(onHide) { Text("Not music, hide", color = dim) }
                 }
             }
+            r.artistPicks -> ArtistCoverPicker(r, artOnly, onSave, onSearch, onPick, onSkip)
             else -> {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))
                     .background(Accent.copy(alpha = if (r.selected) 0.12f else 0.05f)).clickable { r.selected = !r.selected }.padding(8.dp),
@@ -804,4 +820,51 @@ private fun HiddenSongsRow(onLibraryChanged: () -> Unit) {
             }
         },
         confirmButton = { TextButton({ open = false }) { Text("Done", color = Accent) } })
+}
+
+/** Test 258 (Jarrod): an artist's album covers in a row; tap one, then Save artwork. */
+@Composable
+private fun ArtistCoverPicker(r: FixRow, artOnly: Boolean, onSave: () -> Unit, onSearch: () -> Unit, onPick: () -> Unit, onSkip: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    val list = r.matches.orEmpty()
+    // album covers that exist; albums without art are dropped as their thumbnails fail
+    val thumbs = remember(list) { mutableStateMapOf<String, Bitmap?>() }
+    LaunchedEffect(list) {
+        val sem = kotlinx.coroutines.sync.Semaphore(4)
+        kotlinx.coroutines.coroutineScope {
+            list.forEach { m -> launch { sem.withPermit { thumbs[m.groupId] = SongFixer.thumb(ctx, m.groupId) } } }
+        }
+    }
+    Column(Modifier.padding(top = 6.dp)) {
+        val shown = list.withIndex().filter { thumbs[it.value.groupId] != null || !thumbs.containsKey(it.value.groupId) }
+        Text(if (thumbs.size < list.size) "Loading ${list.firstOrNull()?.artist ?: ""} covers… tap one to pick it"
+            else "${shown.size} covers by ${list.firstOrNull()?.artist ?: ""}. Tap one to pick it.", fontSize = 13.sp, color = dim)
+        androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(shown, key = { it.value.groupId }) { (i, m) ->
+                val bmp = thumbs[m.groupId]
+                val on = r.pick == i
+                Column(Modifier.width(92.dp).clickable {
+                    r.pick = i; r.cover = null; r.coverTried = false; r.selected = true
+                    scope.launch { r.cover = SongFixer.fetchCover(ctx, r.song.id, m); r.coverTried = true }
+                }) {
+                    Box(Modifier.size(92.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF2C2C2E))
+                        .then(if (on) Modifier.border(3.dp, Accent, RoundedCornerShape(8.dp)) else Modifier), contentAlignment = Alignment.Center) {
+                        if (bmp != null) Image(bmp.asImageBitmap(), m.album, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        else Text("…", color = Color.White.copy(alpha = 0.6f))
+                    }
+                    Text(m.album + (if (m.year > 0) " · ${m.year}" else ""), fontSize = 11.sp, maxLines = 2, color = dim)
+                }
+            }
+        }
+        FlowRow {
+            Button(onSave, enabled = r.pick >= 0 && r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                Text(if (r.pick >= 0 && r.cover == null && !r.coverTried) "Getting cover…" else "Save artwork")
+            }
+            TextButton(onSearch) { Text("Search…", color = Accent) }
+            TextButton(onPick) { Text("Pick picture", color = Accent) }
+            TextButton(onSkip) { Text("Skip", color = dim) }
+        }
+    }
 }

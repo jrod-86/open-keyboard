@@ -152,6 +152,52 @@ object SongFixer {
         return emptyList()
     }
 
+    /** Test 258 (Jarrod): only an artist typed in Search… = that artist's albums, to pick any cover from. */
+    suspend fun artistAlbums(artist: String): List<Match> {
+        if (artist.isBlank()) return emptyList()
+        val q = "artist:\"" + esc(artist.trim()) + "\" AND (primarytype:album OR primarytype:ep OR primarytype:single)"
+        val body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
+        val groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        val out = ArrayList<Match>()
+        for (i in 0 until groups.length()) {
+            val g = groups.getJSONObject(i)
+            if (g.optInt("score") < 80) continue
+            val credit = g.optJSONArray("artist-credit")?.let { a -> (0 until a.length()).joinToString("") { k -> a.getJSONObject(k).let { it.optString("name") + it.optString("joinphrase") } } } ?: artist
+            out += Match(title = g.optString("title"), artist = credit, album = g.optString("title"),
+                year = g.optString("first-release-date").take(4).toIntOrNull() ?: 0, releaseId = "", groupId = g.optString("id"),
+                score = g.optInt("score"), lengthMs = 0)
+        }
+        // albums first, newest first
+        return out.distinctBy { it.album.lowercase() }.sortedByDescending { it.year }
+    }
+
+    /** A small cover for the album picker, cached; null when the album has no cover art. */
+    suspend fun thumb(ctx: Context, groupId: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
+        val f = File(ctx.cacheDir, "rg_thumbs/$groupId.jpg")
+        if (!f.isFile) {
+            val bytes = runCatching {
+                var url = URL("https://coverartarchive.org/release-group/$groupId/front-250")
+                var result: ByteArray? = null
+                repeat(4) {
+                    if (result != null) return@repeat
+                    val c = url.openConnection() as HttpURLConnection
+                    c.instanceFollowRedirects = false; c.connectTimeout = 10_000; c.readTimeout = 15_000
+                    c.setRequestProperty("User-Agent", AGENT)
+                    try {
+                        when (c.responseCode) {
+                            200 -> result = c.inputStream.readBytes()
+                            301, 302, 303, 307, 308 -> url = URL(url, c.getHeaderField("Location"))
+                            else -> return@runCatching null
+                        }
+                    } finally { c.disconnect() }
+                }
+                result
+            }.getOrNull() ?: return@withContext null
+            f.parentFile?.mkdirs(); f.writeBytes(bytes)
+        }
+        BitmapFactory.decodeFile(f.absolutePath)
+    }
+
     private fun exact(title: String, artist: String) = buildString {
         append("recording:\"").append(esc(title)).append('"')
         if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
