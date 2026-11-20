@@ -364,8 +364,8 @@ private fun ViaBadge(via: String) {
         "artist" -> "🎤 Artist's albums" to Color(0xFF64B5F6)
         else -> return
     }
-    Text(label, Modifier.padding(start = 8.dp).clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 1.dp),
-        fontSize = 11.sp, color = col)
+    Text(label, Modifier.padding(top = 2.dp).clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 1.dp),
+        fontSize = 11.sp, color = col, maxLines = 1)
 }
 
 private class FixRow(val song: Song, problems: List<String>) {
@@ -813,6 +813,12 @@ private fun LinkButton(label: String, color: Color, onClick: () -> Unit) {
 private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onHide: () -> Unit = {}, onPick: () -> Unit = {}) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     // test 270 (Jarrod: "very big space between the lines"): tighter rows and compact link buttons
+    // test 275 (Jarrod: "barely enough room to read one box"): tight line height for every line in the row,
+    // and no big 48 dp touch frame around the tick box
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.copy(lineHeight = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Em)),
+        androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp,
+    ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(Modifier.clickable { onPick() }, verticalAlignment = Alignment.CenterVertically) { // tap the song to pick a picture
             // test 273 (Jarrod): play button on the cover, to listen and check a match is the right song
@@ -868,7 +874,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
                     .background(Accent.copy(alpha = if (r.selected) 0.12f else 0.05f)).clickable { r.selected = !r.selected }.padding(6.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(r.selected, { r.selected = it }, colors = CheckboxDefaults.colors(checkedColor = Accent))
+                    Checkbox(r.selected, { r.selected = it }, Modifier.padding(end = 6.dp), colors = CheckboxDefaults.colors(checkedColor = Accent))
                     Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2C2C2E)), contentAlignment = Alignment.Center) {
                         val path = r.cover
                         val bmp = remember(path) { path?.let { runCatching { BitmapFactory.decodeFile(it)?.let { b -> Bitmap.createScaledBitmap(b, 144, 144, true) } }.getOrNull() } }
@@ -881,10 +887,8 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                         Text(m.artist, maxLines = 1, fontSize = 13.sp)
                         Text(m.album + (if (m.year > 0) " · ${m.year}" else ""), maxLines = 1, fontSize = 12.sp, color = dim)
                         val len = if (m.lengthMs > 0) " · ${time(m.lengthMs)} (yours ${time(r.song.durationMs)})" else ""
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim)
-                            ViaBadge(r.via)
-                        }
+                        Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim, maxLines = 1)
+                        ViaBadge(r.via)
                     }
                 }
                 FlowRow(Modifier.padding(start = 40.dp, top = 4.dp), verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
@@ -900,6 +904,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 }
             }
         }
+    }
     }
 }
 
