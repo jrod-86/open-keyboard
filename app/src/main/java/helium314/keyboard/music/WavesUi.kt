@@ -787,7 +787,10 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
     val k = MusicSettings.miniSize
     // Test 261 (Jarrod): past about a third of the size slider the name got squeezed out by the big buttons,
     // so then the song name goes on top and the artist underneath, in a smaller font that fits.
-    val big = k > 1.33f
+    // test 281 (Jarrod): the switch between the two layouts made a sudden jump in size, and he liked the big one's
+    // writing best, so every size now uses it (name on top, artist underneath) and grows smoothly
+    val big = true
+    val tk = 1f + (k - 1f) * 0.4f
     @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onClick: () -> Unit) {
         val bk = if (big) minOf(k, 1.65f) else k
         Box(Modifier.size((36 * bk).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
@@ -825,10 +828,10 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
     Box(outer) {
     if (mt >= 0) ThemeBackground(mt, Modifier.matchParentSize(), dim = 0.4f, preview = true)
     if (big) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = (5 * k).dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // test 262 (Jarrod): scroll long names like the small player does (fillMaxWidth on the text itself stopped it)
             // test 263 (Jarrod): the name fits on the big player, so the normal marquee never moved; this one always rolls
-            RollText(song.title, Color.White, 14f)
+            RollText(song.title, Color.White, 14f * tk)
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 MiniCover(300)
@@ -837,7 +840,7 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             }
             Spacer(Modifier.height(4.dp))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f)
+                ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f * tk)
             }
         }
     } else Row(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {

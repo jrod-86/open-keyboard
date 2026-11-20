@@ -103,7 +103,7 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
         item {
             Text("Size", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
             SizeSlider(MusicSettings.miniSize, 1.0f..2.0f, { MusicSettings.miniSize = it }) { changed() }
-            Text("Past about a third, the song name moves above the buttons and the artist below.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+            Text("The song name sits above the buttons and the artist below, at every size.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
         }
 
         // ---------------- floating player ----------------
