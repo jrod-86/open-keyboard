@@ -80,6 +80,8 @@ class MusicService : MediaSessionService() {
         session = MediaSession.Builder(this, player).setSessionActivity(open).build()
         Leveler.load(this)
         leveler = LevelApplier(this, player).also { player.addListener(it.listener) }
+        Tuning.load(this)
+        scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
         scope.launch { Library.load(this@MusicService); kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
         restore(player)
         handler.postDelayed(saveTick, 15_000)

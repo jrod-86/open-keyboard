@@ -111,6 +111,18 @@ object Leveler {
     fun stopMeasuring() { scanJob?.cancel(); scan.value = null }
 }
 
+/**
+ * Tuning (test 237, Jarrod): music is tuned to A = 440 Hz; some people prefer 432 Hz (or 444 Hz).
+ * Shifts the pitch only; the speed stays the same.
+ */
+object Tuning {
+    val choices = listOf(440f, 432f, 444f)
+    val hz = MutableStateFlow(440f)
+    fun load(ctx: Context) { hz.value = ctx.getSharedPreferences("music", Context.MODE_PRIVATE).getFloat("tuning_hz", 440f) }
+    fun set(ctx: Context, v: Float) { hz.value = v; ctx.getSharedPreferences("music", Context.MODE_PRIVATE).edit().putFloat("tuning_hz", v).apply() }
+    fun apply(player: Player) { player.playbackParameters = androidx.media3.common.PlaybackParameters(1f, hz.value / 440f) }
+}
+
 /** Applies the volume change to the player. Lives in the music service. */
 class LevelApplier(private val ctx: Context, private val player: ExoPlayer) {
     private var enhancer: LoudnessEnhancer? = null

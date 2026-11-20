@@ -222,6 +222,15 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize()) {
         item { Header("Settings", onBack) }
         item { VolumeSettings() }
+        item {
+            val hz by Tuning.hz.collectAsState()
+            Section("Tuning")
+            Text("Standard music is tuned to A = 440 Hz. Some people prefer 432 Hz and say it sounds warmer and calmer. Changes the pitch only, not the speed.",
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Tuning.choices.forEach { v -> Chip(if (v == 440f) "440 Hz (standard)" else "${v.toInt()} Hz", hz == v) { Tuning.set(ctx, v) } }
+            }
+        }
         item { Section("Customise") }
         item {
             Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
