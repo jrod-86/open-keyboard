@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -586,17 +587,20 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
         Cover(song, 200, Modifier.size((46 * k).dp), corner = (23 * k).roundToInt())
         Spacer(Modifier.width((10 * k).dp))
         Column(Modifier.weight(1f).widthIn(min = 60.dp)) {
-            Text(song.title, color = Color.White, fontSize = (15 * k).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = (12.5f * k).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // text grows a bit less than the rest, and long names scroll across so you can read them (test 242)
+            val tk = 1f + (k - 1f) * 0.6f
+            Text(song.title, color = Color.White, fontSize = (15 * tk).sp, maxLines = 1, modifier = Modifier.basicMarquee(initialDelayMillis = 1500))
+            Text(song.artist, color = Color.White.copy(alpha = 0.75f), fontSize = (12.5f * tk).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onClick: () -> Unit) {
-            Box(Modifier.size((40 * k).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size((36 * k).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
                 Icon(icon, label, Modifier.size((size * k).dp), tint = Color.White)
             }
         }
-        B(if (ui.playing) MusicIcons.pause else MusicIcons.play, "Play or pause", 30f) { ui.toggle() }
-        B(MusicIcons.next, "Next", 26f) { ui.next() }
-        B(MusicIcons.queue, "Queue", 24f) { onQueue() }
+        B(MusicIcons.sPrevious, "Previous", 24f) { ui.previous() }
+        B(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", 28f) { ui.toggle() }
+        B(MusicIcons.sNext, "Next", 24f) { ui.next() }
+        B(MusicIcons.sQueue, "Queue", 24f) { onQueue() }
     }
 }
 
