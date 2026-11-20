@@ -35,7 +35,8 @@ object AcoustId {
     private var lastCall = 0L
 
     suspend fun lookUp(ctx: Context, song: Song): Result {
-        val pcm = RingtoneMaker.decodeRange(ctx, song.uri, 0, 120_000) ?: return Result.Failed("Couldn't read the song")
+        // decode off the main thread: reading 2 minutes of audio takes seconds (test 250, froze the app in 248/249)
+        val pcm = withContext(Dispatchers.IO) { RingtoneMaker.decodeRange(ctx, song.uri, 0, 120_000) } ?: return Result.Failed("Couldn't read the song")
         val fp = withContext(Dispatchers.Default) {
             Chromaprint.encode(Chromaprint.raw(Chromaprint.toMono(pcm.data, pcm.channels), pcm.rate))
         }
