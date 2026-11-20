@@ -504,7 +504,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         r.busy = true
         r.note = null
         // Test 248 (Jarrod): the musical fingerprint first, it finds the exact song. Search… (with a title) uses names.
-        if (title == null && AcoustId.available(ctx)) {
+        if (title == null && AcoustId.usable(ctx)) {
             val res = try { AcoustId.lookUp(ctx, r.song) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { AcoustId.Result.Failed("Sound matching failed") }
             when (res) {
                 is AcoustId.Result.Found -> {
@@ -540,10 +540,13 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
         var keyText by remember { mutableStateOf("") }
         var hasKey by remember { mutableStateOf(AcoustId.available(ctx)) }
+        if (hasKey) TextButton({ hasKey = false; keyText = AcoustId.key(ctx) }, Modifier.padding(horizontal = 4.dp)) {
+            Text(if (AcoustId.keyRejected) "AcoustID key didn't work. Change key" else "Change AcoustID key", color = if (AcoustId.keyRejected) Color(0xFFFF6B6B) else Accent, fontSize = 13.sp)
+        }
         if (!hasKey) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(keyText, { keyText = it }, Modifier.weight(1f), label = { Text("AcoustID key (for sound matching)") }, singleLine = true)
             Spacer(Modifier.width(8.dp))
-            Button({ AcoustId.setKey(ctx, keyText); hasKey = AcoustId.available(ctx) }, enabled = keyText.isNotBlank(),
+            Button({ AcoustId.setKey(ctx, keyText.trim()); AcoustId.keyRejected = false; hasKey = AcoustId.available(ctx) }, enabled = keyText.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
         }
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

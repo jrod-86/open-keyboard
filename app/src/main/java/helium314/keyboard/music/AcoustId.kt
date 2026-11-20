@@ -2,6 +2,8 @@
 package helium314.keyboard.music
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -25,6 +27,7 @@ object AcoustId {
         ctx.getSharedPreferences("music", Context.MODE_PRIVATE).getString("acoustid_key", null)?.takeIf { it.isNotBlank() } ?: APP_KEY
     fun setKey(ctx: Context, key: String) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE).edit().putString("acoustid_key", key.trim()).apply()
     fun available(ctx: Context) = key(ctx).isNotBlank()
+    fun usable(ctx: Context) = available(ctx) && !keyRejected
 
     sealed class Result {
         class Found(val matches: List<Match>) : Result()
@@ -33,6 +36,8 @@ object AcoustId {
     }
 
     private var lastCall = 0L
+    /** AcoustID said the key is wrong (test 253), so the Fix page offers to change it. */
+    var keyRejected by androidx.compose.runtime.mutableStateOf(false)
 
     suspend fun lookUp(ctx: Context, song: Song): Result {
         // decode off the main thread: reading 2 minutes of audio takes seconds (test 250, froze the app in 248/249)
@@ -59,7 +64,12 @@ object AcoustId {
             }.getOrNull()
         } ?: return Result.Failed("Couldn't reach AcoustID")
         val json = runCatching { JSONObject(body) }.getOrNull() ?: return Result.Failed("AcoustID sent something odd")
-        if (json.optString("status") != "ok") return Result.Failed(json.optJSONObject("error")?.optString("message") ?: "AcoustID said no")
+        if (json.optString("status") != "ok") {
+            val err = json.optJSONObject("error")
+            // code 4 = invalid API key (often the account's user key pasted instead of the app key)
+            if (err?.optInt("code") == 4 || err?.optString("message")?.contains("key", true) == true) keyRejected = true
+            return Result.Failed(if (keyRejected) "AcoustID key didn't work" else err?.optString("message") ?: "AcoustID said no")
+        }
         val matches = parse(json.optJSONArray("results"))
         return if (matches.isEmpty()) Result.NotInDatabase else Result.Found(matches)
     }
