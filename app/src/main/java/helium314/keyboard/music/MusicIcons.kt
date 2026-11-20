@@ -12,6 +12,7 @@ object MusicIcons {
     private fun icon(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         .addPath(addPathNodes(path), fill = SolidColor(Color.Black)).build()
 
+    val copy = icon("copy", "M16,1H4C2.9,1 2,1.9 2,3v14h2V3h12V1zM19,5H8C6.9,5 6,5.9 6,7v14c0,1.1 0.9,2 2,2h11c1.1,0 2,-0.9 2,-2V7C21,5.9 20.1,5 19,5zM19,21H8V7h11V21z")
     val play = icon("play", "M8,5v14l11,-7z")
     val pause = icon("pause", "M6,19h4V5H6v14zm8,-14v14h4V5h-4z")
     val next = icon("next", "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z")

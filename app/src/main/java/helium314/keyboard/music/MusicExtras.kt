@@ -606,6 +606,8 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             else Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
                 "then tick the ones you want. When you save, you choose whether to change the music file too.",
                 Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            Text("Can't find it? Tap ⧉ to copy the song name and artist, or 🔍 to search Google Images. Save a picture you like, then use Pick picture.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
             Text("Tap ▶ on a song's cover to listen to it (from about a third of the way in) and check the match. Tap again to stop.",
                 Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
             Text("Each match says how it was found: 🎵 by sound is the exact song, 🔤 by name is a best guess worth checking.",
@@ -794,6 +796,13 @@ object FixPreview {
     }
 }
 
+@Composable
+private fun SmallIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Box(Modifier.size(36.dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Icon(icon, label, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+    }
+}
+
 /** A small text button without the big built-in padding of TextButton (test 270). */
 @Composable
 private fun LinkButton(label: String, color: Color, onClick: () -> Unit) {
@@ -821,6 +830,17 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 Text("${r.song.artist} · ${r.song.album}", maxLines = 1, fontSize = 12.sp, color = dim)
                 if (r.problems.isNotEmpty()) Text(r.problems.joinToString(" · "), fontSize = 12.sp, color = Accent)
                 else if (r.song.fixed) Text("Fixed", fontSize = 12.sp, color = Accent)
+            }
+            // test 274 (Jarrod): if all else fails, copy the name or search Google Images, then use Pick picture
+            val words = remember(r.song) { SongFixer.guess(r.song).let { (t, a) -> listOf(t, a).filter { it.isNotBlank() }.joinToString(" ") } }
+            SmallIcon(MusicIcons.copy, "Copy song name and artist") {
+                val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Song", words))
+                android.widget.Toast.makeText(ctx, "Copied: $words", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            SmallIcon(MusicIcons.search, "Search Google Images") {
+                val url = "https://www.google.com/search?tbm=isch&q=" + java.net.URLEncoder.encode("$words album cover", "UTF-8")
+                runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
         }
         val m = r.match
