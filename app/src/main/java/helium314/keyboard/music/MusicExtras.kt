@@ -586,7 +586,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     Column(Modifier.fillMaxSize()) {
         Header("Fix song info", onBack)
         Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
-            "then tick the ones you want. Your music files aren't changed: Music keeps the fixes.",
+            "then tick the ones you want. When you save, you choose whether to change the music file too.",
             Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
         // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
         var keyText by remember { mutableStateOf("") }
@@ -723,12 +723,14 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 else TextButton(onSkip) { Text("Skip", color = dim) }
                 TextButton(onHide) { Text("Not music, hide", color = dim) }
             }
-            m == null -> Row(Modifier.padding(start = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(r.note ?: "No match found.", Modifier.weight(1f, fill = false), fontSize = 13.sp, color = dim)
-                TextButton(onSearch) { Text("Search…", color = Accent) }
-                TextButton(onPick) { Text("Pick picture", color = Accent) }
-                TextButton(onSkip) { Text("Skip", color = dim) }
-                TextButton(onHide) { Text("Not music, hide", color = dim) }
+            m == null -> Column(Modifier.padding(start = 60.dp)) { // message on its own line (test 257: it was squeezed into a column of letters)
+                Text(r.note ?: "No match found.", Modifier.padding(top = 6.dp), fontSize = 13.sp, color = dim)
+                FlowRow(Modifier.padding(start = 0.dp)) {
+                    TextButton(onSearch) { Text("Search…", color = Accent) }
+                    TextButton(onPick) { Text("Pick picture", color = Accent) }
+                    TextButton(onSkip) { Text("Skip", color = dim) }
+                    TextButton(onHide) { Text("Not music, hide", color = dim) }
+                }
             }
             else -> {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))
