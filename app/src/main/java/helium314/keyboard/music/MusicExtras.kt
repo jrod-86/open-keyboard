@@ -559,7 +559,8 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             r.matches = try { SongFixer.artistAlbums(artist) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() }
             r.pick = -1; r.cover = null; r.coverTried = false; r.selected = false
             r.artistPicks = !r.matches.isNullOrEmpty()
-            if (!r.artistPicks) r.note = "No albums found for \"$artist\". Check the spelling."
+            if (!r.artistPicks) r.note = if (SongFixer.lastFailed) "The music database didn't answer. Tap Search… to try again."
+                else "No albums found for \"$artist\". Check the spelling."
             r.busy = false
             return
         }

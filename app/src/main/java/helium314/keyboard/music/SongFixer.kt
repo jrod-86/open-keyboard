@@ -116,19 +116,30 @@ object SongFixer {
     // ---- online lookup ----
     private var lastCall = 0L
 
+    @Volatile var lastFailed = false
+        private set
+
     private suspend fun get(url: String): String? {
-        // MusicBrainz asks for at most one request a second
-        val wait = 1100 - (System.currentTimeMillis() - lastCall)
-        if (wait > 0) delay(wait)
-        lastCall = System.currentTimeMillis()
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val c = URL(url).openConnection() as HttpURLConnection
-                c.connectTimeout = 10_000; c.readTimeout = 15_000
-                c.setRequestProperty("User-Agent", AGENT); c.setRequestProperty("Accept", "application/json")
-                try { if (c.responseCode == 200) c.inputStream.bufferedReader().readText() else null } finally { c.disconnect() }
-            }.getOrNull()
+        // Test 260 (Jarrod: artist search came up empty on the first tap, worked on the second):
+        // MusicBrainz often answers 503 "slow down" when asked again quickly, so wait and try again.
+        lastFailed = false
+        for (attempt in 0 until 4) {
+            val wait = (if (attempt == 0) 1100L else 1500L * attempt) - (System.currentTimeMillis() - lastCall)
+            if (wait > 0) delay(wait)
+            lastCall = System.currentTimeMillis()
+            val (code, text) = withContext(Dispatchers.IO) {
+                runCatching {
+                    val c = URL(url).openConnection() as HttpURLConnection
+                    c.connectTimeout = 10_000; c.readTimeout = 15_000
+                    c.setRequestProperty("User-Agent", AGENT); c.setRequestProperty("Accept", "application/json")
+                    try { c.responseCode.let { it to (if (it == 200) c.inputStream.bufferedReader().readText() else null) } } finally { c.disconnect() }
+                }.getOrElse { -1 to null }
+            }
+            if (code == 200 && text != null) return text
+            if (code in 400..499 && code != 429) break // a real "no", trying again won't help
         }
+        lastFailed = true
+        return null
     }
 
     private fun esc(s: String) = s.replace(Regex("""([+\-&|!(){}\[\]^"~*?:\\/])"""), "\\\\$1")
@@ -156,8 +167,13 @@ object SongFixer {
     suspend fun artistAlbums(artist: String): List<Match> {
         if (artist.isBlank()) return emptyList()
         val q = "artist:\"" + esc(artist.trim()) + "\" AND (primarytype:album OR primarytype:ep OR primarytype:single)"
-        val body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
-        val groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        var body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
+        var groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        if (groups.length() == 0) { // spelling a little off (spaces, capitals, accents): a looser artist search
+            val loose = "artistname:(" + esc(artist.trim()) + "~) AND (primarytype:album OR primarytype:ep OR primarytype:single)"
+            body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(loose, "UTF-8")) ?: return emptyList()
+            groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        }
         val out = ArrayList<Match>()
         for (i in 0 until groups.length()) {
             val g = groups.getJSONObject(i)
