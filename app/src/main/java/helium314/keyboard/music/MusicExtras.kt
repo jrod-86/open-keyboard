@@ -441,6 +441,20 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         }
     }
     DisposableEffect(Unit) { onDispose { if (dirty) { Covers.clear(); onChanged() } } }
+    // test 272 (Jarrod): you know the right name but the database doesn't have the song: save what you typed
+    fun saveTyped(r: FixRow, title: String, artist: String) {
+        val t = title.trim(); val a = artist.trim().ifBlank { r.song.artist }
+        if (t.isEmpty()) return
+        scope.launch {
+            withContext(Dispatchers.IO) { SongFixer.save(ctx, mapOf(r.song.id to SongFix(t, a, r.song.album, r.song.year, r.song.artFile))) }
+            applied += 1
+            dirty = true
+            rows = rows?.filter { it.song.id != r.song.id }
+            // only the name and artist go into the file; album, year and picture stay as they are
+            pendingWrite = listOf(FileFixer.Item(r.song, t, a, "", 0, null))
+        }
+    }
+
     fun saveRows(chosen: List<FixRow>) {
         if (chosen.isEmpty()) return
         scope.launch {
@@ -562,7 +576,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
     val firstRow = rows?.firstOrNull()
     LaunchedEffect(firstRow) { if (only != null && firstRow != null && firstRow.matches == null) lookUp(firstRow) }
 
-    // test 271 (Jarrod): look-ahead. The top 3 songs of the list are always being looked up in the background, one at a
+    // test 271 (Jarrod): look-ahead. The top 5 songs (Jarrod, test 272: was 3) of the list are always being looked up in the background, one at a
     // time (the music sites allow about one question a second), so the next song is ready when you get to it. Saving,
     // skipping or hiding a song moves the next one up, and that one starts straight away. On by default.
     val prefs = remember { ctx.getSharedPreferences("music", Context.MODE_PRIVATE) }
@@ -570,7 +584,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
     LaunchedEffect(ahead, only) {
         if (!ahead || only != null) return@LaunchedEffect
         while (true) {
-            val next = if (job?.isActive == true) null else rows?.take(3)?.firstOrNull { it.matches == null && !it.busy }
+            val next = if (job?.isActive == true) null else rows?.take(5)?.firstOrNull { it.matches == null && !it.busy }
             if (next != null) lookUp(next) else kotlinx.coroutines.delay(400)
         }
     }
@@ -616,7 +630,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         if (only == null) Row(Modifier.fillMaxWidth().clickable { ahead = !ahead; prefs.edit().putBoolean("fix_ahead", ahead).apply() }
             .padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Get the next 3 songs ready", fontSize = 14.sp)
+                Text("Get the next 5 songs ready", fontSize = 14.sp)
                 Text("Looks them up while you check the one on top", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             }
             Switch(ahead, { ahead = it; prefs.edit().putBoolean("fix_ahead", it).apply() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
@@ -697,7 +711,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         var t by remember(r) { mutableStateOf(g.first) }
         var a by remember(r) { mutableStateOf(g.second) }
         AlertDialog(onDismissRequest = { editing = null },
-            title = { Text("Search for this song") },
+            title = { Text("Search or fix the name") },
             text = {
                 Column {
                     Text(r.song.path.substringAfterLast('/'), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -715,6 +729,12 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
                         modifier = Modifier.fillMaxWidth()) {
                         Text("Search by artist (pick any album cover)", color = if (a.isNotBlank()) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
                     }
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton({ editing = null; saveTyped(r, t, a) }, enabled = t.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                        Text("Save as typed (no search)", color = if (t.isNotBlank()) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                    }
+                    Text("Use this when you already know the right song name and artist.", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
                 }
             },
             confirmButton = {},
