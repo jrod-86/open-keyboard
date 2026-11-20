@@ -96,7 +96,11 @@ object Plugins {
         }.apply()
     }
     fun isOn(ctx: Context, id: String): Boolean { init(ctx); return isOn(id) }
-    fun set(ctx: Context, id: String, on: Boolean) { init(ctx); prefs?.edit()?.putBoolean(key(id), on)?.apply() }
+    fun set(ctx: Context, id: String, on: Boolean) {
+        init(ctx); prefs?.edit()?.putBoolean(key(id), on)?.apply()
+        // Open Waves' own app icon goes away when the plugin is switched off (test 245)
+        if (id == "app_music" && !on) helium314.keyboard.music.OpenWavesIcon.set(ctx, false)
+    }
 
     // ---------- other apps as plugins ----------
 

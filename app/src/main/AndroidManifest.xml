@@ -178,7 +178,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
              Exported only so a home screen shortcut can open it. -->
         <activity android:name="helium314.keyboard.music.MusicActivity"
             android:label="Open Waves"
-            android:icon="@drawable/ic_music_shortcut"
+            android:icon="@mipmap/ic_open_waves"
+            android:roundIcon="@mipmap/ic_open_waves"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:taskAffinity="io.github.jrod86.openkeyboard.music"
@@ -186,6 +187,20 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="true" />
+        <!-- Open Waves' own app icon (test 245). Off until Jarrod picks "Add to Home screen": a real app icon has no
+             shortcut badge, unlike a pinned shortcut. -->
+        <activity-alias android:name="helium314.keyboard.music.OpenWavesLauncher"
+            android:targetActivity="helium314.keyboard.music.MusicActivity"
+            android:label="Open Waves"
+            android:icon="@mipmap/ic_open_waves"
+            android:roundIcon="@mipmap/ic_open_waves"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <service android:name="helium314.keyboard.music.MusicService"
             android:process=":music"
             android:foregroundServiceType="mediaPlayback"

@@ -254,17 +254,35 @@ class PlayerUi {
 }
 
 /** Puts an Open Waves icon on the home screen that opens the player straight away. */
-fun addHomeShortcut(ctx: Context) {
-    val intent = android.content.Intent(ctx, MusicActivity::class.java).setAction(android.content.Intent.ACTION_MAIN)
-    val bmp = android.graphics.BitmapFactory.decodeResource(ctx.resources, helium314.keyboard.latin.R.drawable.open_waves_icon)
-    val icon = if (bmp != null) androidx.core.graphics.drawable.IconCompat.createWithBitmap(bmp)
-        else androidx.core.graphics.drawable.IconCompat.createWithResource(ctx, helium314.keyboard.latin.R.drawable.ic_music_shortcut)
-    val info = androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, "music")
-        .setShortLabel("Open Waves")
-        .setIcon(icon)
-        .setIntent(intent).build()
-    val ok = runCatching { androidx.core.content.pm.ShortcutManagerCompat.requestPinShortcut(ctx, info, null) }.getOrDefault(false)
-    if (!ok) android.widget.Toast.makeText(ctx, "Your home screen doesn't allow shortcuts", android.widget.Toast.LENGTH_SHORT).show()
+fun addHomeShortcut(ctx: Context) = OpenWavesIcon.add(ctx)
+
+/**
+ * Test 245 (Jarrod): a pinned shortcut always gets the launcher's little badge in the corner, so Open Waves gets a
+ * real app icon instead. It's an activity-alias that stays off until asked for; switching it on puts Open Waves in
+ * the phone's apps list with its neon icon, ready to drag to the Home screen.
+ */
+object OpenWavesIcon {
+    private const val ALIAS = "helium314.keyboard.music.OpenWavesLauncher"
+    private fun cn(ctx: Context) = android.content.ComponentName(ctx.packageName, ALIAS)
+
+    fun isOn(ctx: Context) = runCatching {
+        ctx.packageManager.getComponentEnabledSetting(cn(ctx)) == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+    }.getOrDefault(false)
+
+    fun set(ctx: Context, on: Boolean) {
+        runCatching {
+            ctx.packageManager.setComponentEnabledSetting(cn(ctx),
+                if (on) android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                android.content.pm.PackageManager.DONT_KILL_APP)
+        }
+    }
+
+    fun add(ctx: Context) {
+        set(ctx, true)
+        android.widget.Toast.makeText(ctx, "Open Waves now has its own icon in your apps list. Press and hold it there, then drag it to your Home screen.",
+            android.widget.Toast.LENGTH_LONG).show()
+    }
 }
 
 object Favourites {

@@ -34,6 +34,8 @@ object HomeShortcuts {
     fun canPin(id: String) = id in targets
 
     fun pin(ctx: Context, id: String, label: String, icon: Drawable?) {
+        // Open Waves gets a real app icon (no shortcut badge), test 245
+        if (id == "music") { helium314.keyboard.music.OpenWavesIcon.add(ctx); return }
         val sm = ctx.getSystemService(ShortcutManager::class.java)
         if (sm == null || !sm.isRequestPinShortcutSupported) {
             Toast.makeText(ctx, "Your home screen doesn't take shortcuts", Toast.LENGTH_LONG).show(); return
@@ -41,7 +43,7 @@ object HomeShortcuts {
         val open = Intent(ctx, ShortcutActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra(EXTRA, id)
         val info = ShortcutInfo.Builder(ctx, "tile_" + id.replace(' ', '_'))
             .setShortLabel(label)
-            .setIcon(if (id == "music") ownLogo(ctx) ?: Icon.createWithAdaptiveBitmap(iconBitmap(icon)) else Icon.createWithAdaptiveBitmap(iconBitmap(icon)))
+            .setIcon(Icon.createWithAdaptiveBitmap(iconBitmap(icon)))
             .setIntent(open)
             .build()
         runCatching { sm.requestPinShortcut(info, null) }
@@ -62,10 +64,6 @@ object HomeShortcuts {
         }
         return bmp
     }
-
-    /** Open Waves (music) has its own full-colour logo (test 238). */
-    private fun ownLogo(ctx: Context): Icon? =
-        android.graphics.BitmapFactory.decodeResource(ctx.resources, helium314.keyboard.latin.R.drawable.open_waves_icon)?.let { Icon.createWithBitmap(it) }
 
     const val EXTRA = "open_tile"
 }

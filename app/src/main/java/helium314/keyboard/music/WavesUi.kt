@@ -125,7 +125,7 @@ internal fun WavesTopBar(open: (Page) -> Unit, extra: (@Composable () -> Unit)? 
             IconButton({ menu = true }) { Icon(MusicIcons.more, "More", Modifier.size(26.dp)) }
             DropdownMenu(menu, { menu = false }) {
                 DropdownMenuItem({ Text("Edit") }, { menu = false; open(Page.Edit) })
-                DropdownMenuItem({ Text("Add shortcut on Home screen") }, { menu = false; addHomeShortcut(ctx) })
+                DropdownMenuItem({ Text("Add to Home screen") }, { menu = false; addHomeShortcut(ctx) })
                 DropdownMenuItem({ Text("Themes") }, { menu = false; open(Page.Themes) })
                 DropdownMenuItem({ Text("Sound quality and effects") }, { menu = false; open(Page.Settings) })
                 DropdownMenuItem({ Text("Fix song info") }, { menu = false; open(Page.Fixer) })

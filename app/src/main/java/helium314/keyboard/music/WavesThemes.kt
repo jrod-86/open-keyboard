@@ -81,6 +81,15 @@ object WavesThemes {
         WavesTheme("Mint", listOf(c(0xFF00B09B), c(0xFF96C93D), c(0xFF053B2E)), c(0xFF5EE6C4)),
         WavesTheme("Fire and ice", listOf(c(0xFFFF416C), c(0xFF4E4376), c(0xFF2B5876)), c(0xFFFF416C)),
         WavesTheme("Gold", listOf(c(0xFFF7971E), c(0xFFB8860B), c(0xFF2C1A00)), c(0xFFFFC04D)),
+        WavesTheme("Peacock", listOf(c(0xFF0F4C5C), c(0xFF1B998B), c(0xFFE6AF2E)), c(0xFF2EC4B6)),
+        WavesTheme("Berry smoothie", listOf(c(0xFF8E2DE2), c(0xFFFF6B9D), c(0xFF4A0E4E)), c(0xFFFF6B9D)),
+        WavesTheme("Aqua lagoon", listOf(c(0xFF00C9A7), c(0xFF0081A7), c(0xFF003049)), c(0xFF00E0C0)),
+        WavesTheme("Autumn", listOf(c(0xFFD1495B), c(0xFFEDAE49), c(0xFF3D2C2E)), c(0xFFEDAE49)),
+        WavesTheme("Sakura", listOf(c(0xFFFFB7C5), c(0xFFE07A9F), c(0xFF3B1F2B)), c(0xFFFF9EB8)),
+        WavesTheme("Ice", listOf(c(0xFFE0F7FF), c(0xFF7FC8F8), c(0xFF1B3A5B)), c(0xFF7FC8F8)),
+        WavesTheme("Watermelon", listOf(c(0xFFFF4E6A), c(0xFF7BD389), c(0xFF1C3D2A)), c(0xFFFF5C7A)),
+        WavesTheme("Coffee", listOf(c(0xFFC8A27A), c(0xFF6F4E37), c(0xFF1E140F)), c(0xFFE0B88A)),
+        WavesTheme("Ultraviolet", listOf(c(0xFF5F0A87), c(0xFFA4508B), c(0xFF1B0034)), c(0xFFC77DFF)),
     )
     /** animated themes: name, colours, accent */
     val fx = listOf(
@@ -92,6 +101,28 @@ object WavesThemes {
         WavesTheme("Disco", listOf(c(0xFFFF2D95), c(0xFF00E5FF), c(0xFFFFEA00)), c(0xFFFF2D95)),
         WavesTheme("Fireflies", listOf(c(0xFF0A1A0A), c(0xFF1F3B1F), c(0xFFFFF176)), c(0xFFFFF176)),
         WavesTheme("Neon grid", listOf(c(0xFF12002B), c(0xFFFF00E6), c(0xFF00F0FF)), c(0xFFFF00E6)),
+        WavesTheme("Fractal warp", listOf(c(0xFF00E5FF), c(0xFFFF00C8), c(0xFF120030)), c(0xFF00E5FF)),
+        WavesTheme("Leaf vortex", listOf(c(0xFF3CFF6B), c(0xFFFFD23C), c(0xFF051A0A)), c(0xFF7CFF6B)),
+        WavesTheme("Laser show", listOf(c(0xFF00FF66), c(0xFF00331A), c(0xFF000000)), c(0xFF39FF14)),
+        WavesTheme("Star bloom", listOf(c(0xFFFF6EC7), c(0xFF7A5CFF), c(0xFF0A0020)), c(0xFFFF6EC7)),
+        WavesTheme("Fractal ripples", listOf(c(0xFFFF8A00), c(0xFF00C2FF), c(0xFF100018)), c(0xFFFFA040)),
+        WavesTheme("Hypnosis", listOf(c(0xFFFFFFFF), c(0xFF000000), c(0xFF7A00FF)), c(0xFFB57BFF)),
+        WavesTheme("Rainbow spiral", listOf(c(0xFFFF0000), c(0xFF00FF00), c(0xFF0000FF)), c(0xFFFF4FA3)),
+        WavesTheme("Neon rings", listOf(c(0xFFFF00E6), c(0xFF00F0FF), c(0xFF0A0018)), c(0xFF00F0FF)),
+        WavesTheme("Kaleidoscope", listOf(c(0xFFFFC400), c(0xFFFF2D95), c(0xFF00B4D8)), c(0xFFFFC400)),
+        WavesTheme("Stained glass", listOf(c(0xFFE63946), c(0xFF457B9D), c(0xFFF1C40F)), c(0xFFF1C40F)),
+        WavesTheme("Slime portal", listOf(c(0xFF7CFF00), c(0xFF00FFB3), c(0xFF0A1A00)), c(0xFF7CFF00)),
+        WavesTheme("Star tunnel", listOf(c(0xFF8EA6FF), c(0xFFFFFFFF), c(0xFF02021A)), c(0xFF8EA6FF)),
+        WavesTheme("Zebra swirl", listOf(c(0xFFFFFFFF), c(0xFF000000), c(0xFF808080)), c(0xFFDDDDDD)),
+        WavesTheme("Fractal zoom", listOf(c(0xFF00D4FF), c(0xFFFF6A00), c(0xFF000010)), c(0xFF00D4FF)),
+        WavesTheme("Plasma", listOf(c(0xFFFF2D95), c(0xFF00E5FF), c(0xFFFFEA00)), c(0xFFFF2D95)),
+        WavesTheme("Liquid", listOf(c(0xFF6A5CFF), c(0xFF00E0FF), c(0xFF050520)), c(0xFF8F84FF)),
+        WavesTheme("Warp speed", listOf(c(0xFF9FD8FF), c(0xFFFFFFFF), c(0xFF000008)), c(0xFF9FD8FF)),
+        WavesTheme("Galaxy", listOf(c(0xFFB388FF), c(0xFFFF80AB), c(0xFF05001A)), c(0xFFB388FF)),
+        WavesTheme("Snowfall", listOf(c(0xFFFFFFFF), c(0xFF9EC9FF), c(0xFF0B1A33)), c(0xFFBFE0FF)),
+        WavesTheme("Confetti", listOf(c(0xFFFF3D7F), c(0xFFFFD93D), c(0xFF6BCB77)), c(0xFFFFD93D)),
+        WavesTheme("Equalizer", listOf(c(0xFF00F5A0), c(0xFFFF00E6), c(0xFF05050F)), c(0xFF00F5A0)),
+        WavesTheme("Fire", listOf(c(0xFFFF4500), c(0xFFFFC300), c(0xFF1A0000)), c(0xFFFF7A00)),
     )
     fun of(id: Int): WavesTheme? = when { id in colour.indices -> colour[id]; id - 100 in fx.indices -> fx[id - 100]; else -> null }
     fun isFx(id: Int) = id >= 100
@@ -99,7 +130,7 @@ object WavesThemes {
 
 /** The theme's background, drawn behind the whole app (and Now Playing). [dim] darkens it so text stays readable. */
 @Composable
-internal fun ThemeBackground(id: Int, modifier: Modifier = Modifier, dim: Float = 0.35f) {
+internal fun ThemeBackground(id: Int, modifier: Modifier = Modifier, dim: Float = 0.35f, preview: Boolean = false) {
     val t = WavesThemes.of(id) ?: return
     if (!WavesThemes.isFx(id)) {
         Box(modifier.fillMaxSize().background(Brush.linearGradient(t.colors, start = Offset.Zero, end = Offset(900f, 2200f)))
@@ -110,8 +141,15 @@ internal fun ThemeBackground(id: Int, modifier: Modifier = Modifier, dim: Float 
     val p by anim.animateFloat(0f, 1f, infiniteRepeatable(tween(16_000, easing = LinearEasing)), label = "p")
     val q by anim.animateFloat(0f, 1f, infiniteRepeatable(tween(5_000), RepeatMode.Reverse), label = "q")
     val stars = remember { val r = java.util.Random(11); List(90) { floatArrayOf(r.nextFloat(), r.nextFloat(), 0.6f + r.nextFloat() * 2.2f, r.nextFloat()) } }
+    val tsec by anim.animateFloat(0f, 3600f, infiniteRepeatable(tween(3_600_000, easing = LinearEasing)), label = "t")
+    val kind = id - 100
+    val buf = remember(id) { if (Fx2.isField(kind)) Fx2.FieldBuf(if (preview) 0.12f else 0.033f) else null }
     Canvas(modifier.fillMaxSize()) {
-        drawFx(id - 100, t.colors, p, q, stars)
+        when {
+            kind < 8 -> drawFx(kind, t.colors, p, q, stars)
+            buf != null -> with(Fx2) { drawField(kind, tsec, buf) }
+            else -> with(Fx2) { drawShapes(kind, tsec, stars) }
+        }
         drawRect(Color.Black.copy(alpha = dim))
     }
 }
@@ -222,7 +260,7 @@ internal fun ThemesPage(onBack: () -> Unit) {
             }
         }
         items(WavesThemes.fx.size) { i ->
-            ThemeTile(WavesThemes.fx[i].name, MusicSettings.theme == 100 + i, { ThemeBackground(100 + i, dim = 0.05f) }) { pick(100 + i) }
+            ThemeTile(WavesThemes.fx[i].name, MusicSettings.theme == 100 + i, { ThemeBackground(100 + i, dim = 0.05f, preview = true) }) { pick(100 + i) }
         }
     }
 }
