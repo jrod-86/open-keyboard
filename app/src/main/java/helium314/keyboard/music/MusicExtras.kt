@@ -564,16 +564,30 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
 
     Column(Modifier.fillMaxSize()) {
         Header(if (only != null) "Add artwork" else "Fix song info", onBack)
-        if (only != null) Text("Open Waves is looking for this song's cover. Pick one, use Search… (try \"Search by artist\" to pick any of their album covers), or use your own picture.",
-            Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
-        else Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
-            "then tick the ones you want. When you save, you choose whether to change the music file too.",
-            Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
-        // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
+        // test 269 (Jarrod): the explanation folds away so the songs get the room; tap to read it
+        var info by remember { mutableStateOf(false) }
         var keyText by remember { mutableStateOf("") }
         var hasKey by remember { mutableStateOf(AcoustId.available(ctx)) }
-        if (hasKey) TextButton({ hasKey = false; keyText = AcoustId.key(ctx) }, Modifier.padding(horizontal = 4.dp)) {
-            Text(if (AcoustId.keyRejected) "AcoustID key didn't work. Change key" else "Change AcoustID key", color = if (AcoustId.keyRejected) Color(0xFFFF6B6B) else Accent, fontSize = 13.sp)
+        Row(Modifier.clickable { info = !info }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ⓘ  How this works", fontSize = 14.sp, color = Accent)
+            Text(if (info) "  ▴" else "  ▾", fontSize = 14.sp, color = Accent)
+        }
+        if (info) {
+            if (only != null) Text("Open Waves is looking for this song's cover. Pick one, use Search… (try \"Search by artist\" to pick any of their album covers), or use your own picture.",
+                Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            else Text("Songs below are missing a name, artist, album or artwork. Tap Find info to recognise each song by its sound (AcoustID) and look it up on MusicBrainz, a free music database, " +
+                "then tick the ones you want. When you save, you choose whether to change the music file too.",
+                Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            Text("Each match says how it was found: 🎵 by sound is the exact song, 🔤 by name is a best guess worth checking.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+            // Test 248: the AcoustID key can be pasted here, so fingerprints work without a new build
+            if (hasKey && !AcoustId.keyRejected) TextButton({ hasKey = false; keyText = AcoustId.key(ctx) }, Modifier.padding(horizontal = 4.dp)) {
+                Text("Change AcoustID key", color = Accent, fontSize = 13.sp)
+            }
+        }
+        // a key that stopped working always shows, so you notice
+        if (hasKey && AcoustId.keyRejected) TextButton({ hasKey = false; keyText = AcoustId.key(ctx) }, Modifier.padding(horizontal = 4.dp)) {
+            Text("AcoustID key didn't work. Change key", color = Color(0xFFFF6B6B), fontSize = 13.sp)
         }
         if (!hasKey) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(keyText, { keyText = it }, Modifier.weight(1f), label = { Text("AcoustID key (for sound matching)") }, singleLine = true)
