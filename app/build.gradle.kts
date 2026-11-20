@@ -142,6 +142,8 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     // Open Keyboard Converter (test 233): reading web pages / eBooks / Office XML (jsoup, MIT) and Markdown (commonmark, BSD-2)
     implementation("org.jsoup:jsoup:1.21.2")
+    // Open Waves (test 256): writing fixed song info and covers into music files (jaudiotagger, LGPL-2.1)
+    implementation("net.jthink:jaudiotagger:3.0.1")
     implementation("org.commonmark:commonmark:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
 

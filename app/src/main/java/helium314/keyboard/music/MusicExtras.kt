@@ -441,6 +441,30 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     // Test 251 (Jarrod): each match can be saved on its own. Saved rows leave the list straight away; the library
     // reloads when you leave the page, so other songs' look-ups aren't lost.
     var dirty by remember { mutableStateOf(false) }
+    // Test 256 (Jarrod): after saving, offer to write the fix permanently into the music file, only if you agree
+    var pendingWrite by remember { mutableStateOf<List<FileFixer.Item>?>(null) }
+    var writing by remember { mutableStateOf<List<FileFixer.Item>?>(null) }
+    var writeNote by remember { mutableStateOf("") }
+    fun doWrite(items: List<FileFixer.Item>) {
+        scope.launch {
+            writeNote = "Writing ${items.size} file" + (if (items.size == 1) "" else "s") + "…"
+            val (ok, failed) = FileFixer.writeAll(ctx, items)
+            writeNote = "Changed $ok music file" + (if (ok == 1) "" else "s") + "." +
+                (if (failed.isNotEmpty()) " Couldn't change: " + failed.take(3).joinToString(", ") + (if (failed.size > 3) "…" else "") else "")
+            dirty = true
+        }
+    }
+    val writeAsk = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        val items = writing; writing = null
+        if (items != null && res.resultCode == android.app.Activity.RESULT_OK) doWrite(items)
+        else if (items != null) writeNote = "Files not changed (Android permission not given). The fixes are still saved in Open Waves."
+    }
+    fun startWrite(items: List<FileFixer.Item>) {
+        val pi = runCatching { FileFixer.writeRequest(ctx, items) }.getOrNull()
+        if (pi == null) { doWrite(items); return }
+        writing = items
+        writeAsk.launch(androidx.activity.result.IntentSenderRequest.Builder(pi.intentSender).build())
+    }
     // Test 254 (Jarrod): put your own picture on a song when no artwork is found
     var picking by remember { mutableStateOf<FixRow?>(null) }
     val picker = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -454,6 +478,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             applied += 1
             dirty = true
             rows = rows?.filter { it.song.id != r.song.id }
+            pendingWrite = listOf(FileFixer.Item(r.song, "", "", "", 0, path))
         }
     }
     DisposableEffect(Unit) { onDispose { if (dirty) { Covers.clear(); onChanged() } } }
@@ -478,6 +503,12 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             applied += out.size
             dirty = true
             rows = rows?.filter { it.song.id !in out }
+            pendingWrite = chosen.filter { it.song.id in out }.map { r ->
+                val f = out[r.song.id]!!
+                val cover = f.art.takeIf { it.isNotEmpty() }
+                if (artOnly) FileFixer.Item(r.song, "", "", "", 0, cover)
+                else FileFixer.Item(r.song, f.title, f.artist, f.album, f.year, cover)
+            }.takeIf { it.isNotEmpty() }
         }
     }
     LaunchedEffect(lib, showAll, artOnly) {
@@ -591,6 +622,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
         }
         if (checking.isNotEmpty() && !list.isNullOrEmpty()) Text(checking, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
         if (progress.isNotEmpty()) Text(progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
+        if (writeNote.isNotEmpty()) Text(writeNote, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
         if (applied > 0) Text("Saved $applied song" + (if (applied == 1) "" else "s") + ". Your library updates when you leave this page.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
         when {
             list == null -> Text("Checking your songs…", Modifier.padding(16.dp))
@@ -616,6 +648,28 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                 }
             }
         }
+    }
+
+    pendingWrite?.let { items ->
+        val n = items.size
+        AlertDialog(onDismissRequest = { pendingWrite = null },
+            title = { Text("Change the music file" + (if (n == 1) "" else "s") + " too?") },
+            text = {
+                Column {
+                    Text("Saved in Open Waves. Do you also want to write " + (if (n == 1) "this fix" else "these $n fixes") +
+                        " permanently into the music file" + (if (n == 1) "" else "s") + "? Every app will then see the new " +
+                        (if (items.all { it.title.isBlank() }) "artwork" else "name, artist, album and artwork") +
+                        ". This changes the file itself and can't be undone.")
+                    if (android.os.Build.VERSION.SDK_INT >= 31 && !FileFixer.canManageMedia(ctx)) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Android will ask you to allow it each time. To stop that, allow Open Waves to manage media:",
+                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f))
+                        TextButton({ runCatching { ctx.startActivity(FileFixer.manageMediaIntent(ctx)) } }) { Text("Allow manage media", color = Accent) }
+                    }
+                }
+            },
+            confirmButton = { TextButton({ pendingWrite = null; startWrite(items) }) { Text("Yes, change " + (if (n == 1) "the file" else "$n files"), color = Accent) } },
+            dismissButton = { TextButton({ pendingWrite = null }) { Text("No, only in Open Waves") } })
     }
 
     editing?.let { r ->
