@@ -708,10 +708,17 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
     r.coverTried = true
 }
 
+/** A small text button without the big built-in padding of TextButton (test 270). */
+@Composable
+private fun LinkButton(label: String, color: Color, onClick: () -> Unit) {
+    Text(label, Modifier.clip(RoundedCornerShape(8.dp)).clickable { onClick() }.padding(horizontal = 8.dp, vertical = 6.dp), color = color, fontSize = 14.sp)
+}
+
 @Composable
 private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onHide: () -> Unit = {}, onPick: () -> Unit = {}) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+    // test 270 (Jarrod: "very big space between the lines"): tighter rows and compact link buttons
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(Modifier.clickable { onPick() }, verticalAlignment = Alignment.CenterVertically) { // tap the song to pick a picture
             Cover(r.song, 160, Modifier.size(48.dp), corner = 6)
             Spacer(Modifier.width(12.dp))
@@ -725,27 +732,27 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
         val m = r.match
         when {
             r.busy -> Text("Looking…", Modifier.padding(top = 6.dp, start = 60.dp), fontSize = 13.sp, color = dim)
-            r.matches == null -> FlowRow(Modifier.padding(start = 52.dp)) {
-                TextButton(onFind) { Text("Find info", color = Accent) }
-                TextButton(onSearch) { Text("Search…", color = Accent) }
-                TextButton(onPick) { Text("Pick picture", color = Accent) }
-                if (r.song.fixed) TextButton(onUndo) { Text("Undo fix", color = Accent) }
-                else TextButton(onSkip) { Text("Skip", color = dim) }
-                TextButton(onHide) { Text("Not music, hide", color = dim) }
+            r.matches == null -> FlowRow(Modifier.padding(start = 54.dp, top = 2.dp)) {
+                LinkButton("Find info", Accent, onFind)
+                LinkButton("Search…", Accent, onSearch)
+                LinkButton("Pick picture", Accent, onPick)
+                if (r.song.fixed) LinkButton("Undo fix", Accent, onUndo)
+                else LinkButton("Skip", dim, onSkip)
+                LinkButton("Not music, hide", dim, onHide)
             }
             m == null -> Column(Modifier.padding(start = 60.dp)) { // message on its own line (test 257: it was squeezed into a column of letters)
                 Text(r.note ?: "No match found.", Modifier.padding(top = 6.dp), fontSize = 13.sp, color = dim)
                 FlowRow(Modifier.padding(start = 0.dp)) {
-                    TextButton(onSearch) { Text("Search…", color = Accent) }
-                    TextButton(onPick) { Text("Pick picture", color = Accent) }
-                    TextButton(onSkip) { Text("Skip", color = dim) }
-                    TextButton(onHide) { Text("Not music, hide", color = dim) }
+                    LinkButton("Search…", Accent, onSearch)
+                    LinkButton("Pick picture", Accent, onPick)
+                    LinkButton("Skip", dim, onSkip)
+                    LinkButton("Not music, hide", dim, onHide)
                 }
             }
             r.artistPicks -> ArtistCoverPicker(r, artOnly, onSave, onSearch, onPick, onSkip)
             else -> {
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))
-                    .background(Accent.copy(alpha = if (r.selected) 0.12f else 0.05f)).clickable { r.selected = !r.selected }.padding(8.dp),
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
+                    .background(Accent.copy(alpha = if (r.selected) 0.12f else 0.05f)).clickable { r.selected = !r.selected }.padding(6.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(r.selected, { r.selected = it }, colors = CheckboxDefaults.colors(checkedColor = Accent))
                     Box(Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2C2C2E)), contentAlignment = Alignment.Center) {
@@ -766,15 +773,16 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                         }
                     }
                 }
-                FlowRow(Modifier.padding(start = 40.dp), verticalArrangement = Arrangement.Center) {
-                    Button(onSave, enabled = !artOnly || r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                FlowRow(Modifier.padding(start = 40.dp, top = 4.dp), verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
+                    Button(onSave, Modifier.height(34.dp), enabled = !artOnly || r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)) {
                         Text(if (artOnly) "Save artwork" else "Save")
                     }
-                    if ((r.matches?.size ?: 0) > 1) TextButton(onOther) { Text("Other (${r.pick + 1}/${r.matches!!.size})", color = Accent) }
-                    TextButton(onSearch) { Text("Search…", color = Accent) }
-                    TextButton(onPick) { Text("Pick picture", color = Accent) }
-                    TextButton(onSkip) { Text("Skip", color = dim) }
-                    TextButton(onHide) { Text("Not music, hide", color = dim) }
+                    if ((r.matches?.size ?: 0) > 1) LinkButton("Other (${r.pick + 1}/${r.matches!!.size})", Accent, onOther)
+                    LinkButton("Search…", Accent, onSearch)
+                    LinkButton("Pick picture", Accent, onPick)
+                    LinkButton("Skip", dim, onSkip)
+                    LinkButton("Not music, hide", dim, onHide)
                 }
             }
         }
@@ -860,9 +868,9 @@ private fun ArtistCoverPicker(r: FixRow, artOnly: Boolean, onSave: () -> Unit, o
             Button(onSave, enabled = r.pick >= 0 && r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
                 Text(if (r.pick >= 0 && r.cover == null && !r.coverTried) "Getting cover…" else "Save artwork")
             }
-            TextButton(onSearch) { Text("Search…", color = Accent) }
-            TextButton(onPick) { Text("Pick picture", color = Accent) }
-            TextButton(onSkip) { Text("Skip", color = dim) }
+            LinkButton("Search…", Accent, onSearch)
+            LinkButton("Pick picture", Accent, onPick)
+            LinkButton("Skip", dim, onSkip)
         }
     }
 }
