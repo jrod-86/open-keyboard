@@ -42,6 +42,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -434,6 +435,27 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
     var applied by remember { mutableIntStateOf(0) }
 
     var checking by remember { mutableStateOf("") }
+    // Test 251 (Jarrod): each match can be saved on its own. Saved rows leave the list straight away; the library
+    // reloads when you leave the page, so other songs' look-ups aren't lost.
+    var dirty by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { onDispose { if (dirty) { Covers.clear(); onChanged() } } }
+    fun saveRows(chosen: List<FixRow>) {
+        if (chosen.isEmpty()) return
+        scope.launch {
+            val out = HashMap<Long, SongFix>()
+            withContext(Dispatchers.IO) {
+                chosen.forEach { r ->
+                    val m = r.match ?: return@forEach
+                    val art = r.cover?.let { SongFixer.keepCover(ctx, r.song.id, it) } ?: r.song.artFile
+                    out[r.song.id] = SongFix(m.title, m.artist, m.album, m.year, art)
+                }
+                SongFixer.save(ctx, out)
+            }
+            applied += out.size
+            dirty = true
+            rows = rows?.filter { it.song.id !in out }
+        }
+    }
     LaunchedEffect(lib, showAll) {
         // Test 247 (Jarrod: "loading for ages"): songs with missing names show straight away, then artwork is checked
         // 8 songs at a time in chunks, adding rows as it goes. Songs known to have artwork are remembered, so the
@@ -533,23 +555,12 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
             }, enabled = !list.isNullOrEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Find info") }
             val chosen = list.orEmpty().count { it.selected && it.match != null }
             Button({
-                scope.launch {
-                    val out = HashMap<Long, SongFix>()
-                    list.orEmpty().filter { it.selected && it.match != null }.forEach { r ->
-                        val m = r.match!!
-                        val art = r.cover?.let { SongFixer.keepCover(ctx, r.song.id, it) } ?: r.song.artFile
-                        out[r.song.id] = SongFix(m.title, m.artist, m.album, m.year, art)
-                    }
-                    withContext(Dispatchers.IO) { SongFixer.save(ctx, out) }
-                    applied += out.size
-                    Covers.clear()
-                    onChanged()
-                }
+                saveRows(list.orEmpty().filter { it.selected && it.match != null })
             }, enabled = chosen > 0, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Use ticked ($chosen)") }
         }
         if (checking.isNotEmpty() && !list.isNullOrEmpty()) Text(checking, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
         if (progress.isNotEmpty()) Text(progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
-        if (applied > 0) Text("Updated $applied songs.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
+        if (applied > 0) Text("Saved $applied song" + (if (applied == 1) "" else "s") + ". Your library updates when you leave this page.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
         when {
             list == null -> Text("Checking your songs…", Modifier.padding(16.dp))
             list.isEmpty() && checking.isNotEmpty() -> Text(checking, Modifier.padding(16.dp))
@@ -563,7 +574,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, onChanged: () -> Unit) 
                         SongFixer.skip(ctx, r.song.id, true); rows = rows?.minus(r)
                     }, onUndo = {
                         SongFixer.undo(ctx, r.song.id); Covers.clear(); onChanged()
-                    }, onFind = { scope.launch { lookUp(r) } })
+                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) })
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 }
             }
@@ -597,7 +608,7 @@ private suspend fun loadCover(ctx: Context, r: FixRow) {
 }
 
 @Composable
-private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit) {
+private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -644,8 +655,9 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                         Text("Match ${m.score}%$len", fontSize = 11.sp, color = dim)
                     }
                 }
-                Row(Modifier.padding(start = 40.dp)) {
-                    if ((r.matches?.size ?: 0) > 1) TextButton(onOther) { Text("Other match (${r.pick + 1}/${r.matches!!.size})", color = Accent) }
+                Row(Modifier.padding(start = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onSave, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Save") }
+                    if ((r.matches?.size ?: 0) > 1) TextButton(onOther) { Text("Other (${r.pick + 1}/${r.matches!!.size})", color = Accent) }
                     TextButton(onSearch) { Text("Search…", color = Accent) }
                     TextButton(onSkip) { Text("Skip", color = dim) }
                 }
