@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.music
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import android.content.Context
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -146,14 +155,18 @@ internal fun WavesTabHeader(pager: PagerState) {
 
 @Composable
 internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Page) -> Unit) {
+    val selecting = PlaylistSelect.active && pager.currentPage == 1
+    BackHandler(enabled = PlaylistSelect.active) { PlaylistSelect.clear() }
+    LaunchedEffect(pager.currentPage) { if (pager.currentPage != 1) PlaylistSelect.clear() }
     Column(Modifier.fillMaxSize()) {
-        WavesTopBar(open)
+        if (selecting) SelectHeader()
+        else WavesTopBar(open, extra = if (pager.currentPage == 1) ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
         WavesTabHeader(pager)
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0) { page ->
+            .background(MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
             when (page) {
                 0 -> FavouritesTab(lib, ui, open)
-                1 -> PlaylistsTab(lib, open)
+                1 -> PlaylistsTab(lib, ui, open)
                 2 -> TracksTab(lib, ui, open)
                 3 -> AlbumsTab(lib, open)
                 4 -> ArtistsTab(lib, open)
@@ -169,14 +182,15 @@ object Sorts {
     val tracks = listOf("Name", "Artist", "Album", "Date added")
     val albums = listOf("Name", "Artist", "Release", "Date added")
     val artists = listOf("Name", "Most tracks")
-    val trackSort = mutableIntStateOf(0); val albumSort = mutableIntStateOf(0); val artistSort = mutableIntStateOf(0)
+    val playlists = listOf("My order", "Name")
+    val trackSort = mutableIntStateOf(0); val albumSort = mutableIntStateOf(0); val artistSort = mutableIntStateOf(0); val playlistSort = mutableIntStateOf(0)
     fun load(ctx: Context) {
         val p = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
-        trackSort.intValue = p.getInt("sort_tracks", 0); albumSort.intValue = p.getInt("sort_albums", 0); artistSort.intValue = p.getInt("sort_artists", 0)
+        trackSort.intValue = p.getInt("sort_tracks", 0); albumSort.intValue = p.getInt("sort_albums", 0); artistSort.intValue = p.getInt("sort_artists", 0); playlistSort.intValue = p.getInt("sort_playlists", 0)
     }
     fun save(ctx: Context) {
         ctx.getSharedPreferences("music", Context.MODE_PRIVATE).edit().putInt("sort_tracks", trackSort.intValue)
-            .putInt("sort_albums", albumSort.intValue).putInt("sort_artists", artistSort.intValue).apply()
+            .putInt("sort_albums", albumSort.intValue).putInt("sort_artists", artistSort.intValue).putInt("sort_playlists", playlistSort.intValue).apply()
     }
 }
 
@@ -204,27 +218,43 @@ private fun letterOf(s: String): Char {
     return if (c in 'A'..'Z') c else '#'
 }
 
-/** A–Z down the right side: tap or slide to jump. */
+/** A–Z down the right side, Samsung style: tap or slide your finger to jump; a big letter shows where you are. */
 @Composable
 private fun AzBar(modifier: Modifier, keys: List<String>, jump: (Int) -> Unit) {
-    val letters = remember { listOf('#') + ('A'..'Z').toList() }
+    val letters = remember { ('A'..'Z').toList() + '#' }
     val firstIndex = remember(keys) {
         val m = HashMap<Char, Int>()
         keys.forEachIndexed { i, k -> m.putIfAbsent(letterOf(k), i) }
         m
     }
+    var shown by remember { mutableStateOf<Char?>(null) }
+    var bubbleY by remember { mutableFloatStateOf(0f) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     fun go(y: Float, h: Int) {
         val li = ((y / h) * letters.size).toInt().coerceIn(0, letters.size - 1)
-        // the letter, or the next one that has songs
+        bubbleY = y.coerceIn(0f, h.toFloat())
+        if (shown != letters[li]) { shown = letters[li]; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove) }
+        // the letter, or the next one that has something
         for (j in li until letters.size) firstIndex[letters[j]]?.let { jump(it); return }
+        for (j in li downTo 0) firstIndex[letters[j]]?.let { jump(it); return }
     }
-    BoxWithConstraints(modifier.width(22.dp).fillMaxHeight().padding(vertical = 8.dp)) {
-        val h = constraints.maxHeight
-        Column(Modifier.fillMaxSize()
-            .pointerInput(keys) { detectTapGestures { o -> go(o.y, h) } }
-            .pointerInput(keys) { detectVerticalDragGestures { change, _ -> go(change.position.y, h) } },
-            verticalArrangement = Arrangement.SpaceEvenly, horizontalAlignment = Alignment.CenterHorizontally) {
-            letters.forEach { Text(it.toString(), fontSize = 10.sp, color = dimText) }
+    Box(modifier.fillMaxHeight()) {
+        BoxWithConstraints(Modifier.padding(end = 4.dp, top = 6.dp, bottom = 6.dp).width(26.dp).fillMaxHeight()
+            .clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))) {
+            val h = constraints.maxHeight
+            Column(Modifier.fillMaxSize().padding(vertical = 6.dp)
+                .pointerInput(keys) { detectTapGestures(onPress = { o -> go(o.y, h); tryAwaitRelease(); shown = null }) }
+                .pointerInput(keys) { detectVerticalDragGestures(onDragEnd = { shown = null }, onDragCancel = { shown = null }) { change, _ -> change.consume(); go(change.position.y, h) } },
+                verticalArrangement = Arrangement.SpaceEvenly, horizontalAlignment = Alignment.CenterHorizontally) {
+                letters.forEach { Text(it.toString(), fontSize = 11.sp, color = if (it == shown) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)) }
+            }
+        }
+        val l = shown
+        if (l != null) {
+            val dy = with(androidx.compose.ui.platform.LocalDensity.current) { bubbleY.toDp() }
+            Box(Modifier.offset(x = (-76).dp, y = (dy - 10.dp).coerceAtLeast(0.dp)).size(60.dp).clip(CircleShape).background(Accent), contentAlignment = Alignment.Center) {
+                Text(l.toString(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -274,42 +304,180 @@ private fun SmartTile(label: String, count: Int, cover: Song?, onClick: () -> Un
     }
 }
 
+/** Long-press selection on the Playlists tab (test 243, like Samsung). */
+object PlaylistSelect {
+    val ids = mutableStateListOf<Long>()
+    var active by mutableStateOf(false)
+    var naming by mutableStateOf(false)
+    var total by mutableIntStateOf(0)
+    var allIds: List<Long> = emptyList()
+    fun clear() { ids.clear(); active = false }
+    fun toggle(id: Long) { if (id in ids) ids.remove(id) else ids.add(id); if (ids.isEmpty()) active = false }
+}
+
 @Composable
-private fun PlaylistsTab(lib: Library, open: (Page) -> Unit) {
+private fun SelectHeader() {
+    val all = PlaylistSelect.ids.size == PlaylistSelect.total && PlaylistSelect.total > 0
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 16.dp, top = 14.dp, bottom = 6.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.clip(RoundedCornerShape(8.dp)).clickable {
+            if (all) PlaylistSelect.clear() else { PlaylistSelect.ids.clear(); PlaylistSelect.ids.addAll(PlaylistSelect.allIds) }
+        }.padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            SelectCircle(all)
+            Text("All", fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text("${PlaylistSelect.ids.size} selected", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SelectCircle(on: Boolean) {
+    Box(Modifier.size(22.dp).clip(CircleShape).background(if (on) Accent else Color.Transparent)
+        .border(1.5.dp, if (on) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+        if (on) Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val v = PlayStats.version.value
     val added = remember(lib) { PlayStats.recentlyAdded(lib) }
     val most = remember(lib, v) { PlayStats.mostPlayed(lib) }
     val recent = remember(lib, v) { PlayStats.recentlyPlayed(lib) }
-    var naming by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            LazyRow(contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { SmartTile("Recently added", added.size, null) { open(Page.Smart("added")) } }
-                item { SmartTile("Most played", most.size, most.firstOrNull()) { open(Page.Smart("most")) } }
-                item { SmartTile("Recently played", recent.size, recent.firstOrNull()) { open(Page.Smart("recent")) } }
-            }
+    var renaming by remember { mutableStateOf<Playlist?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val by = Sorts.playlistSort.intValue
+    // the list as shown; while you drag a playlist it changes here first, then gets saved when you let go
+    val order = remember { mutableStateListOf<Playlist>() }
+    LaunchedEffect(Playlists.all.value, by) {
+        order.clear(); order.addAll(if (by == 1) Playlists.all.value.sortedBy { it.name.lowercase() } else Playlists.all.value)
+    }
+    PlaylistSelect.total = order.size; PlaylistSelect.allIds = order.map { it.id }
+    val state = rememberLazyListState()
+    var dragId by remember { mutableStateOf<Long?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var moved by remember { mutableStateOf(false) }
+    var releasedAt by remember { mutableLongStateOf(0L) }
+    val head = 3 // items above the playlists: smart tiles, buttons, sort bar
+
+    fun dragBy(d: Float) {
+        val id = dragId ?: return
+        dragOffset += d
+        val info = state.layoutInfo.visibleItemsInfo
+        val i = order.indexOfFirst { it.id == id }
+        val me = info.find { it.key == id } ?: return
+        // swap with the neighbour once the dragged row passes half of it
+        if (dragOffset > 0 && i < order.size - 1) {
+            val next = info.find { it.key == order[i + 1].id }
+            if (next != null && dragOffset > next.size / 2f) { order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true }
+        } else if (dragOffset < 0 && i > 0) {
+            val prev = info.find { it.key == order[i - 1].id }
+            if (prev != null && -dragOffset > prev.size / 2f) { order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true }
         }
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                TextButton({ naming = true }) { Icon(MusicIcons.plus, null, tint = Accent); Spacer(Modifier.width(4.dp)); Text("New playlist", color = Accent) }
-                TextButton({ open(Page.Import) }) { Text("⇩  Import playlists", color = Accent) }
+        // near the top or bottom edge: scroll so you can keep going
+        val y = me.offset + dragOffset
+        val edge = 120f
+        if (y + me.size > state.layoutInfo.viewportEndOffset - edge) scope.launch { state.scrollBy(18f) }
+        else if (y < state.layoutInfo.viewportStartOffset + edge && state.firstVisibleItemIndex > 0) scope.launch { state.scrollBy(-18f) }
+    }
+    fun endDrag() {
+        if (moved) { Playlists.reorder(ctx, order.map { it.id }); if (Sorts.playlistSort.intValue != 0) { Sorts.playlistSort.intValue = 0; Sorts.save(ctx) } }
+        dragId = null; dragOffset = 0f; moved = false
+        releasedAt = android.os.SystemClock.uptimeMillis()
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.weight(1f)) {
+            LazyColumn(Modifier.weight(1f), state = state) {
+                item {
+                    LazyRow(contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        item { SmartTile("Recently added", added.size, null) { open(Page.Smart("added")) } }
+                        item { SmartTile("Most played", most.size, most.firstOrNull()) { open(Page.Smart("most")) } }
+                        item { SmartTile("Recently played", recent.size, recent.firstOrNull()) { open(Page.Smart("recent")) } }
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                        TextButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.plus, null, tint = Accent); Spacer(Modifier.width(4.dp)); Text("New playlist", color = Accent) }
+                        TextButton({ open(Page.Import) }) { Text("⇩  Import playlists", color = Accent) }
+                    }
+                }
+                item { SortBar(Sorts.playlists, by, { Sorts.playlistSort.intValue = it; Sorts.save(ctx) }) }
+                items(order, key = { it.id }) { p ->
+                    val dragging = dragId == p.id
+                    val picked = p.id in PlaylistSelect.ids
+                    Row(Modifier.fillMaxWidth()
+                        .zIndex(if (dragging) 1f else 0f)
+                        .graphicsLayer { if (dragging) { translationY = dragOffset; scaleX = 1.03f; scaleY = 1.03f; shadowElevation = 16f } }
+                        .background(if (dragging) MaterialTheme.colorScheme.surfaceContainerHigh else if (picked) Accent.copy(alpha = 0.12f) else Color.Transparent)
+                        .pointerInput(p.id) {
+                            // hold: select it and show the options; keep holding and move: drag it up or down
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    if (!PlaylistSelect.active) { PlaylistSelect.active = true }
+                                    if (p.id !in PlaylistSelect.ids) PlaylistSelect.ids.add(p.id)
+                                    dragId = p.id; dragOffset = 0f; moved = false
+                                },
+                                onDragEnd = { endDrag() }, onDragCancel = { endDrag() },
+                            ) { change, d -> change.consume(); dragBy(d.y) }
+                        }
+                        .clickable {
+                            // letting go after a long press is not a tap
+                            if (dragId != null || android.os.SystemClock.uptimeMillis() - releasedAt < 400) return@clickable
+                            if (PlaylistSelect.active) PlaylistSelect.toggle(p.id) else open(Page.PlaylistPage(p.id))
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (PlaylistSelect.active) { SelectCircle(picked); Spacer(Modifier.width(12.dp)) }
+                        Cover(p.songs.firstNotNullOfOrNull { lib.byId[it] }, 160, Modifier.size(52.dp), corner = 10)
+                        Spacer(Modifier.width(14.dp))
+                        Text(p.name, Modifier.weight(1f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${p.songs.size} tracks", fontSize = 13.sp, color = dimText)
+                        if (PlaylistSelect.active) Text("  ≡", fontSize = 22.sp, color = dimText)
+                    }
+                }
             }
+            if (order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
         }
-        items(Playlists.all.value, key = { it.id }) { p ->
-            Row(Modifier.fillMaxWidth().clickable { open(Page.PlaylistPage(p.id)) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Cover(p.songs.firstNotNullOfOrNull { lib.byId[it] }, 160, Modifier.size(52.dp), corner = 10)
-                Spacer(Modifier.width(14.dp))
-                Text(p.name, Modifier.weight(1f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${p.songs.size} tracks", fontSize = 13.sp, color = dimText)
+        // Samsung's bottom bar while playlists are selected
+        if (PlaylistSelect.active) {
+            val chosen = order.filter { it.id in PlaylistSelect.ids }
+            val songs = chosen.flatMap { pl -> pl.songs.mapNotNull { lib.byId[it] } }
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                @Composable fun A(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+                    Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable(enabled = enabled) { onClick() }.padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        val c = if (enabled) MaterialTheme.colorScheme.onSurface else dimText.copy(alpha = 0.3f)
+                        Icon(icon, label, Modifier.size(24.dp), tint = c); Text(label, fontSize = 11.sp, color = c)
+                    }
+                }
+                A(MusicIcons.sPlay, "Play", songs.isNotEmpty()) { ui.play(songs, 0); PlaylistSelect.clear() }
+                A(MusicIcons.sPlus, "Add", songs.isNotEmpty()) { PlaylistPicker.songs.value = songs.map { it.id }; PlaylistSelect.clear() }
+                A(MusicIcons.share, "Share", songs.isNotEmpty()) { SongActions.share(ctx, songs) }
+                A(MusicIcons.delete, "Delete", chosen.isNotEmpty()) { confirmDelete = true }
+                A(MusicIcons.edit, "Rename", chosen.size == 1) { renaming = chosen.firstOrNull(); name = chosen.firstOrNull()?.name ?: "" }
             }
         }
     }
-    if (naming) AlertDialog(onDismissRequest = { naming = false }, title = { Text("New playlist") },
+    if (PlaylistSelect.naming) AlertDialog(onDismissRequest = { PlaylistSelect.naming = false }, title = { Text("New playlist") },
         text = { androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
-        confirmButton = { TextButton({ naming = false; Playlists.create(ctx, name); name = "" }) { Text("Create", color = Accent) } },
-        dismissButton = { TextButton({ naming = false }) { Text("Cancel") } })
+        confirmButton = { TextButton({ PlaylistSelect.naming = false; Playlists.create(ctx, name); name = "" }) { Text("Create", color = Accent) } },
+        dismissButton = { TextButton({ PlaylistSelect.naming = false }) { Text("Cancel") } })
+    renaming?.let { r ->
+        AlertDialog(onDismissRequest = { renaming = null }, title = { Text("Rename playlist") },
+            text = { androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
+            confirmButton = { TextButton({ Playlists.rename(ctx, r.id, name); renaming = null; name = ""; PlaylistSelect.clear() }) { Text("Rename", color = Accent) } },
+            dismissButton = { TextButton({ renaming = null }) { Text("Cancel") } })
+    }
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+        title = { Text(if (PlaylistSelect.ids.size == 1) "Delete this playlist?" else "Delete ${PlaylistSelect.ids.size} playlists?") },
+        text = { Text("Only the playlist goes. Your songs stay on your phone.") },
+        confirmButton = { TextButton({ PlaylistSelect.ids.toList().forEach { Playlists.delete(ctx, it) }; confirmDelete = false; PlaylistSelect.clear() }) { Text("Delete", color = Accent) } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
 }
 
 private fun sortedTracks(lib: Library, by: Int) = when (by) {
@@ -335,7 +503,7 @@ private fun TracksTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             LazyColumn(Modifier.weight(1f), state = state) {
                 itemsIndexed(songs, key = { _, s -> s.id }) { i, s -> SongRow(s, ui, lib, open) { ui.play(songs, i) } }
             }
-            if (by <= 2 && songs.size > 20) AzBar(Modifier, songs.map { when (by) { 1 -> it.artist; 2 -> it.album; else -> it.title } }) { scope.launch { state.scrollToItem(it) } }
+            if (by <= 2 && songs.size > 12) AzBar(Modifier, songs.map { when (by) { 1 -> it.artist; 2 -> it.album; else -> it.title } }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }
@@ -367,7 +535,7 @@ private fun AlbumsTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (by <= 1 && albums.size > 20) AzBar(Modifier, albums.map { if (by == 1) it.artist else it.title }) { scope.launch { grid.scrollToItem(it) } }
+            if (by <= 1 && albums.size > 12) AzBar(Modifier, albums.map { if (by == 1) it.artist else it.title }) { scope.launch { grid.scrollToItem(it) } }
         }
     }
 }
@@ -394,7 +562,7 @@ private fun ArtistsTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (by == 0 && artists.size > 20) AzBar(Modifier, artists.map { it.name }) { scope.launch { state.scrollToItem(it) } }
+            if (by == 0 && artists.size > 12) AzBar(Modifier, artists.map { it.name }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }
@@ -429,7 +597,7 @@ private fun FoldersTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (list.size > 20) AzBar(Modifier, list.map { it.name }) { scope.launch { state.scrollToItem(it) } }
+            if (list.size > 12) AzBar(Modifier, list.map { it.name }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }

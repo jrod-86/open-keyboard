@@ -675,7 +675,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
             Controls(ui) { hint = it }
         }
         // a little label that says what a button just did (Jarrod: "no one knows what they are")
-        AnimatedVisibility(hint != null, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (150 * k).dp),
+        AnimatedVisibility(hint != null, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (85 * k + 140).dp),
             enter = fadeIn(), exit = fadeOut()) {
             Text(shownHint, color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 8.dp))

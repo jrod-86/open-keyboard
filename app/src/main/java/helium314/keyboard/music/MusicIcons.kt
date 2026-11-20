@@ -54,6 +54,7 @@ object MusicIcons {
         fills.forEach { b.addPath(addPathNodes(it), fill = SolidColor(Color.Black)) }
         return b.build()
     }
+    val edit = line("edit", "M4,20H8L18.5,9.5L14.5,5.5L4,16Z", "M13,7L17,11")
     val sDown = line("s_down", "M5,9L12,16L19,9")
     val sSmartView = line("s_smartview", "M4.6,10.2A7.8,7.8 0,0 1,17.8 6.4", "M18.2,3.4V6.8H14.8", "M19.4,13.8A7.8,7.8 0,0 1,6.2 17.6", "M5.8,20.6V17.2H9.2",
         "M10.2,9L15.2,12L10.2,15Z")

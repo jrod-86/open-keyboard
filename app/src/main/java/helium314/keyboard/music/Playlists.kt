@@ -56,6 +56,11 @@ object Playlists {
         return p
     }
     fun rename(ctx: Context, id: Long, name: String) = write(ctx, all.value.map { if (it.id == id) it.copy(name = name.trim().ifBlank { it.name }) else it })
+    /** puts the playlists in the order you dragged them into (test 243) */
+    fun reorder(ctx: Context, ids: List<Long>) {
+        val byId = all.value.associateBy { it.id }
+        write(ctx, ids.mapNotNull { byId[it] } + all.value.filter { it.id !in ids })
+    }
     fun delete(ctx: Context, id: Long) = write(ctx, all.value.filter { it.id != id })
     fun add(ctx: Context, id: Long, songs: List<Long>) = write(ctx, all.value.map { if (it.id == id) it.copy(songs = it.songs + songs) else it })
     fun removeAt(ctx: Context, id: Long, index: Int) =
