@@ -590,7 +590,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // test 276 (Jarrod): the top part scrolls away with the songs, so the whole screen is for the list
+    val list = rows
+    LazyColumn(Modifier.fillMaxSize()) {
+        item { Column {
         Header(if (only != null) "Add artwork" else "Fix song info", onBack)
         // test 269 (Jarrod): the explanation folds away so the songs get the room; tap to read it
         var info by remember { mutableStateOf(false) }
@@ -640,7 +643,6 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             }
             Switch(ahead, { ahead = it; prefs.edit().putBoolean("fix_ahead", it).apply() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
         }
-        val list = rows
         if (only == null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (job?.isActive == true) OutlinedButton({ job?.cancel() }) { Text("Stop") }
             else Button({
@@ -659,15 +661,16 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         if (progress.isNotEmpty()) Text(progress, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp)
         if (writeNote.isNotEmpty()) Text(writeNote, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
         if (applied > 0) Text("Saved $applied song" + (if (applied == 1) "" else "s") + ". Your library updates when you leave this page.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
+        } }
         when {
-            list == null -> Text("Checking your songs…", Modifier.padding(16.dp))
-            list.isEmpty() && checking.isNotEmpty() -> Text(checking, Modifier.padding(16.dp))
-            list.isEmpty() && only != null -> Column(Modifier.padding(16.dp)) {
+            list == null -> item { Text("Checking your songs…", Modifier.padding(16.dp)) }
+            list.isEmpty() && checking.isNotEmpty() -> item { Text(checking, Modifier.padding(16.dp)) }
+            list.isEmpty() && only != null -> item { Column(Modifier.padding(16.dp)) {
                 Text(if (applied > 0) "Artwork saved. ✓" else "Song not found.", fontSize = 17.sp)
                 TextButton(onBack) { Text("Back to the song", color = Accent) }
-            }
-            list.isEmpty() -> Text("All your songs have their info and artwork. 🎉", Modifier.padding(16.dp))
-            else -> LazyColumn(Modifier.fillMaxSize()) {
+            } }
+            list.isEmpty() -> item { Text("All your songs have their info and artwork. 🎉", Modifier.padding(16.dp)) }
+            else -> {
                 items(list, key = { it.song.id }) { r ->
                     FixRowView(r, onOther = {
                         val n = r.matches?.size ?: 0
