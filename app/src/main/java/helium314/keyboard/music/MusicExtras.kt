@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,14 +83,19 @@ object MusicSettings {
     var cover by mutableIntStateOf(1)
     var background by mutableIntStateOf(1)
     var strength by mutableFloatStateOf(1f)
+    /** Customise (test 236, Jarrod): cover size (share of the screen width) and play button size */
+    var coverSize by mutableFloatStateOf(1f)
+    var buttonSize by mutableFloatStateOf(1f)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
         val p = prefs(ctx)
         effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg", 1); strength = p.getFloat("fx_strength", 1f)
+        coverSize = p.getFloat("look_cover", 1f); buttonSize = p.getFloat("look_buttons", 1f)
     }
     fun save(ctx: Context) {
-        prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg", background).putFloat("fx_strength", strength).apply()
+        prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg", background).putFloat("fx_strength", strength)
+            .putFloat("look_cover", coverSize).putFloat("look_buttons", buttonSize).apply()
     }
 }
 
@@ -215,6 +221,35 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
     fun changed() = MusicSettings.save(ctx)
     LazyColumn(Modifier.fillMaxSize()) {
         item { Header("Settings", onBack) }
+        item { VolumeSettings() }
+        item { Section("Customise") }
+        item {
+            Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Small", fontSize = 13.sp)
+                Slider(MusicSettings.coverSize, { MusicSettings.coverSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.5f..1.12f,
+                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                Text("Big", fontSize = 13.sp)
+            }
+            Text("Play buttons size", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Small", fontSize = 13.sp)
+                Slider(MusicSettings.buttonSize, { MusicSettings.buttonSize = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = 0.7f..1.5f,
+                    onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                Text("Big", fontSize = 13.sp)
+            }
+            // live preview of the two sizes
+            Row(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1C1C1E)).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                Box(Modifier.size((90 * MusicSettings.coverSize).dp).clip(RoundedCornerShape(8.dp)).background(Brush.linearGradient(listOf(Accent, Color(0xFF7C4DFF)))))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    listOf(MusicIcons.previous to 22, MusicIcons.play to 32, MusicIcons.next to 22).forEach { (ic, sz) ->
+                        Icon(ic, null, tint = Color.White, modifier = Modifier.padding(horizontal = 4.dp).size((sz * MusicSettings.buttonSize).dp))
+                    }
+                }
+            }
+            TextButton({ MusicSettings.coverSize = 1f; MusicSettings.buttonSize = 1f; changed() }, Modifier.padding(start = 8.dp)) { Text("Reset sizes", color = Accent) }
+        }
         item { Section("Beat effects") }
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -258,6 +293,54 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit) {
         }
         item {
             TextButton({ addHomeShortcut(ctx) }, Modifier.padding(8.dp)) { Text("Add Music to Home screen", color = Accent) }
+        }
+    }
+}
+
+/** "Even out volume" (test 236). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VolumeSettings() {
+    val ctx = LocalContext.current
+    val mode by Leveler.mode.collectAsState()
+    val level by Leveler.level.collectAsState()
+    val now by Leveler.now.collectAsState()
+    val scan by Leveler.scan.collectAsState()
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    Column {
+        Section("Volume")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Even out volume", fontSize = 17.sp)
+                Text("Plays every song at the same loudness, so a quiet song isn't followed by a blast.", fontSize = 13.sp, color = dim)
+            }
+            Switch(mode != Leveler.OFF, { Leveler.setMode(ctx, if (it) Leveler.SONG else Leveler.OFF) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+        if (mode != Leveler.OFF) {
+            Text("How loud", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Leveler.levels.forEachIndexed { i, (name, _) -> Chip(name, level == i) { Leveler.setLevel(ctx, i) } }
+            }
+            Text("Even out by", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("Song", mode == Leveler.SONG) { Leveler.setMode(ctx, Leveler.SONG) }
+                Chip("Album", mode == Leveler.ALBUM) { Leveler.setMode(ctx, Leveler.ALBUM) }
+            }
+            Text(if (mode == Leveler.ALBUM) "Album keeps quiet and loud songs of the same album as the artist made them." else "Song makes every song the same loudness.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = dim)
+            now?.let { (lufs, db) ->
+                Text((if (lufs.isNaN()) "This song: no change" else "This song: %.0f LUFS, %s%.1f dB".format(lufs, if (db >= 0) "+" else "", db)),
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 13.sp, color = Accent)
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    val sc = scan
+                    Text(if (sc != null) "Measuring ${sc.first} of ${sc.second}…" else "Songs are measured the first time they play.",
+                        fontSize = 13.sp, color = dim)
+                }
+                if (scan != null) TextButton({ Leveler.stopMeasuring() }) { Text("Stop", color = Accent) }
+                else TextButton({ Leveler.measureAll(ctx) }) { Text("Measure all now", color = Accent) }
+            }
         }
     }
 }

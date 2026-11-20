@@ -35,6 +35,7 @@ object MusicState {
  */
 class MusicService : MediaSessionService() {
     private var session: MediaSession? = null
+    private var leveler: LevelApplier? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
     private val saveTick = object : Runnable {
@@ -62,12 +63,14 @@ class MusicService : MediaSessionService() {
                 val id = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
                 val metas = tracks.groups.flatMap { g -> (0 until g.length).mapNotNull { g.getTrackFormat(it).metadata } }
                 Lyrics.fromMetadata(metas)?.let { MusicState.embeddedLyrics.value = id to it }
+                leveler?.let { it.tags = Leveler.tags(metas); it.apply() }
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (MusicState.sleepAt.value == -1L && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     player.pause(); MusicState.sleepAt.value = 0
                 }
                 save()
+                leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() }
         })
@@ -75,6 +78,9 @@ class MusicService : MediaSessionService() {
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player).setSessionActivity(open).build()
+        Leveler.load(this)
+        leveler = LevelApplier(this, player).also { player.addListener(it.listener) }
+        scope.launch { Library.load(this@MusicService); kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
         restore(player)
         handler.postDelayed(saveTick, 15_000)
         handler.post(sleepTick)
@@ -92,6 +98,7 @@ class MusicService : MediaSessionService() {
         save()
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
+        leveler?.release(); leveler = null
         session?.run { player.release(); release() }
         session = null
         super.onDestroy()

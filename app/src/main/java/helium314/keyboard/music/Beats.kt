@@ -13,7 +13,14 @@ import java.io.DataOutputStream
 import java.io.File
 import java.nio.ByteOrder
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.log10
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.tan
 import kotlin.math.sqrt
 
 /**
@@ -22,7 +29,7 @@ import kotlin.math.sqrt
  * Made once per song by reading the whole file (a couple of seconds), then kept, so effects line up exactly
  * with what you hear (no lag), whatever the speaker or Bluetooth delay.
  */
-class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray) {
+class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray, val lufs: Float = Float.NaN) {
     private fun at(arr: FloatArray, ms: Long): Float {
         if (arr.isEmpty()) return 0f
         val f = ms.toFloat() / STEP_MS
@@ -50,7 +57,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
 
     companion object {
         const val STEP_MS = 40
-        private const val VERSION = 2
+        private const val VERSION = 3
 
         private fun file(ctx: Context, id: Long) = File(ctx.cacheDir, "music/beats/$id.v$VERSION")
 
@@ -59,7 +66,8 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
             if (!f.exists()) return null
             DataInputStream(f.inputStream().buffered()).use { s ->
                 val n = s.readInt(); val lv = FloatArray(n) { s.readFloat() }; val bs = FloatArray(n) { s.readFloat() }
-                val b = s.readInt(); BeatMap(lv, bs, LongArray(b) { s.readLong() })
+                val b = s.readInt(); val beats = LongArray(b) { s.readLong() }
+                BeatMap(lv, bs, beats, s.readFloat())
             }
         }.getOrNull()
 
@@ -68,12 +76,20 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
             DataOutputStream(f.outputStream().buffered()).use { s ->
                 s.writeInt(m.level.size); m.level.forEach { s.writeFloat(it) }; m.bass.forEach { s.writeFloat(it) }
                 s.writeInt(m.beats.size); m.beats.forEach { s.writeLong(it) }
+                s.writeFloat(m.lufs)
             }
         }
 
         /** Reads the song and finds its beats. Slow-ish (1 to 3 seconds), so it runs in the background, once per song. */
-        suspend fun analyze(ctx: Context, song: Song): BeatMap? = withContext(Dispatchers.Default) {
-            cached(ctx, song.id)?.let { return@withContext it }
+        private val locks = HashMap<Long, Mutex>()
+
+        /** Works out the song's beats and loudness once (the player and the screen may both ask at the same time). */
+        suspend fun analyze(ctx: Context, song: Song): BeatMap? {
+            val lock = synchronized(locks) { locks.getOrPut(song.id) { Mutex() } }
+            return try { lock.withLock { cached(ctx, song.id) ?: decode(ctx, song) } } finally { synchronized(locks) { if (!lock.isLocked) locks.remove(song.id) } }
+        }
+
+        private suspend fun decode(ctx: Context, song: Song): BeatMap? = withContext(Dispatchers.Default) {
             val ex = MediaExtractor()
             var codec: MediaCodec? = null
             try {
@@ -93,6 +109,10 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
                 var sumSq = 0.0; var bassSq = 0.0; var count = 0
                 var lp1 = 0f; var lp2 = 0f
                 var alpha = 1f - exp(-2f * Math.PI.toFloat() * 150f / rate) // low-pass around 150 Hz: kick drum and bass
+                // loudness the way radio and streaming services measure it (EBU R128 / ITU-R BS.1770), per 100 ms slice
+                var kw = KWeight(rate, channels)
+                val loud = ArrayList<Double>(8000)
+                var kSum = 0.0; var kCount = 0; var kSlice = rate / 10
                 val info = MediaCodec.BufferInfo()
                 var inDone = false; var outDone = false
                 while (!outDone) {
@@ -112,14 +132,21 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
                         rate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE); channels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                         sliceLen = rate * STEP_MS / 1000
                         alpha = 1f - exp(-2f * Math.PI.toFloat() * 150f / rate)
+                        kw = KWeight(rate, channels); kSlice = rate / 10
                     } else if (o >= 0) {
                         if (info.size > 0) {
                             val sb = c.getOutputBuffer(o)!!.order(ByteOrder.nativeOrder()).asShortBuffer()
                             sb.position(info.offset / 2); sb.limit((info.offset + info.size) / 2)
                             while (sb.remaining() >= channels) {
                                 var v = 0f
-                                for (ch in 0 until channels) v += sb.get()
-                                v /= channels * 32768f
+                                for (ch in 0 until channels) {
+                                    val x = sb.get() / 32768f
+                                    v += x
+                                    val y = kw.step(ch, x)
+                                    kSum += y * y
+                                }
+                                v /= channels
+                                if (++kCount >= kSlice) { loud += kSum / kCount; kSum = 0.0; kCount = 0 }
                                 lp1 += alpha * (v - lp1); lp2 += alpha * (lp1 - lp2)
                                 sumSq += v * v; bassSq += lp2 * lp2; count++
                                 if (count >= sliceLen) {
@@ -132,7 +159,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outDone = true
                     }
                 }
-                val map = build(levels.toFloatArray(), basses.toFloatArray())
+                val map = build(levels.toFloatArray(), basses.toFloatArray(), integrated(loud))
                 save(ctx, song.id, map)
                 map
             } catch (e: Exception) {
@@ -143,7 +170,19 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
         }
 
         /** Scales loudness to 0..1 and picks beats: sudden jumps in bass (or overall loudness) above the recent average. */
-        private fun build(level: FloatArray, bass: FloatArray): BeatMap {
+        /** Gated loudness of the whole song in LUFS, from 100 ms slices (400 ms blocks, 75% overlap). */
+        fun integrated(slices: List<Double>): Float {
+            if (slices.size < 4) return Float.NaN
+            val blocks = DoubleArray(slices.size - 3) { i -> (slices[i] + slices[i + 1] + slices[i + 2] + slices[i + 3]) / 4 }
+            fun lufs(ms: Double) = -0.691 + 10 * log10(ms)
+            val abs = blocks.filter { it > 0 && lufs(it) > -70 }
+            if (abs.isEmpty()) return Float.NaN
+            val relGate = lufs(abs.average()) - 10
+            val gated = abs.filter { lufs(it) > relGate }
+            return lufs(gated.ifEmpty { abs }.average()).toFloat()
+        }
+
+        private fun build(level: FloatArray, bass: FloatArray, lufs: Float): BeatMap {
             fun norm(a: FloatArray): FloatArray {
                 if (a.isEmpty()) return a
                 val top = a.sorted()[(a.size * 0.98).toInt().coerceAtMost(a.size - 1)].coerceAtLeast(1e-4f)
@@ -165,7 +204,37 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray)
                 val mean = s / n
                 if (flux[i] > mean * 1.6f + 0.02f && i - last >= minGap) { beats += i.toLong() * STEP_MS; last = i }
             }
-            return BeatMap(lv, bs, beats.toLongArray())
+            return BeatMap(lv, bs, beats.toLongArray(), lufs)
         }
+    }
+}
+
+/** The "K" filter from ITU-R BS.1770 (a gentle treble lift plus a bass cut), worked out for any sample rate. */
+class KWeight(rate: Int, channels: Int) {
+    private val b = DoubleArray(6); private val a = DoubleArray(4) // two filters: b0 b1 b2, a1 a2
+    private val z = Array(channels) { DoubleArray(4) }
+    init {
+        val fs = rate.toDouble()
+        // stage 1: high shelf (same maths as libebur128; gives exactly the ITU numbers at 48 kHz)
+        run {
+            val g = 3.999843853973347; val q = 0.7071752369554196; val fc = 1681.974450955533
+            val k = tan(Math.PI * fc / fs); val vh = 10.0.pow(g / 20); val vb = vh.pow(0.4996667741545416)
+            val a0 = 1 + k / q + k * k
+            b[0] = (vh + vb * k / q + k * k) / a0; b[1] = 2 * (k * k - vh) / a0; b[2] = (vh - vb * k / q + k * k) / a0
+            a[0] = 2 * (k * k - 1) / a0; a[1] = (1 - k / q + k * k) / a0
+        }
+        // stage 2: high pass
+        run {
+            val q = 0.5003270373238773; val fc = 38.13547087602444
+            val k = tan(Math.PI * fc / fs); val a0 = 1 + k / q + k * k
+            b[3] = 1.0; b[4] = -2.0; b[5] = 1.0
+            a[2] = 2 * (k * k - 1) / a0; a[3] = (1 - k / q + k * k) / a0
+        }
+    }
+    fun step(ch: Int, x: Float): Double {
+        val s = z[ch]
+        val y1 = b[0] * x + s[0]; s[0] = b[1] * x - a[0] * y1 + s[1]; s[1] = b[2] * x - a[1] * y1
+        val y2 = b[3] * y1 + s[2]; s[2] = b[4] * y1 - a[2] * y2 + s[3]; s[3] = b[5] * y1 - a[3] * y2
+        return y2
     }
 }

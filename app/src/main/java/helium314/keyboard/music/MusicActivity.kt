@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -628,13 +629,15 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, onClose: () -> Unit, open: (
             when (mode) {
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.8f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         val liftPx = with(density) { 16.dp.toPx() }
-                        if (MusicSettings.effectsOn && MusicSettings.cover == 3) Box(Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                        // cover size from Settings > Customise (test 236); bigger than 100% uses the side margins
+                        val side = minOf(maxWidth * MusicSettings.coverSize, maxHeight)
+                        if (MusicSettings.effectsOn && MusicSettings.cover == 3) Box(Modifier.requiredSize(side).graphicsLayer {
                             val m = coverMove(beatMap, clock.ms)
                             alpha = m.glow; scaleX = scale * (1.04f + 0.14f * m.glow); scaleY = scaleX
                         }.blur(36.dp).clip(RoundedCornerShape(24.dp)).background(tint.copy(alpha = 1f)))
-                        Cover(song, 600, Modifier.fillMaxWidth().aspectRatio(1f).graphicsLayer {
+                        Cover(song, 600, Modifier.requiredSize(side).graphicsLayer {
                             val m = coverMove(beatMap, clock.ms)
                             scaleX = scale * m.scale; scaleY = scale * m.scale
                             rotationZ = m.rotation; translationY = m.lift * liftPx
@@ -781,9 +784,10 @@ private fun SeekBar(ui: PlayerUi) {
 @Composable
 private fun Controls(ui: PlayerUi) {
     Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-        Press(MusicIcons.previous, "Previous", 44) { ui.previous() }
-        Press(if (ui.playing) MusicIcons.pause else MusicIcons.play, "Play or pause", 64) { ui.toggle() }
-        Press(MusicIcons.next, "Next", 44) { ui.next() }
+        val k = MusicSettings.buttonSize
+        Press(MusicIcons.previous, "Previous", (44 * k).toInt()) { ui.previous() }
+        Press(if (ui.playing) MusicIcons.pause else MusicIcons.play, "Play or pause", (64 * k).toInt()) { ui.toggle() }
+        Press(MusicIcons.next, "Next", (44 * k).toInt()) { ui.next() }
     }
 }
 
