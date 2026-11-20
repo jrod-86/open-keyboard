@@ -317,6 +317,15 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" android:configChanges="orientation|screenSize"/>
 
         <!-- Broadcast receivers -->
+        <!-- Open Waves home screen icon (test 286): 1x1 widget, no badge -->
+        <receiver android:name="helium314.keyboard.music.OpenWavesIconWidget"
+            android:label="Open Waves"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/open_waves_icon_widget" />
+        </receiver>
         <receiver android:name="SystemBroadcastReceiver"
                 android:exported="true">
             <intent-filter>

@@ -281,20 +281,32 @@ object OpenWavesIcon {
     }
 
     /**
-     * Test 285 (Jarrod: nothing showed up on the home screen): the icon is taken away for a moment and put back, so the phone
-     * sees it as a newly installed app. Samsung's Home screen (with "Add new apps to Home screen" on, the usual setting)
-     * then puts it on the home screen by itself. Still no badge.
+     * Test 286 (Jarrod: still nothing on the home screen): Samsung only puts new icons on the home screen for newly installed
+     * apps, so Open Waves offers a 1x1 home screen widget that looks just like an app icon (no shortcut badge). Android
+     * asks "Add to Home screen?" and places it. The app icon in the apps list stays too.
      */
     fun add(ctx: Context) {
+        set(ctx, true)
         val app = ctx.applicationContext
-        val wasOn = isOn(app)
-        if (wasOn) set(app, false)
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            set(app, true)
-            android.widget.Toast.makeText(app, "Open Waves icon added. If it isn't on your Home screen in a few seconds: press and hold an empty " +
-                "spot on the Home screen, tap Settings, turn on \"Add new apps to Home screen\", then try again. It's also in your apps list.",
-                android.widget.Toast.LENGTH_LONG).show()
-        }, if (wasOn) 2500L else 0L)
+        val awm = android.appwidget.AppWidgetManager.getInstance(app)
+        val ok = android.os.Build.VERSION.SDK_INT >= 26 && runCatching {
+            awm.isRequestPinAppWidgetSupported &&
+                awm.requestPinAppWidget(android.content.ComponentName(app, OpenWavesIconWidget::class.java), null, null)
+        }.getOrDefault(false)
+        if (!ok) android.widget.Toast.makeText(app, "Open Waves is in your apps list. Press and hold it there, then drag it to your Home screen.",
+            android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
+/** The badge-free home screen icon: tap it to open Open Waves. */
+class OpenWavesIconWidget : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, awm: android.appwidget.AppWidgetManager, ids: IntArray) {
+        val open = android.app.PendingIntent.getActivity(ctx, 7,
+            android.content.Intent(ctx, MusicActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        val views = android.widget.RemoteViews(ctx.packageName, helium314.keyboard.latin.R.layout.open_waves_icon_widget)
+        views.setOnClickPendingIntent(helium314.keyboard.latin.R.id.ow_icon_root, open)
+        awm.updateAppWidget(ids, views)
     }
 }
 

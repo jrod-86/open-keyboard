@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Open Waves home screen icon (test 286): a 1x1 widget that looks like an app icon, so it has no shortcut badge -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ow_icon_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical">
+    <ImageView
+        android:layout_width="54dp"
+        android:layout_height="54dp"
+        android:src="@drawable/open_waves_widget_icon"
+        android:contentDescription="Open Waves" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Open Waves"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:shadowColor="#B3000000"
+        android:shadowDy="1"
+        android:shadowRadius="3" />
+</LinearLayout>
