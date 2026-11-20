@@ -119,10 +119,8 @@ internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: 
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         WavesLogo(playing, 34.dp)
         Spacer(Modifier.width(6.dp))
-        Text(buildAnnotatedString {
-            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append("Open ") }
-            withStyle(SpanStyle(brush = Brush.linearGradient(listOf(Color(0xFF1FE3FF), Color(0xFF8E5BFF))))) { append("Waves") }
-        }, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
+        // test 288 (Jarrod): a CapCut-style text effect every 60 s while music plays, 10 of them in turn
+        Box(Modifier.weight(1f)) { AnimatedTitle(playing) }
         extra?.invoke()
         IconButton({ open(Page.Search) }) { Icon(MusicIcons.search, "Search", Modifier.size(26.dp)) }
         Box {
