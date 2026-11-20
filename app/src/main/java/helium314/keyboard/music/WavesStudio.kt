@@ -30,6 +30,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,23 +100,38 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             }
         }
         item {
-            Text("Cover moves to the beat", Modifier.padding(start = 16.dp, top = 8.dp), fontWeight = FontWeight.SemiBold)
-            Text("The same moves as the big cover in Now Playing. Strength is set under Beat effects below.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
-            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.miniCover == i) { MusicSettings.miniCover = i; changed() } }
-            }
-        }
-        item {
             Text("Size", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
             SizeSlider(MusicSettings.miniSize, 1.0f..2.0f, { MusicSettings.miniSize = it }) { changed() }
             Text("Past about a third, the song name moves above the buttons and the artist below.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
         }
 
+        // ---------------- album cover ----------------
+        // test 265 (Jarrod): everything about the cover together, each beat move with a live preview under it
+        item { Section("Album cover") }
+        item {
+            Text("Album cover size (Now Playing)", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
+            SizeSlider(MusicSettings.coverSize, 0.35f..1.0f, { MusicSettings.coverSize = it }) { changed() }
+        }
+        item {
+            Text("Now Playing cover moves to the beat", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
+            if (!MusicSettings.effectsOn) Text("Turn on \"Move to the music\" under Beat effects to see it in Now Playing.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.cover == i) { MusicSettings.cover = i; changed() } }
+            }
+            MovePreview(MusicSettings.cover, round = false)
+        }
+        item {
+            Text("Mini player cover moves to the beat", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.miniCover == i) { MusicSettings.miniCover = i; changed() } }
+            }
+            MovePreview(MusicSettings.miniCover, round = true)
+            Text("Strength (how much it moves) is under Beat effects.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+        }
+
         // ---------------- now playing ----------------
         item { Section("Now Playing") }
         item {
-            Text("Album cover size", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
-            SizeSlider(MusicSettings.coverSize, 0.35f..1.0f, { MusicSettings.coverSize = it }) { changed() }
             Text("Play buttons size", Modifier.padding(start = 16.dp, top = 6.dp), fontWeight = FontWeight.SemiBold)
             SizeSlider(MusicSettings.buttonSize, 0.7f..1.5f, { MusicSettings.buttonSize = it }) { changed() }
             // live preview of the sizes
@@ -143,18 +162,12 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Move to the music", fontSize = 17.sp)
-                    Text("The Now Playing cover and background move to the beat. Open Waves works out the beats on your phone.", fontSize = 13.sp, color = dim)
+                    Text("The Now Playing background (and cover, see Album cover above) move to the beat. Open Waves works out the beats on your phone.", fontSize = 13.sp, color = dim)
                 }
                 Switch(MusicSettings.effectsOn, { MusicSettings.effectsOn = it; changed() }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
             }
         }
         if (MusicSettings.effectsOn) {
-            item {
-                Text("Album cover", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.SemiBold)
-                FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.cover == i) { MusicSettings.cover = i; changed() } }
-                }
-            }
             item {
                 Text("Background", Modifier.padding(start = 16.dp, top = 14.dp), fontWeight = FontWeight.SemiBold)
                 FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -164,7 +177,7 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
         }
         item {
             Text("Strength", Modifier.padding(start = 16.dp, top = 14.dp), fontWeight = FontWeight.SemiBold)
-            Text("How much things move, for Now Playing and the mini player.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+            Text("How much things move, for Now Playing and the mini player covers too.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
             Slider(MusicSettings.strength, { MusicSettings.strength = it }, Modifier.padding(horizontal = 16.dp), valueRange = 0.3f..1.8f,
                 onValueChangeFinished = { changed() }, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
         }
@@ -195,5 +208,38 @@ private fun MiniTile(name: String, on: Boolean, preview: @Composable () -> Unit,
             }
         }
         Text(name, Modifier.padding(top = 4.dp, bottom = 2.dp), fontSize = 12.sp, maxLines = 1)
+    }
+}
+
+/** A little cover moving to a pretend beat (2 beats a second), so you can see a move before you use it. */
+@Composable
+private fun MovePreview(effect: Int, round: Boolean) {
+    val anim = androidx.compose.animation.core.rememberInfiniteTransition(label = "beat")
+    val t by anim.animateFloat(0f, 8f, androidx.compose.animation.core.infiniteRepeatable(
+        androidx.compose.animation.core.tween(4000, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
+    val liftPx = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.toPx() }
+    val shape = if (round) CircleShape else RoundedCornerShape(10.dp)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1C1C1E))
+        .padding(vertical = 18.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        Box(contentAlignment = Alignment.Center) {
+            fun move(): CoverMove {
+                val beat = t.toInt()
+                val ph = t - beat
+                val k = MusicSettings.strength
+                val p = kotlin.math.exp(-ph * 6f) * k                                  // sharp hit, quick fade
+                val b = kotlin.math.exp(-ph * 3f) * (if (beat % 2 == 0) 1f else 0.6f) * k // softer, heavier on the 1
+                return moveFor(effect, p, b, beat)
+            }
+            if (effect == 3) Box(Modifier.size(70.dp).graphicsLayer {
+                val m = move(); alpha = m.glow; scaleX = 1.05f + 0.25f * m.glow; scaleY = scaleX
+            }.blur(16.dp).clip(shape).background(Accent))
+            Box(Modifier.size(70.dp).graphicsLayer {
+                val m = move(); scaleX = m.scale; scaleY = m.scale; rotationZ = m.rotation; translationY = m.lift * liftPx
+            }.clip(shape).background(Brush.linearGradient(listOf(Accent, Color(0xFF7C4DFF)))), contentAlignment = Alignment.Center) {
+                Icon(MusicIcons.play, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(26.dp))
+            }
+        }
+        Text(if (effect == 0) "Still" else MusicSettings.coverEffects.getOrElse(effect) { "" } + " preview",
+            Modifier.padding(start = 20.dp), fontSize = 13.sp, color = Color.White.copy(alpha = 0.7f))
     }
 }

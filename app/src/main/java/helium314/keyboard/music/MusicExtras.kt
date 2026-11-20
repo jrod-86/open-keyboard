@@ -152,13 +152,16 @@ data class CoverMove(val scale: Float, val rotation: Float, val lift: Float, val
 fun coverMove(map: BeatMap?, ms: Long, effect: Int = if (MusicSettings.effectsOn) MusicSettings.cover else 0): CoverMove {
     if (map == null || effect == 0) return CoverMove(1f, 0f, 0f, 0f)
     val k = MusicSettings.strength
-    val p = map.pulse(ms) * k
-    val b = map.bass(ms) * k
+    return moveFor(effect, map.pulse(ms) * k, map.bass(ms) * k, map.lastBeat(ms))
+}
+
+/** The cover move for an effect, from the beat's pulse [p] and bass [b] (already times strength). */
+fun moveFor(effect: Int, p: Float, b: Float, beat: Int): CoverMove {
     return when (effect) {
         1 -> CoverMove(1f + 0.055f * p + 0.025f * b, 0f, 0f, 0f)
         2 -> CoverMove(1f + 0.02f * p, 0f, -1f * p, 0f)
         3 -> CoverMove(1f + 0.015f * p, 0f, 0f, (0.35f * b + 0.65f * p).coerceIn(0f, 1f))
-        4 -> CoverMove(1f + 0.03f * p, (if (map.lastBeat(ms) % 2 == 0) 1 else -1) * 3.5f * p, 0f, 0f)
+        4 -> CoverMove(1f + 0.03f * p, (if (beat % 2 == 0) 1 else -1) * 3.5f * p, 0f, 0f)
         else -> CoverMove(1f, 0f, 0f, 0f)
     }
 }
