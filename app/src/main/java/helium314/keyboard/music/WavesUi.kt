@@ -517,12 +517,12 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
 }
 
-private fun sortedTracks(lib: Library, by: Int) = when (by) {
-    1 -> lib.songs.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
-    2 -> lib.songs.sortedWith(compareBy({ it.album.lowercase() }, { it.disc }, { it.track }))
-    3 -> lib.songs.sortedByDescending { it.dateAdded }
-    else -> lib.songs.sortedBy { it.title.lowercase() }
-}
+private fun sortedTracks(lib: Library, by: Int) = lib.uniqueSongs.let { songs -> when (by) {
+    1 -> songs.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+    2 -> songs.sortedWith(compareBy({ it.album.lowercase() }, { it.disc }, { it.track }))
+    3 -> songs.sortedByDescending { it.dateAdded }
+    else -> songs.sortedBy { it.title.lowercase() }
+} }
 
 @Composable
 private fun TracksTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {

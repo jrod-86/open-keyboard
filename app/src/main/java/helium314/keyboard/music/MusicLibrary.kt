@@ -80,6 +80,9 @@ class Library(val songs: List<Song>) {
         val ids = list.map { it.albumId }.toSet()
         Artist(name, realAlbums.filter { it.id in ids }.sortedByDescending { it.year }, list.sortedBy { it.title.lowercase() })
     }.sortedBy { it.name.lowercase() }
+    /** Test 283 (Jarrod): the same song saved in lots of playlist folders shows once in Tracks. Copies = same name
+     *  and main artist and within 3 seconds of each other in length; the best-tagged copy is the one shown. */
+    val uniqueSongs: List<Song> by lazy { AlbumRules.unique(songs) }
     val recentlyAdded: List<Album> = realAlbums.sortedByDescending { it.dateAdded }.take(20)
 
     fun search(q: String): Triple<List<Song>, List<Album>, List<Artist>> {
@@ -196,6 +199,31 @@ object AlbumRules {
      * compilations) or are mostly by one artist. A bunch of songs by lots of different artists with no album artist
      * is a folder or playlist, not an album.
      */
+    private val noise = Regex("(?i)\\s*[(\\[][^)\\]]*(official|video|audio|lyrics?|visuali[sz]er|hq|hd|4k)[^)\\]]*[)\\]]")
+    fun titleKey(t: String) = noise.replace(t, "").lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    fun unique(songs: List<Song>): List<Song> {
+        val out = ArrayList<Song>(songs.size)
+        songs.groupBy { titleKey(it.title).ifEmpty { "#" + it.id } + "|" + mainArtist(it.artist) }.values.forEach { same ->
+            if (same.size == 1) { out += same[0]; return@forEach }
+            // split into groups of about the same length (a live or extended version is a different song)
+            var group = ArrayList<Song>()
+            for (s in same.sortedBy { it.durationMs }) {
+                if (group.isNotEmpty() && s.durationMs - group.first().durationMs > 3000) { out += best(group); group = ArrayList() }
+                group += s
+            }
+            if (group.isNotEmpty()) out += best(group)
+        }
+        return out
+    }
+
+    /** the copy with the best info: fixed in Fix song info, has its own artwork, a real album artist and year, then the oldest */
+    private fun best(copies: List<Song>): Song = copies.sortedWith(compareByDescending<Song> { it.fixed }
+        .thenByDescending { it.artFile.isNotEmpty() }
+        .thenByDescending { it.albumArtist.isNotBlank() }
+        .thenByDescending { it.year > 0 }
+        .thenBy { it.dateAdded }).first()
+
     fun looksLikeAlbum(a: Album, playlistNames: Set<String> = emptySet()): Boolean {
         val songs = a.songs
         if (songs.isEmpty() || a.title.isBlank()) return false
