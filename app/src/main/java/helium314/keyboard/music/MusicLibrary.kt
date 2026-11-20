@@ -72,18 +72,22 @@ class Library(val songs: List<Song>) {
         val first = sorted.first()
         Album(id, first.album, first.albumArtist.ifBlank { first.artist }, sorted.maxOf { it.year }, sorted, sorted.maxOf { it.dateAdded })
     }.sortedBy { it.title.lowercase() }
+    /** Test 282 (Jarrod: playlists showing up as albums): only things that look like a real album. Songs with no album
+     *  tag get their folder's name as the album, so a folder (or playlist) of mixed songs turned into a fake "album".
+     *  Those stay in Tracks, Artists, Folders and Playlists, just not in Albums. */
+    val realAlbums: List<Album> = albums.filter { AlbumRules.looksLikeAlbum(it) }
     val artists: List<Artist> = songs.groupBy { (it.albumArtist.ifBlank { it.artist }) }.map { (name, list) ->
         val ids = list.map { it.albumId }.toSet()
-        Artist(name, albums.filter { it.id in ids }.sortedByDescending { it.year }, list.sortedBy { it.title.lowercase() })
+        Artist(name, realAlbums.filter { it.id in ids }.sortedByDescending { it.year }, list.sortedBy { it.title.lowercase() })
     }.sortedBy { it.name.lowercase() }
-    val recentlyAdded: List<Album> = albums.sortedByDescending { it.dateAdded }.take(20)
+    val recentlyAdded: List<Album> = realAlbums.sortedByDescending { it.dateAdded }.take(20)
 
     fun search(q: String): Triple<List<Song>, List<Album>, List<Artist>> {
         val s = q.trim().lowercase()
         if (s.isEmpty()) return Triple(emptyList(), emptyList(), emptyList())
         return Triple(
             songs.filter { it.title.lowercase().contains(s) || it.artist.lowercase().contains(s) }.take(50),
-            albums.filter { it.title.lowercase().contains(s) || it.artist.lowercase().contains(s) }.take(20),
+            realAlbums.filter { it.title.lowercase().contains(s) || it.artist.lowercase().contains(s) }.take(20),
             artists.filter { it.name.lowercase().contains(s) }.take(20),
         )
     }
@@ -179,4 +183,33 @@ object HiddenSongs {
     }
     fun hide(ctx: Context, song: Song) = write(ctx, all(ctx) + (song.id to "${song.title} · ${song.artist}"))
     fun show(ctx: Context, id: Long) = write(ctx, all(ctx) - id)
+}
+
+object AlbumRules {
+    /** "Calvin Harris feat. Rihanna" and "Calvin Harris & Dua Lipa" both count as Calvin Harris */
+    fun mainArtist(a: String): String = a.lowercase().split(" feat", " ft.", " ft ", " featuring ", " & ", ", ", " x ", " with ", " vs", ";", "/")
+        .first().trim()
+    private val playlistLike = Regex("(?i)\\b(playlist|mix|mixtape|favou?rites|my songs|liked songs|downloads?|top \\d+)\\b")
+
+    /**
+     * Looks like a real album when the songs share an album artist (any properly tagged album, even "Various Artists"
+     * compilations) or are mostly by one artist. A bunch of songs by lots of different artists with no album artist
+     * is a folder or playlist, not an album.
+     */
+    fun looksLikeAlbum(a: Album, playlistNames: Set<String> = emptySet()): Boolean {
+        val songs = a.songs
+        if (songs.isEmpty() || a.title.isBlank()) return false
+        val byArtist = songs.groupingBy { mainArtist(it.artist) }.eachCount()
+        val sameArtist = byArtist.values.max() >= songs.size * 0.7f || byArtist.size <= 1
+        if (a.title.trim().lowercase() in playlistNames && !sameArtist) return false
+        if (sameArtist) return true
+        // names like "#Chill~Ax" or "My Hits 2024" with lots of artists are playlists, even if a downloader gave them
+        // all one album artist
+        val fancy = a.title.trimStart().startsWith("#") || a.title.contains('~') || a.title.any { Character.isSurrogate(it) }
+        if (fancy || playlistLike.containsMatchIn(a.title)) return false
+        val albumArtists = songs.map { it.albumArtist.trim().lowercase() }.toSet()
+        if (albumArtists.size == 1 && albumArtists.first().isNotEmpty()) return true
+        // mixed artists, no album artist: only a real album if it has just two artists (a duet album)
+        return byArtist.size <= 2
+    }
 }

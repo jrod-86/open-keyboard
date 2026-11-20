@@ -556,7 +556,9 @@ private fun sortedAlbums(lib: Library, by: Int) = when (by) {
 private fun AlbumsTab(lib: Library, open: (Page) -> Unit) {
     val ctx = LocalContext.current
     val by = Sorts.albumSort.intValue
-    val albums = remember(lib, by) { sortedAlbums(lib, by) }
+    // test 282: real albums only, also leaving out anything named like one of your playlists with mixed artists
+    val names = Playlists.all.value.map { it.name.trim().lowercase() }.toSet()
+    val albums = remember(lib, by, names) { sortedAlbums(lib, by).filter { AlbumRules.looksLikeAlbum(it, names) } }
     val grid = TabScroll.albums
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
