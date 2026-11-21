@@ -82,24 +82,44 @@ class MoodScanService : Service() {
         val lib = Library.load(ctx)
         PlayStats.load(ctx)
         val songs = lib.uniqueSongs
-        val feels = Moods.feels(ctx)
-        // the songs you play most are ready first
-        val todo = songs.filter { it.id !in feels }.sortedByDescending { PlayStats.count(it.id) }
-        MoodScan.total.intValue = songs.size
-        MoodScan.done.intValue = songs.size - todo.size
-        for ((n, s) in todo.withIndex()) {
-            if (!scope.isActive) break
-            while (scope.isActive && MoodScan.chargingOnly(ctx) && !MoodScan.charging(ctx)) {
-                MoodScan.status.value = "Waiting for the phone to charge…"
-                note(MoodScan.status.value, MoodScan.done.intValue, MoodScan.total.intValue, force = true)
-                delay(15_000)
+        // test 305: each artist's genres from MusicBrainz, at the same time (one a second, saved after each)
+        val artists = scope.launch {
+            var fails = 0
+            for (a in ArtistTags.todo(ctx, songs)) {
+                if (!ArtistTags.lookUp(ctx, a)) { if (++fails >= 5) break; delay(20_000L * fails) } else fails = 0
             }
-            MoodScan.status.value = ""
-            runCatching { Moods.measure(ctx, s) }
-            MoodScan.done.intValue++
-            if (n % 10 == 9) MoodScan.version.intValue++
-            note("Listening to your songs for Moods", MoodScan.done.intValue, MoodScan.total.intValue)
+            MoodScan.version.intValue++
         }
+        // more than one pass: if the AI listener is downloaded while this runs, the next pass listens to the songs already measured
+        var pass = 0
+        while (scope.isActive && pass++ < 3) {
+            val ai = Clap.ready(ctx)
+            val feels = Moods.feels(ctx)
+            val heard = Clap.scores(ctx)
+            // the songs you play most are ready first
+            val todo = songs.filter { it.id !in feels || (ai && it.id !in heard) }.sortedByDescending { PlayStats.count(it.id) }
+            if (todo.isEmpty()) break
+            MoodScan.total.intValue = songs.size
+            MoodScan.done.intValue = songs.size - todo.size
+            for ((n, s) in todo.withIndex()) {
+                if (!scope.isActive) break
+                while (scope.isActive && MoodScan.chargingOnly(ctx) && !MoodScan.charging(ctx)) {
+                    MoodScan.status.value = "Waiting for the phone to charge…"
+                    note(MoodScan.status.value, MoodScan.done.intValue, MoodScan.total.intValue, force = true)
+                    delay(15_000)
+                }
+                MoodScan.status.value = ""
+                if (s.id !in Moods.feels(ctx)) runCatching { Moods.measure(ctx, s) }
+                if (ai && s.id !in Clap.scores(ctx)) runCatching { Clap.listen(ctx, s) }
+                MoodScan.done.intValue++
+                if (n % 10 == 9) MoodScan.version.intValue++
+                note(if (ai) "Listening to your songs with the AI listener" else "Listening to your songs for Moods", MoodScan.done.intValue, MoodScan.total.intValue)
+            }
+        }
+        Clap.close() // give the model's memory back
+        MoodScan.status.value = "Getting artist genres…"
+        artists.join()
+        MoodScan.status.value = ""
         MoodScan.version.intValue++
         stop()
     }
@@ -132,6 +152,7 @@ class MoodScanService : Service() {
     }
 
     override fun onDestroy() {
+        Clap.close()
         MoodScan.running.value = false
         scope.cancel()
         super.onDestroy()

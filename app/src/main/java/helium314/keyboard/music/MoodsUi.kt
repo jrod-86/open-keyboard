@@ -154,6 +154,8 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 }
             }
         }
+        // test 305: the AI music listener (download once)
+        if (view != null) item { AiListenerCard(running) }
         if (view != null && !ready) item {
             Text("Moods start working once 20 songs are ready (${placed.size} so far).", Modifier.padding(16.dp), color = dim, fontSize = 14.sp)
         }
@@ -265,6 +267,43 @@ private fun MoodTile(label: String, color: Long, sub: String?, modifier: Modifie
         Column {
             Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub != null) Text(sub, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun AiListenerCard(running: Boolean) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+    var ready by remember { mutableStateOf(Clap.ready(ctx)) }
+    val dl = Clap.downloading.value
+    if (Clap.broken) { Text(Clap.error.value, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent); return }
+    if (ready && !running) return // nothing to show once it's set up; the setup card shows songs still to do
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+        .background(Color(0xFF7C4DFF).copy(alpha = 0.12f)).padding(14.dp)) {
+        if (ready) {
+            Text("🧠 AI listener is on", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text("It's listening to each song too, so moods match much better.", fontSize = 12.sp, color = dim)
+            return@Column
+        }
+        Text("🧠 Make Moods smarter", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text("Download the AI music listener (${Clap.MB} MB, once). It hears each song on your phone and tells calm from heavy, " +
+            "happy from sad, much better than measuring alone. Nothing is sent anywhere.", fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+        if (dl != null) {
+            LinearProgressIndicator(progress = { dl }, Modifier.fillMaxWidth().padding(top = 8.dp), color = Accent)
+            Text("Downloading… ${(dl * 100).toInt()}%", fontSize = 12.sp, color = dim)
+        } else {
+            Clap.error.value.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp, color = Accent) }
+            Button({
+                scope.launch {
+                    if (Clap.download(ctx)) {
+                        ready = true
+                        MoodScan.version.intValue++
+                        if (!MoodScan.running.value) MoodScan.start(ctx) // listen to every song with it (a running scan picks it up by itself)
+                    }
+                }
+            }, Modifier.padding(top = 8.dp), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Download (${Clap.MB} MB)") }
         }
     }
 }

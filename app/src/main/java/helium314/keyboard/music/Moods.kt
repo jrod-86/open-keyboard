@@ -21,13 +21,21 @@ data class Feel(
 )
 
 /** A song placed on the mood map: every value 0..1, compared with the rest of your library. */
-class Placed(val song: Song, val energy: Float, val dance: Float, val bright: Float, val tempo: Float, val happy: Float, val group: String)
+class Placed(val song: Song, val energy: Float, val dance: Float, val bright: Float, val tempo: Float, val happy: Float, val group: String,
+    /** test 305: how well the AI listener thinks the song fits each mood (0..1 within your library, by mood id), null if not listened yet */
+    val ai: Map<String, Float>? = null,
+    /** test 305: genre and mood words from MusicBrainz (artist and song) */
+    val tags: String = "")
 
 /** One mood tile. Targets are 0..1 on the mood map; a negative number means "don't care". */
 class Mood(
     val id: String, val emoji: String, val name: String, val color: Long,
     val energy: Float, val dance: Float = -1f, val happy: Float = -1f, val tempo: Float = -1f, val bright: Float = -1f,
     val likes: Set<String> = emptySet(), val avoids: Set<String> = emptySet(),
+    /** test 305: when not empty, only songs of these genres (songs with no known genre still count) */
+    val only: Set<String> = emptySet(),
+    /** test 305: tag words that mean a song suits this mood */
+    val words: Set<String> = emptySet(),
 )
 
 /**
@@ -37,16 +45,26 @@ class Mood(
  */
 object Moods {
     val all = listOf(
-        Mood("relax", "😌", "Relax", 0xFF5B8DEF, energy = 0.2f, dance = 0.35f, bright = 0.35f, avoids = setOf("Metal", "Punk")),
-        Mood("sleep", "🌙", "Sleep", 0xFF3B3F8F, energy = 0.05f, dance = 0.15f, tempo = 0.15f, bright = 0.2f, avoids = setOf("Metal", "Punk", "Dance", "Hip-hop")),
-        Mood("focus", "🎯", "Focus", 0xFF2E9E8F, energy = 0.35f, dance = 0.45f, likes = setOf("Classical", "Ambient", "Electronic", "Jazz", "Soundtrack"), avoids = setOf("Metal", "Punk")),
-        Mood("happy", "☀️", "Happy", 0xFFF2A93B, energy = 0.65f, happy = 0.9f, dance = 0.65f, likes = setOf("Pop", "Reggae", "Funk & Soul", "Country"), avoids = setOf("Metal")),
-        Mood("workout", "💪", "Workout", 0xFFE0533D, energy = 0.92f, dance = 0.8f, tempo = 0.85f, likes = setOf("Hip-hop", "Dance", "Rock", "Electronic")),
-        Mood("party", "🎉", "Party", 0xFFD9459B, energy = 0.82f, dance = 0.95f, happy = 0.75f, likes = setOf("Dance", "Pop", "Hip-hop", "Latin", "Electronic"), avoids = setOf("Classical", "Ambient")),
-        Mood("rainy", "🌧️", "Rainy day", 0xFF5E7390, energy = 0.3f, happy = 0.2f, bright = 0.3f, likes = setOf("Indie", "Folk", "Jazz", "Blues", "R&B"), avoids = setOf("Dance", "Metal")),
-        Mood("romance", "❤️", "Romance", 0xFFC2416B, energy = 0.32f, dance = 0.45f, happy = 0.5f, likes = setOf("R&B", "Funk & Soul", "Jazz", "Pop"), avoids = setOf("Metal", "Punk")),
-        Mood("driving", "🚗", "Driving", 0xFF3A8F4E, energy = 0.7f, dance = 0.6f, tempo = 0.6f, likes = setOf("Rock", "Pop", "Country", "Electronic")),
-        Mood("heavy", "🤘", "Heavy", 0xFF4A4A4A, energy = 0.97f, bright = 0.85f, likes = setOf("Metal", "Rock", "Punk"), avoids = setOf("Classical", "Ambient", "R&B")),
+        Mood("relax", "😌", "Relax", 0xFF5B8DEF, energy = 0.2f, dance = 0.35f, bright = 0.35f, likes = setOf("Ambient", "Folk", "Jazz", "Indie", "R&B"),
+            avoids = setOf("Metal", "Punk", "Dance"), words = setOf("chill", "mellow", "relax", "calm", "soft", "chillout", "easy listening", "laid-back", "acoustic")),
+        Mood("sleep", "🌙", "Sleep", 0xFF3B3F8F, energy = 0.05f, dance = 0.15f, tempo = 0.15f, bright = 0.2f, likes = setOf("Ambient", "Classical"),
+            avoids = setOf("Metal", "Punk", "Dance", "Hip-hop", "Rock", "Latin", "Reggae"), words = setOf("sleep", "ambient", "lullaby", "calm", "peaceful", "meditation", "piano", "drone")),
+        Mood("focus", "🎯", "Focus", 0xFF2E9E8F, energy = 0.35f, dance = 0.45f, likes = setOf("Classical", "Ambient", "Electronic", "Jazz", "Soundtrack"),
+            avoids = setOf("Metal", "Punk"), words = setOf("instrumental", "study", "lo-fi", "lofi", "downtempo", "post-rock", "minimal", "ambient", "soundtrack")),
+        Mood("happy", "☀️", "Happy", 0xFFF2A93B, energy = 0.65f, happy = 0.9f, dance = 0.65f, likes = setOf("Pop", "Reggae", "Funk & Soul", "Country", "Latin"),
+            avoids = setOf("Metal", "Blues"), words = setOf("happy", "uplifting", "feel good", "cheerful", "fun", "summer", "sunshine", "upbeat")),
+        Mood("workout", "💪", "Workout", 0xFFE0533D, energy = 0.92f, dance = 0.8f, tempo = 0.85f, likes = setOf("Hip-hop", "Dance", "Rock", "Electronic", "Metal"),
+            avoids = setOf("Classical", "Ambient", "Folk", "Jazz", "Blues"), words = setOf("energetic", "workout", "aggressive", "hard", "edm", "trap", "pump")),
+        Mood("party", "🎉", "Party", 0xFFD9459B, energy = 0.82f, dance = 0.95f, happy = 0.75f, likes = setOf("Dance", "Pop", "Hip-hop", "Latin", "Electronic"),
+            avoids = setOf("Classical", "Ambient", "Folk", "Metal", "Blues", "Soundtrack"), words = setOf("party", "dance", "club", "disco", "house", "edm", "danceable")),
+        Mood("rainy", "🌧️", "Rainy day", 0xFF5E7390, energy = 0.3f, happy = 0.2f, bright = 0.3f, likes = setOf("Indie", "Folk", "Jazz", "Blues", "R&B"),
+            avoids = setOf("Dance", "Metal", "Latin", "Reggae"), words = setOf("sad", "melancholic", "melancholy", "depressing", "emotional", "heartbreak", "moody", "dark", "lonely")),
+        Mood("romance", "❤️", "Romance", 0xFFC2416B, energy = 0.32f, dance = 0.45f, happy = 0.5f, likes = setOf("R&B", "Funk & Soul", "Jazz", "Pop"),
+            avoids = setOf("Metal", "Punk", "Hip-hop"), words = setOf("romantic", "love", "sensual", "sexy", "ballad", "slow jam", "soul")),
+        Mood("driving", "🚗", "Driving", 0xFF3A8F4E, energy = 0.7f, dance = 0.6f, tempo = 0.6f, likes = setOf("Rock", "Pop", "Country", "Electronic", "Indie"),
+            avoids = setOf("Classical", "Ambient"), words = setOf("driving", "road", "classic rock", "upbeat", "anthem", "arena rock")),
+        Mood("heavy", "🤘", "Heavy", 0xFF4A4A4A, energy = 0.97f, bright = 0.85f, likes = setOf("Metal", "Rock", "Punk"), only = setOf("Metal", "Rock", "Punk"),
+            words = setOf("metal", "heavy", "hard rock", "aggressive", "thrash", "hardcore", "grunge", "screamo")),
     )
     fun byId(id: String) = all.firstOrNull { it.id == id }
 
@@ -154,7 +172,11 @@ object Moods {
             if (m.bright.isNaN()) 0.1f else m.bright, if (m.bassShare.isNaN()) 0.3f else m.bassShare, dyn)
     }
 
-    fun left(ctx: Context, songs: List<Song>): Int { val f = feels(ctx); return songs.count { it.id !in f } }
+    /** Songs still to get ready: not measured yet, or (with the AI listener downloaded) not listened to yet. */
+    fun left(ctx: Context, songs: List<Song>): Int {
+        val f = feels(ctx); val ai = if (Clap.ready(ctx)) Clap.scores(ctx) else null
+        return songs.count { it.id !in f || (ai != null && it.id !in ai) }
+    }
 
     // ---- genres for each song ----
     /** Genre group for each song: the file's genre, else MusicBrainz tags, else what the artist's other songs are. */
@@ -162,6 +184,7 @@ object Moods {
         val out = HashMap<Long, String>()
         for (s in songs) {
             var g = group(s.genre)
+            if (g.isEmpty()) g = group(ArtistTags.of(ctx, s.artist)) // test 305: the artist's genres
             if (g.isEmpty()) g = group(Popularity.known(ctx, s)?.genres ?: "")
             if (g.isNotEmpty()) out[s.id] = g
         }
@@ -170,6 +193,17 @@ object Moods {
         for ((_, list) in byArtist) {
             val common = list.mapNotNull { out[it.id] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: continue
             list.forEach { if (it.id !in out) out[it.id] = common }
+        }
+        // test 305: still nothing? the AI listener's best guess, when it's clearly one genre
+        val ai = Clap.scores(ctx)
+        if (ai.isNotEmpty()) {
+            val names = Clap.genreNames(ctx); val moods = Clap.moodNames(ctx).size
+            for (s in songs) {
+                if (s.id in out) continue
+                val a = ai[s.id]?.takeIf { it.size >= moods + names.size } ?: continue
+                val g = names.indices.sortedByDescending { a[moods + it] }
+                if (a[moods + g[0]] - a[moods + g[1]] >= 0.015f) out[s.id] = names[g[0]]
+            }
         }
         return out
     }
@@ -188,6 +222,18 @@ object Moods {
         }
         val rLoud = ranks { it.lufs }; val rDens = ranks { it.density }; val rBright = ranks { it.bright }; val rBpm = ranks { it.bpm }
         val rSteady = ranks { it.steady }; val rBass = ranks { it.bass }; val rDyn = ranks { it.dyn }
+        // test 305: the AI listener's mood scores, as 0..1 within your library. Each song's scores are taken relative to its
+        // own average first, so a song that is "close to everything" doesn't win every mood.
+        val clap = Clap.scores(ctx)
+        val moodIds = Clap.moodNames(ctx)
+        val aiRank = HashMap<Long, MutableMap<String, Float>>()
+        val listened = have.filter { (clap[it.id]?.size ?: 0) >= moodIds.size }
+        if (listened.size >= 10) for ((mi, mid) in moodIds.withIndex()) {
+            val rel = listened.associate { s -> val a = clap[s.id]!!; s.id to (a[mi] - (0 until moodIds.size).map { a[it] }.average().toFloat()) }
+            val sorted = listened.sortedBy { rel[it.id] }
+            val n = (sorted.size - 1).coerceAtLeast(1).toFloat()
+            sorted.forEachIndexed { i, s -> aiRank.getOrPut(s.id) { HashMap() }[mid] = i / n }
+        }
         return have.map { s ->
             val id = s.id
             val group = g[id] ?: ""
@@ -203,7 +249,8 @@ object Moods {
             var happy = 0.35f * rBpm[id]!! + 0.3f * rBright[id]!! + 0.35f * rSteady[id]!!
             if (group in setOf("Metal", "Blues")) happy *= 0.6f
             if (group in setOf("Pop", "Reggae", "Funk & Soul", "Latin")) happy = happy * 0.8f + 0.2f
-            Placed(s, energy.coerceIn(0f, 1f), dance.coerceIn(0f, 1f), rBright[id]!!, rBpm[id]!!, happy.coerceIn(0f, 1f), group)
+            val tags = (ArtistTags.of(ctx, s.artist) + "," + (Popularity.known(ctx, s)?.genres ?: "") + "," + s.genre).lowercase()
+            Placed(s, energy.coerceIn(0f, 1f), dance.coerceIn(0f, 1f), rBright[id]!!, rBpm[id]!!, happy.coerceIn(0f, 1f), group, aiRank[id], tags)
         }
     }
 
@@ -240,12 +287,24 @@ object Moods {
             if (mood.tempo >= 0) d += 0.8f * sq(p.tempo - (mood.tempo + ask.lift * 0.2f).coerceIn(0f, 1f))
             if (mood.bright >= 0) d += 0.6f * sq(p.bright - mood.bright)
             if (p.group in mood.likes) d -= 0.06f
-            if (p.group in mood.avoids && ask.genre.isEmpty()) d += 0.25f
+            // test 305: tag words like "chill" or "sad" from MusicBrainz
+            if (mood.words.any { w -> p.tags.contains(w) }) d -= 0.1f
+            // test 305: the AI listener counts the most when it has heard the song
+            p.ai?.get(mood.id)?.let { r -> d -= 1.1f * (r - 0.5f) }
             // sounds like a song you took out of this mood
             if (outPlaced.any { o -> sq(o.energy - p.energy) + sq(o.dance - p.dance) + sq(o.bright - p.bright) < 0.004f }) d += 0.12f
             return d + rand(seed, p.song.id) * 0.04f // a little variety each time
         }
-        var picked = pool.filter { it.song.id !in out }.sortedBy(::score).take(size)
+        // test 305 (Jarrod: random songs that don't fit): genre rules are firm now, the AI listener's worst fits are left out,
+        // and the mix is only as long as there are songs that really fit (it used to fill up to 50 with poor ones)
+        val allowed = pool.filter { p ->
+            p.song.id !in out &&
+                (ask.genre.isNotEmpty() || p.group.isEmpty() || (p.group !in mood.avoids && (mood.only.isEmpty() || p.group in mood.only))) &&
+                (p.ai?.get(mood.id)?.let { it >= 0.35f } ?: true)
+        }
+        val ranked = allowed.map { it to score(it) }.sortedBy { it.second }
+        val good = ranked.filter { it.second <= 0.32f }
+        var picked = (if (good.size >= 12) good else ranked.take(12)).take(size).map { it.first }
         if (ask.popularFirst) {
             val plays = picked.associate { it.song.id to (Popularity.known(ctx, it.song)?.plays ?: 0L) }
             return picked.sortedByDescending { plays[it.song.id] }.map { it.song }
