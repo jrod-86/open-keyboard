@@ -276,6 +276,15 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
                 Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth().clickable { open(Page.Car) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("🚗 Car mode", fontSize = 17.sp)
+                    Text("Huge buttons, swipe to skip, screen stays on", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+                Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+            }
+        }
         item { PlaybackSettings() }
         item { VolumeSettings() }
         item { BlendSettings() }

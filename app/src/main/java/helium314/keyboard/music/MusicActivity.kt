@@ -355,6 +355,7 @@ internal sealed class Page {
     data object Equaliser : Page()
     data class SmartListPage(val id: Long) : Page()
     data object Year : Page()
+    data object Car : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -441,6 +442,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Equaliser -> EqualiserPage(::back)
                     is Page.SmartListPage -> SmartListPage(p.id, library, ui, ::open, ::back)
                     Page.Year -> YearPage(library, ui, ::open, ::back)
+                    Page.Car -> CarModePage(ui, library, ::back)
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
@@ -897,6 +899,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
             }
             DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
+            DropdownMenuItem({ Text("🚗 Car mode") }, { menu = false; open(Page.Car) })
             DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })
             DropdownMenuItem({ Text("Settings") }, { menu = false; open(Page.Settings) })
         }

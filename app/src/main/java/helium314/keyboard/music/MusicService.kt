@@ -14,6 +14,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,8 +41,8 @@ object MusicState {
  * headphone and Bluetooth controls (Media3). Lives in its own ":music" process so it never slows typing.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class MusicService : MediaSessionService() {
-    private var session: MediaSession? = null
+class MusicService : MediaLibraryService() {
+    private var session: MediaLibraryService.MediaLibrarySession? = null
     private var leveler: LevelApplier? = null
     private var floating: FloatingPlayer? = null
     private var blender: Crossfader? = null
@@ -94,6 +95,7 @@ class MusicService : MediaSessionService() {
                 leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
                 counted = -1L; count()
                 Radio.topUp(this@MusicService, player)
+                PlayerWidget.update(this@MusicService)
                 // test 311: long tracks carry on from where you stopped
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
                     val id = mediaItem?.mediaId?.toLongOrNull()
@@ -101,18 +103,19 @@ class MusicService : MediaSessionService() {
                     if (spot > 0 && player.currentPosition < 5_000) player.seekTo(spot)
                 }
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count(); PlayerWidget.update(this@MusicService) }
         })
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         // test 266: real covers and shuffle/repeat buttons for the phone's own pop-up player (see SessionLook.kt)
-        val s = MediaSession.Builder(this, player).setSessionActivity(open)
+        // test 311: a library session, so Android Auto and the car can browse your music
+        val s = MediaLibraryService.MediaLibrarySession.Builder(this, player, CarLibrary.callback(this)).setSessionActivity(open)
             .setBitmapLoader(androidx.media3.session.CacheBitmapLoader(CoverBitmapLoader(this)))
-            .setCallback(SessionButtons.callback())
             .setMediaButtonPreferences(SessionButtons.buttons(player))
             .build()
         session = s
+        PlayerWidget.player = player; PlayerWidget.update(this)
         player.addListener(object : Player.Listener {
             // shuffle or repeat changed in the app: update the buttons on the phone's player too
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
@@ -133,7 +136,7 @@ class MusicService : MediaSessionService() {
         handler.post(sleepTick)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibraryService.MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // swiped away from recents while paused: stop completely; while playing: keep playing like Apple Music
@@ -164,6 +167,7 @@ class MusicService : MediaSessionService() {
         floating?.stop(); floating = null
         blender?.release(); blender = null
         leveler?.release(); leveler = null
+        PlayerWidget.player = null; PlayerWidget.update(this)
         session?.run { player.release(); release() }
         session = null
         super.onDestroy()
