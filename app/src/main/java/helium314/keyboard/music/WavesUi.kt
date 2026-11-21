@@ -469,6 +469,7 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         item { SmartTile("Recently added", added.size, null) { open(Page.Smart("added")) } }
                         item { SmartTile("Most played", most.size, most.firstOrNull()) { open(Page.Smart("most")) } }
                         item { SmartTile("Recently played", recent.size, recent.firstOrNull()) { open(Page.Smart("recent")) } }
+                        item { SmartTile("🎉 Your year", -1, null) { open(Page.Year) } }
                         // test 311: your own smart playlists (rules), and a tile to make one
                         items(SmartLists.all.value, key = { "smart" + it.id }) { s ->
                             val first = remember(s, lib) { SmartLists.songs(ctx, lib, s).firstOrNull() }

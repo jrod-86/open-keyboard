@@ -52,6 +52,8 @@ class MusicService : MediaSessionService() {
     }
     private val sleepTick = object : Runnable {
         override fun run() {
+            // test 311: ListenBrainz scrobbling counts listening time
+            session?.player?.let { p -> p.currentMediaItem?.mediaId?.toLongOrNull()?.let { id -> Scrobble.tick(this@MusicService, id, p.isPlaying, p.duration) } }
             val at = MusicState.sleepAt.value
             if (at > 0 && System.currentTimeMillis() >= at) {
                 session?.player?.pause(); MusicState.sleepAt.value = 0

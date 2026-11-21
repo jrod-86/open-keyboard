@@ -354,6 +354,7 @@ internal sealed class Page {
     /** test 311: Open Waves' own equaliser */
     data object Equaliser : Page()
     data class SmartListPage(val id: Long) : Page()
+    data object Year : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -439,6 +440,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Studio -> StudioPage(::open, ::back)
                     Page.Equaliser -> EqualiserPage(::back)
                     is Page.SmartListPage -> SmartListPage(p.id, library, ui, ::open, ::back)
+                    Page.Year -> YearPage(library, ui, ::open, ::back)
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)

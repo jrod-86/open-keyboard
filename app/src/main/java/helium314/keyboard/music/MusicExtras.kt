@@ -313,6 +313,8 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
         }
         item { HiddenSongsRow(onLibraryChanged) }
         item { PopularitySettings() }
+        item { ScrobbleSettings() }
+        item { BackupSettings() }
         item {
             TextButton({ addHomeShortcut(ctx) }, Modifier.padding(8.dp)) { Text("Add Music to Home screen", color = Accent) }
         }

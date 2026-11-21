@@ -37,6 +37,7 @@ object PlayStats {
     @Synchronized fun record(ctx: Context, id: Long) {
         load(ctx)
         counts[id] = (counts[id] ?: 0) + 1; last[id] = System.currentTimeMillis()
+        History.add(ctx, id)
         val j = JSONObject()
         counts.forEach { (k, n) -> j.put(k.toString(), JSONObject().put("n", n).put("t", last[k] ?: 0)) }
         runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText(j.toString()) }
