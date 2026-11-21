@@ -2,7 +2,6 @@
 package helium314.keyboard.music
 
 import android.content.Intent
-import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -126,9 +125,6 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             play(Moods.Ask(ask.mood, ask.lift, ask.genre.ifEmpty { MoodState.genre }, MoodState.popularFirst && MusicSettings.popularOn), ask.title.ifBlank { "Your mix" })
         }
     }
-    val speak = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { MoodState.feeling = it; feel() }
-    }
 
     LazyColumn(Modifier.fillMaxSize(), state = TabScroll.moods, contentPadding = PaddingValues(bottom = 16.dp)) {
         // 1. getting the songs ready
@@ -166,14 +162,9 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             item {
                 Text("How are you feeling?", Modifier.padding(start = 16.dp, top = 10.dp), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(MoodState.feeling, { MoodState.feeling = it }, Modifier.weight(1f), placeholder = { Text("e.g. tired, want something chill but not sleepy", fontSize = 13.sp) },
+                    OutlinedTextField(MoodState.feeling, { MoodState.feeling = it }, Modifier.weight(1f), placeholder = { Text("e.g. tired, want something chill but not sleepy (type or use the keyboard's mic)", fontSize = 13.sp) },
                         maxLines = 3, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { feel() }))
-                    IconButton({
-                        runCatching {
-                            speak.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                .putExtra(RecognizerIntent.EXTRA_PROMPT, "How are you feeling?"))
-                        }.onFailure { Toast.makeText(ctx, "Use the keyboard's mic to talk", Toast.LENGTH_SHORT).show() }
-                    }) { Text("🎤", fontSize = 22.sp) }
+                    Spacer(Modifier.width(8.dp))
                     Button({ feel() }, enabled = !thinking && MoodState.feeling.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Accent),
                         contentPadding = PaddingValues(horizontal = 14.dp)) { Text(if (thinking) "…" else "Go") }
                 }
