@@ -2,6 +2,7 @@
 package helium314.keyboard.music
 
 import android.net.Uri
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.withTimeoutOrNull
@@ -169,6 +170,7 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
     var dragH by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var target by remember { androidx.compose.runtime.mutableIntStateOf(-1) } // insert before this index of order (order.size = at the end)
     var listH by remember { androidx.compose.runtime.mutableIntStateOf(1) }
+    val statusBarPx = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(androidx.compose.ui.platform.LocalDensity.current).toFloat()
 
     fun save(list: List<PlEntry> = order) {
         val gone = p.songs.filter { it !in lib.byId }
@@ -205,8 +207,11 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             val dt = if (last == 0L) 16f else ((now - last) / 1e6f).coerceIn(1f, 50f)
             last = now
             val zone = maxOf(150f, listH * 0.15f)
+            // test 294 (Jarrod: up is slower than down): this page starts under the status bar, where your finger can't go,
+            // so the top area counts from below the status bar and reaches full speed sooner
+            val topEdge = statusBarPx
             val depth = when {
-                fingerY < zone -> -((zone - fingerY) / zone).coerceAtMost(1.5f)
+                fingerY < topEdge + zone -> -((topEdge + zone - fingerY) / (zone * 0.8f)).coerceIn(0f, 1.5f)
                 fingerY > listH - zone -> ((fingerY - (listH - zone)) / zone).coerceAtMost(1.5f)
                 else -> 0f
             }
