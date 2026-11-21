@@ -130,7 +130,18 @@ object Moods {
         return m.also { feels = it }
     }
 
+    // test 310 (Jarrod: the AI listener was slow): writing the whole file after every song got slow with thousands of
+    // songs, so it's written at most every 10 seconds, and once more when the scan stops ([flush])
+    @Volatile private var lastSave = 0L
+    @Volatile private var unsaved = false
     private fun save(ctx: Context) {
+        unsaved = true
+        if (System.currentTimeMillis() - lastSave < 10_000) return
+        flush(ctx)
+    }
+    @Synchronized fun flush(ctx: Context) {
+        if (!unsaved) return
+        unsaved = false; lastSave = System.currentTimeMillis()
         val m = feels ?: return
         val j = JSONObject()
         m.forEach { (id, f) -> j.put(id.toString(), JSONArray(listOf(f.bpm, f.lufs, f.density, f.steady, f.bright, f.bass, f.dyn).map { (it * 1000).toInt() / 1000.0 })) }

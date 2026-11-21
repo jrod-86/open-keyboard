@@ -113,7 +113,18 @@ object Clap {
         }
         return m.also { scores = it }
     }
+    // test 310 (Jarrod: the AI listener was slow): writing the whole file after every song got slow with thousands of
+    // songs, so it's written at most every 10 seconds, and once more when the scan stops ([flush])
+    @Volatile private var lastSave = 0L
+    @Volatile private var unsaved = false
     private fun save(ctx: Context) {
+        unsaved = true
+        if (System.currentTimeMillis() - lastSave < 10_000) return
+        flush(ctx)
+    }
+    @Synchronized fun flush(ctx: Context) {
+        if (!unsaved) return
+        unsaved = false; lastSave = System.currentTimeMillis()
         val m = scores ?: return
         val j = JSONObject()
         m.forEach { (id, a) -> j.put(id.toString(), JSONArray(a.map { (it * 10000).toInt() / 10000.0 })) }
@@ -194,6 +205,7 @@ object Clap {
             val startUs = startMs * 1000; val endUs = (startMs + lenMs) * 1000
             var buf = FloatArray((rate * lenMs / 1000).toInt() + 4096); var len = 0
             val info = MediaCodec.BufferInfo()
+            var pcm = ShortArray(16384)
             var inDone = false; var done = false; var spins = 0
             while (!done && spins < 20000) {
                 spins++
@@ -212,12 +224,16 @@ object Clap {
                     if (info.size > 0 && info.presentationTimeUs + 200_000 >= startUs) {
                         val sb = c.getOutputBuffer(o)!!.order(ByteOrder.nativeOrder()).asShortBuffer()
                         sb.position(info.offset / 2); sb.limit((info.offset + info.size) / 2)
+                        val nShorts = sb.remaining()
+                        if (pcm.size < nShorts) pcm = ShortArray(nShorts)
+                        sb.get(pcm, 0, nShorts)
+                        var p = 0
                         var t = info.presentationTimeUs
                         val step = 1_000_000.0 / rate
                         var k = 0
-                        while (sb.remaining() >= channels) {
+                        while (p + channels <= nShorts) {
                             var v = 0f
-                            for (ch in 0 until channels) v += sb.get() / 32768f
+                            for (ch in 0 until channels) v += pcm[p++] / 32768f
                             val at = t + (k++ * step).toLong()
                             if (at >= startUs && at < endUs) { if (len == buf.size) buf = buf.copyOf(len * 2); buf[len++] = v / channels }
                         }

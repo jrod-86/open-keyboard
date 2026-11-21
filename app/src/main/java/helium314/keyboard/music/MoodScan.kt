@@ -80,9 +80,24 @@ class MoodScanService : Service() {
         return START_NOT_STICKY
     }
 
+    // test 310 (Jarrod: a third done in 3 to 4 hours): keep the phone's processor awake while it works, or it mostly
+    // sleeps with the screen off. Renewed as it goes, so it can never stay on by mistake.
+    private var wake: android.os.PowerManager.WakeLock? = null
+    private fun awake() {
+        val w = wake ?: (getSystemService(POWER_SERVICE) as android.os.PowerManager)
+            .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "OpenWaves:moods").also { it.setReferenceCounted(false); wake = it }
+        w.acquire(10 * 60_000L)
+    }
+    private fun sleep() { runCatching { wake?.takeIf { it.isHeld }?.release() } }
+
     private suspend fun run() {
+        try { work() } finally { Moods.flush(this); Clap.flush(this); sleep() }
+    }
+
+    private suspend fun work() {
         val ctx = this
         MoodScan.running.value = true
+        awake()
         val lib = Library.load(ctx)
         PlayStats.load(ctx)
         val songs = lib.uniqueSongs
@@ -108,20 +123,31 @@ class MoodScanService : Service() {
             MoodScan.aiOn.value = ai
             MoodScan.measured.intValue = songs.count { it.id in feels }
             MoodScan.heard.intValue = songs.count { it.id in heard }
-            for ((n, s) in todo.withIndex()) {
-                if (!scope.isActive) break
-                while (scope.isActive && MoodScan.chargingOnly(ctx) && !MoodScan.charging(ctx)) {
-                    MoodScan.status.value = "Waiting for the phone to charge…"
-                    note(MoodScan.status.value, MoodScan.done.intValue, MoodScan.total.intValue, force = true)
-                    delay(15_000)
+            // test 310: two songs at a time (one is being read while the other is listened to), so the phone's cores share the work
+            val queue = java.util.concurrent.ConcurrentLinkedQueue(todo)
+            val workers = List(2) {
+                scope.launch(Dispatchers.Default) {
+                    while (isActive) {
+                        val s = queue.poll() ?: break
+                        while (isActive && MoodScan.chargingOnly(ctx) && !MoodScan.charging(ctx)) {
+                            MoodScan.status.value = "Waiting for the phone to charge…"
+                            kotlinx.coroutines.withContext(Dispatchers.Main) { note(MoodScan.status.value, MoodScan.done.intValue, MoodScan.total.intValue, force = true) }
+                            delay(15_000)
+                        }
+                        MoodScan.status.value = ""
+                        awake()
+                        if (s.id !in Moods.feels(ctx)) { runCatching { Moods.measure(ctx, s) }; kotlinx.coroutines.withContext(Dispatchers.Main) { MoodScan.measured.intValue++ } }
+                        if (ai && s.id !in Clap.scores(ctx)) { runCatching { Clap.listen(ctx, s) }; kotlinx.coroutines.withContext(Dispatchers.Main) { MoodScan.heard.intValue++ } }
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            MoodScan.done.intValue++
+                            if (MoodScan.done.intValue % 10 == 0) MoodScan.version.intValue++
+                            note(if (ai) "Listening to your songs with the AI listener" else "Listening to your songs for Moods", MoodScan.done.intValue, MoodScan.total.intValue)
+                        }
+                    }
                 }
-                MoodScan.status.value = ""
-                if (s.id !in Moods.feels(ctx)) { runCatching { Moods.measure(ctx, s) }; MoodScan.measured.intValue++ }
-                if (ai && s.id !in Clap.scores(ctx)) { runCatching { Clap.listen(ctx, s) }; MoodScan.heard.intValue++ }
-                MoodScan.done.intValue++
-                if (n % 10 == 9) MoodScan.version.intValue++
-                note(if (ai) "Listening to your songs with the AI listener" else "Listening to your songs for Moods", MoodScan.done.intValue, MoodScan.total.intValue)
             }
+            workers.forEach { it.join() }
+            Moods.flush(ctx); Clap.flush(ctx)
         }
         Clap.close() // give the model's memory back
         MoodScan.status.value = "Getting artist genres…"

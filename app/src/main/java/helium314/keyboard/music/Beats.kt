@@ -123,6 +123,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                 val loud = ArrayList<Double>(8000)
                 var kSum = 0.0; var kCount = 0; var kSlice = rate / 10
                 val info = MediaCodec.BufferInfo()
+                var pcm = ShortArray(16384)
                 var inDone = false; var outDone = false
                 while (!outDone) {
                     coroutineContext.ensureActive()
@@ -147,10 +148,16 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                         if (info.size > 0) {
                             val sb = c.getOutputBuffer(o)!!.order(ByteOrder.nativeOrder()).asShortBuffer()
                             sb.position(info.offset / 2); sb.limit((info.offset + info.size) / 2)
-                            while (sb.remaining() >= channels) {
+                            // test 310 (Jarrod: Moods took hours): copy the whole block out at once; reading the
+                            // buffer one sample at a time was most of the time
+                            val nShorts = sb.remaining()
+                            if (pcm.size < nShorts) pcm = ShortArray(nShorts)
+                            sb.get(pcm, 0, nShorts)
+                            var p = 0
+                            while (p + channels <= nShorts) {
                                 var v = 0f
                                 for (ch in 0 until channels) {
-                                    val x = sb.get() / 32768f
+                                    val x = pcm[p++] / 32768f
                                     v += x
                                     val y = kw.step(ch, x)
                                     kSum += y * y
