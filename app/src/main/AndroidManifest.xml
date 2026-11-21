@@ -19,9 +19,16 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Open Keyboard Music (test 229): see and play the music on the phone -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- Open Waves (test 256): lets "write fixes into the music file" skip Android's question each time, if you allow it -->
+    <uses-permission android:name="android.permission.MANAGE_MEDIA" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Open Waves (test 297): the Popular tab looks songs up in the background, with a Pause button in the notification -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Open Waves (test 277): the floating player over other apps, only if you turn it on and allow it -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
@@ -176,8 +183,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
         <!-- Open Keyboard Music (test 229): own process so playing music never slows typing.
              Exported only so a home screen shortcut can open it. -->
         <activity android:name="helium314.keyboard.music.MusicActivity"
-            android:label="Music"
-            android:icon="@drawable/ic_music_shortcut"
+            android:label="Open Waves"
+            android:icon="@mipmap/ic_open_waves"
+            android:roundIcon="@mipmap/ic_open_waves"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:taskAffinity="io.github.jrod86.openkeyboard.music"
@@ -185,14 +193,48 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="true" />
+        <!-- Open Waves' own app icon (test 245). Off until Jarrod picks "Add to Home screen": a real app icon has no
+             shortcut badge, unlike a pinned shortcut. -->
+        <activity-alias android:name="helium314.keyboard.music.OpenWavesLauncher"
+            android:targetActivity="helium314.keyboard.music.MusicActivity"
+            android:label="Open Waves"
+            android:icon="@mipmap/ic_open_waves"
+            android:roundIcon="@mipmap/ic_open_waves"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <service android:name="helium314.keyboard.music.MoodScanService"
+            android:process=":music"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+        <service android:name="helium314.keyboard.music.PopScanService"
+            android:process=":music"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
         <service android:name="helium314.keyboard.music.MusicService"
             android:process=":music"
             android:foregroundServiceType="mediaPlayback"
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <!-- test 311: Android Auto and other car screens can browse and play your music -->
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+        <!-- test 311: the player widget's buttons (and headset buttons while stopped) reach the player through this -->
+        <receiver android:name="androidx.media3.session.MediaButtonReceiver"
+            android:process=":music"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
         <!-- Open Keyboard Converter (test 233): own process so converting never slows typing.
              Exported so a home screen shortcut can open it and other apps can Share files to it. -->
         <activity android:name="helium314.keyboard.convert.ConverterActivity"
@@ -297,6 +339,25 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" android:configChanges="orientation|screenSize"/>
 
         <!-- Broadcast receivers -->
+        <!-- Open Waves player widget (test 311) -->
+        <receiver android:name="helium314.keyboard.music.PlayerWidget"
+            android:label="Open Waves player"
+            android:process=":music"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/ow_player_widget_info" />
+        </receiver>
+        <!-- Open Waves home screen icon (test 286): 1x1 widget, no badge -->
+        <receiver android:name="helium314.keyboard.music.OpenWavesIconWidget"
+            android:label="Open Waves"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/open_waves_icon_widget" />
+        </receiver>
         <receiver android:name="SystemBroadcastReceiver"
                 android:exported="true">
             <intent-filter>

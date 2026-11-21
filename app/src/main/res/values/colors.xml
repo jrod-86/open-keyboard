@@ -73,4 +73,5 @@
 
     <!-- Scrollbar color -->
     <color name="toolbar_scrollbar">#66808080</color>
+    <color name="open_waves_icon_bg">#01011A</color>
 </resources>

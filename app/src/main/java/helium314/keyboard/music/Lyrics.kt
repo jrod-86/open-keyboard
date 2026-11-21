@@ -15,7 +15,35 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** One lyric line. [timeMs] is -1 for plain (not timed) lyrics. */
-data class LyricLine(val timeMs: Long, val text: String)
+data class LyricLine(val timeMs: Long, val text: String, val marks: List<Pair<Int, Long>> = emptyList()) {
+    /**
+     * Test 308 (Jarrod: karaoke): how much of the line has been sung at [posMs], in characters (can be fractional).
+     * Uses the word times when the lyrics have them (enhanced LRC); otherwise spreads the line over its time, letters
+     * weighing more than spaces, and caps that time so a long gap after the line doesn't make it crawl.
+     */
+    fun sungChars(posMs: Long, nextMs: Long): Float {
+        if (timeMs < 0 || text.isEmpty()) return 0f
+        if (marks.size >= 2) {
+            if (posMs <= marks.first().second) return marks.first().first.toFloat()
+            // the last word ends at the next line, or after a normal word's length
+            val (lc, lt) = marks.last()
+            val end = (text.length - lc) * 90L + 300
+            val all = if (lc < text.length) marks + (text.length to (if (nextMs > lt) minOf(nextMs - 100, lt + end) else lt + end)) else marks
+            for (k in 0 until all.size - 1) {
+                val (c0, t0) = all[k]; val (c1, t1) = all[k + 1]
+                if (posMs < t1) return c0 + (c1 - c0) * ((posMs - t0).toFloat() / maxOf(1L, t1 - t0))
+            }
+            return text.length.toFloat()
+        }
+        val weights = text.map { if (it == ' ') 0.4f else 1f }
+        val total = weights.sum()
+        val natural = (total * 95f + 600f).toLong()
+        val dur = minOf(if (nextMs > timeMs) nextMs - timeMs - 150 else natural, natural).coerceAtLeast(400)
+        var want = ((posMs - timeMs).toFloat() / dur).coerceIn(0f, 1f) * total
+        for ((i, w) in weights.withIndex()) { if (want <= w) return i + want / w; want -= w }
+        return text.length.toFloat()
+    }
+}
 
 data class Lyrics(val lines: List<LyricLine>, val source: String) {
     val synced: Boolean get() = lines.isNotEmpty() && lines.first().timeMs >= 0
@@ -47,12 +75,32 @@ data class Lyrics(val lines: List<LyricLine>, val source: String) {
                 if (metaTag.matches(line)) return@forEach
                 val tags = timeTag.findAll(line).toList()
                 if (tags.isNotEmpty() && line.startsWith("[")) {
-                    val words = line.substring(tags.last().range.last + 1).replace(wordTag, "").trim()
+                    val rest = line.substring(tags.last().range.last + 1)
+                    // word times (<mm:ss.xx> before each word) are kept as character positions for the karaoke sweep
+                    val sb = StringBuilder(); val marks = ArrayList<Pair<Int, Long>>()
+                    var at = 0
+                    for (w in wordTag.findAll(rest)) {
+                        sb.append(rest, at, w.range.first); at = w.range.last + 1
+                        val g = Regex("""<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>""").find(w.value)!!.groupValues
+                        val fr = g[3]; val fms = when (fr.length) { 0 -> 0L; 1 -> fr.toLong() * 100; 2 -> fr.toLong() * 10; else -> fr.take(3).toLong() }
+                        marks += sb.length to (g[1].toLong() * 60_000 + g[2].toLong() * 1000 + fms - offset)
+                    }
+                    sb.append(rest.substring(at))
+                    val lead = sb.length - sb.trimStart().length
+                    val words = sb.toString().trim()
+                    val wordMarks = marks.map { (c, t) -> (c - lead).coerceIn(0, words.length) to t }
                     tags.forEach { m ->
                         val min = m.groupValues[1].toLong(); val sec = m.groupValues[2].toLong()
                         val frac = m.groupValues[3]
                         val ms = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                        timed += LyricLine((min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0), words)
+                        val start = (min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0)
+                        // a repeated line ([00:10][01:30]words) gets its word times moved along with it
+                        val shift = if (wordMarks.isNotEmpty()) start - (tags.first().let { f ->
+                            val fr = f.groupValues[3]
+                            f.groupValues[1].toLong() * 60_000 + f.groupValues[2].toLong() * 1000 +
+                                when (fr.length) { 0 -> 0L; 1 -> fr.toLong() * 100; 2 -> fr.toLong() * 10; else -> fr.take(3).toLong() } - offset
+                        }.coerceAtLeast(0)) else 0L
+                        timed += LyricLine(start, words, wordMarks.map { (c, t) -> c to t + shift })
                     }
                 } else plain += LyricLine(-1, line)
             }
@@ -107,6 +155,34 @@ data class Lyrics(val lines: List<LyricLine>, val source: String) {
          * Looks the song up on LRCLIB (free, open lyrics site). Only runs when you tap "Find lyrics online".
          * Sends only the song name, artist, album and length.
          */
+        /** Test 308: LRCLIB often has a timed copy of a song under a slightly different name or album; its search finds it. */
+        private fun searchSynced(song: Song): String? {
+            fun q(s: String) = URLEncoder.encode(s, "UTF-8")
+            val body = runCatching {
+                val c = URL("https://lrclib.net/api/search?track_name=${q(song.title)}&artist_name=${q(song.artist)}").openConnection() as HttpURLConnection
+                c.connectTimeout = 8000; c.readTimeout = 10000
+                c.setRequestProperty("User-Agent", "OpenKeyboard-Music/1.0")
+                try { if (c.responseCode == 200) c.inputStream.bufferedReader().readText() else null } finally { c.disconnect() }
+            }.getOrNull() ?: return null
+            val arr = runCatching { org.json.JSONArray(body) }.getOrNull() ?: return null
+            val secs = song.durationMs / 1000.0
+            var best: String? = null; var bestGap = Double.MAX_VALUE
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val synced = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                val gap = if (secs > 0 && o.has("duration")) kotlin.math.abs(o.optDouble("duration", secs) - secs) else 0.0
+                if (gap < bestGap && gap <= 8) { best = synced; bestGap = gap }
+            }
+            return best
+        }
+
+        /** Timed lyrics for a song that only has plain ones. */
+        suspend fun findTimed(ctx: Context, song: Song): Lyrics? = withContext(Dispatchers.IO) {
+            val text = searchSynced(song) ?: return@withContext null
+            save(ctx, song, text)
+            parse(text, "LRCLIB")
+        }
+
         suspend fun online(ctx: Context, song: Song): Lyrics? = withContext(Dispatchers.IO) {
             fun q(s: String) = URLEncoder.encode(s, "UTF-8")
             val urls = listOf(
@@ -122,6 +198,7 @@ data class Lyrics(val lines: List<LyricLine>, val source: String) {
                 }.getOrNull() ?: continue
                 val j = runCatching { JSONObject(body) }.getOrNull() ?: continue
                 val text = j.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
+                    ?: searchSynced(song)
                     ?: j.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" } ?: continue
                 save(ctx, song, text)
                 return@withContext parse(text, "LRCLIB")

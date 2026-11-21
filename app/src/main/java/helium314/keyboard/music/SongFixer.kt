@@ -116,19 +116,30 @@ object SongFixer {
     // ---- online lookup ----
     private var lastCall = 0L
 
-    private suspend fun get(url: String): String? {
-        // MusicBrainz asks for at most one request a second
-        val wait = 1100 - (System.currentTimeMillis() - lastCall)
-        if (wait > 0) delay(wait)
-        lastCall = System.currentTimeMillis()
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val c = URL(url).openConnection() as HttpURLConnection
-                c.connectTimeout = 10_000; c.readTimeout = 15_000
-                c.setRequestProperty("User-Agent", AGENT); c.setRequestProperty("Accept", "application/json")
-                try { if (c.responseCode == 200) c.inputStream.bufferedReader().readText() else null } finally { c.disconnect() }
-            }.getOrNull()
+    @Volatile var lastFailed = false
+        private set
+
+    internal suspend fun get(url: String): String? {
+        // Test 260 (Jarrod: artist search came up empty on the first tap, worked on the second):
+        // MusicBrainz often answers 503 "slow down" when asked again quickly, so wait and try again.
+        lastFailed = false
+        for (attempt in 0 until 4) {
+            val wait = (if (attempt == 0) 1100L else 1500L * attempt) - (System.currentTimeMillis() - lastCall)
+            if (wait > 0) delay(wait)
+            lastCall = System.currentTimeMillis()
+            val (code, text) = withContext(Dispatchers.IO) {
+                runCatching {
+                    val c = URL(url).openConnection() as HttpURLConnection
+                    c.connectTimeout = 10_000; c.readTimeout = 15_000
+                    c.setRequestProperty("User-Agent", AGENT); c.setRequestProperty("Accept", "application/json")
+                    try { c.responseCode.let { it to (if (it == 200) c.inputStream.bufferedReader().readText() else null) } } finally { c.disconnect() }
+                }.getOrElse { -1 to null }
+            }
+            if (code == 200 && text != null) return text
+            if (code in 400..499 && code != 429) break // a real "no", trying again won't help
         }
+        lastFailed = true
+        return null
     }
 
     private fun esc(s: String) = s.replace(Regex("""([+\-&|!(){}\[\]^"~*?:\\/])"""), "\\\\$1")
@@ -136,10 +147,99 @@ object SongFixer {
     /** Up to 5 possible matches, best first. */
     suspend fun search(song: Song, title: String, artist: String): List<Match> {
         if (title.isBlank()) return emptyList()
-        val q = buildString {
-            append("recording:\"").append(esc(title)).append('"')
-            if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
+        // Test 248 (Jarrod got "No match found"): try the exact name first, then without "ft. …"/"(Remix)" bits,
+        // then a fuzzy search that forgives small typos ("Womam" finds "Woman").
+        val clean = cleanTitle(title)
+        val cleanArtist = artist.replace(Regex("""(?i)\s+(ft\.?|feat\.?|featuring|&|x|,)\s+.*$"""), "").trim()
+        val tries = LinkedHashSet<String>()
+        tries += exact(title, artist)
+        if (clean.isNotBlank()) tries += exact(clean, cleanArtist)
+        fuzzy(clean.ifBlank { title }, cleanArtist)?.let { tries += it }
+        if (cleanArtist.isNotBlank()) fuzzy(clean.ifBlank { title }, "")?.let { tries += it } // artist may be wrong
+        for (q in tries) {
+            val found = searchQuery(song, q)
+            if (found.isNotEmpty()) return found
         }
+        return emptyList()
+    }
+
+    /** Test 258 (Jarrod): only an artist typed in Search… = that artist's albums, to pick any cover from. */
+    suspend fun artistAlbums(artist: String): List<Match> {
+        if (artist.isBlank()) return emptyList()
+        val q = "artist:\"" + esc(artist.trim()) + "\" AND (primarytype:album OR primarytype:ep OR primarytype:single)"
+        var body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
+        var groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        if (groups.length() == 0) { // spelling a little off (spaces, capitals, accents): a looser artist search
+            val loose = "artistname:(" + esc(artist.trim()) + "~) AND (primarytype:album OR primarytype:ep OR primarytype:single)"
+            body = get("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=40&query=" + URLEncoder.encode(loose, "UTF-8")) ?: return emptyList()
+            groups = runCatching { JSONObject(body).getJSONArray("release-groups") }.getOrNull() ?: return emptyList()
+        }
+        val out = ArrayList<Match>()
+        for (i in 0 until groups.length()) {
+            val g = groups.getJSONObject(i)
+            if (g.optInt("score") < 80) continue
+            val credit = g.optJSONArray("artist-credit")?.let { a -> (0 until a.length()).joinToString("") { k -> a.getJSONObject(k).let { it.optString("name") + it.optString("joinphrase") } } } ?: artist
+            out += Match(title = g.optString("title"), artist = credit, album = g.optString("title"),
+                year = g.optString("first-release-date").take(4).toIntOrNull() ?: 0, releaseId = "", groupId = g.optString("id"),
+                score = g.optInt("score"), lengthMs = 0)
+        }
+        // albums first, newest first
+        return out.distinctBy { it.album.lowercase() }.sortedByDescending { it.year }
+    }
+
+    /** A small cover for the album picker, cached; null when the album has no cover art. */
+    suspend fun thumb(ctx: Context, groupId: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
+        val f = File(ctx.cacheDir, "rg_thumbs/$groupId.jpg")
+        if (!f.isFile) {
+            val bytes = runCatching {
+                var url = URL("https://coverartarchive.org/release-group/$groupId/front-250")
+                var result: ByteArray? = null
+                repeat(4) {
+                    if (result != null) return@repeat
+                    val c = url.openConnection() as HttpURLConnection
+                    c.instanceFollowRedirects = false; c.connectTimeout = 10_000; c.readTimeout = 15_000
+                    c.setRequestProperty("User-Agent", AGENT)
+                    try {
+                        when (c.responseCode) {
+                            200 -> result = c.inputStream.readBytes()
+                            301, 302, 303, 307, 308 -> url = URL(url, c.getHeaderField("Location"))
+                            else -> return@runCatching null
+                        }
+                    } finally { c.disconnect() }
+                }
+                result
+            }.getOrNull() ?: return@withContext null
+            f.parentFile?.mkdirs(); f.writeBytes(bytes)
+        }
+        BitmapFactory.decodeFile(f.absolutePath)
+    }
+
+    internal fun exact(title: String, artist: String) = buildString {
+        append("recording:\"").append(esc(title)).append('"')
+        if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
+    }
+
+    private fun words(s: String) = s.lowercase().split(Regex("""[^\p{L}\p{N}']+""")).filter { it.isNotBlank() }
+
+    /** Every word may be off by a letter or two (Lucene fuzzy search). */
+    private fun fuzzy(title: String, artist: String): String? {
+        val tw = words(title).ifEmpty { return null }
+        return buildString {
+            append("recording:(").append(tw.joinToString(" AND ") { w -> esc(w) + if (w.length >= 4) "~" else "" }).append(')')
+            val aw = words(artist)
+            if (aw.isNotEmpty()) append(" AND artist:(").append(aw.joinToString(" AND ") { w -> esc(w) + if (w.length >= 4) "~" else "" }).append(')')
+        }
+    }
+
+    /** Drops "ft. Someone", "(Remix)", "[Live]" and similar from a title. */
+    internal fun cleanTitle(t: String): String = t
+        .replace(Regex("""\([^)]*\)|\[[^]]*]"""), " ")
+        .replace(Regex("""(?i)\s+(ft\.?|feat\.?|featuring)\s+.*$"""), "")
+        .replace(Regex("""(?i)\b(remix|remaster(ed)?|radio edit|extended mix|live|explicit|clean)\b"""), " ")
+        .replace(Regex("""\s+-\s*$"""), "")
+        .replace(Regex("""\s+"""), " ").trim()
+
+    private suspend fun searchQuery(song: Song, q: String): List<Match> {
         val body = get("https://musicbrainz.org/ws/2/recording?fmt=json&limit=10&query=" + URLEncoder.encode(q, "UTF-8"))
             ?: return emptyList()
         val recs = runCatching { JSONObject(body).getJSONArray("recordings") }.getOrNull() ?: return emptyList()
@@ -157,7 +257,7 @@ object SongFixer {
         }
         // closest length first among the high scores
         return out.distinctBy { it.title.lowercase() + it.artist.lowercase() + it.album.lowercase() }
-            .sortedWith(compareByDescending<Match> { it.score / 10 }.thenBy { if (it.lengthMs > 0) abs(it.lengthMs - song.durationMs) else 99_999 })
+            .sortedWith(compareByDescending<Match> { it.score / 10 }.thenBy { if (it.lengthMs > 0) abs(it.lengthMs - song.durationMs) else Long.MAX_VALUE })
             .take(5)
     }
 
@@ -210,6 +310,22 @@ object SongFixer {
     }
 
     /** Makes a downloaded cover the song's artwork. */
+    /** Your own picture as the song's artwork (test 254): squared from the middle, max 800 px, saved as JPEG. */
+    fun ownCover(ctx: Context, id: Long, uri: android.net.Uri): String? = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 800) sample *= 2 // big phone photos: decode smaller
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        val src = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) } ?: return null
+        val side = minOf(src.width, src.height)
+        val sq = android.graphics.Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+        val out = if (side > 800) android.graphics.Bitmap.createScaledBitmap(sq, 800, 800, true) else sq
+        val dest = artFile(ctx, id).apply { parentFile?.mkdirs() }
+        dest.outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+        dest.absolutePath
+    }.getOrNull()
+
     fun keepCover(ctx: Context, id: Long, partPath: String): String {
         val dest = artFile(ctx, id)
         File(partPath).renameTo(dest)
