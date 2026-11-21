@@ -229,11 +229,12 @@ class PlayerUi {
         upNext = list
     }
 
-    fun play(songs: List<Song>, index: Int, shuffled: Boolean = false) {
+    /** [shuffled] null keeps shuffle as you left it (test 308, Jarrod: shuffle turned itself off in the next playlist). */
+    fun play(songs: List<Song>, index: Int, shuffled: Boolean? = null) {
         val c = controller ?: return
         if (songs.isEmpty()) return
-        c.shuffleModeEnabled = shuffled
-        val start = if (shuffled) songs.indices.random() else index
+        c.shuffleModeEnabled = shuffled ?: c.shuffleModeEnabled
+        val start = if (shuffled == true) songs.indices.random() else index
         c.setMediaItems(songs.map { it.toMediaItem() }, start, 0)
         c.prepare(); c.play()
     }
@@ -496,14 +497,14 @@ internal fun Cover(song: Song?, size: Int, modifier: Modifier, corner: Int = 8) 
 }
 
 @Composable
-internal fun Header(title: String, onBack: (() -> Unit)?, onSettings: (() -> Unit)? = null) {
+internal fun Header(title: String, onBack: (() -> Unit)?, onSettings: (() -> Unit)? = null, titleContent: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp)) {
         if (onSettings != null) Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onSettings) { Icon(MusicIcons.settings, "Settings", tint = Accent) }
         } else if (onBack != null) Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { onBack() }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(MusicIcons.arrowBack, "Back", modifier = Modifier.size(24.dp)); Spacer(Modifier.width(6.dp)); Text("Back", fontSize = 17.sp)
         } else Spacer(Modifier.height(36.dp))
-        Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (titleContent != null) titleContent() else Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -545,7 +546,7 @@ private fun ArtistsPage(lib: Library, open: (Page) -> Unit, onBack: () -> Unit) 
 internal fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val bg = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-        listOf(Triple("Play", MusicIcons.play, false), Triple("Shuffle", MusicIcons.shuffle, true)).forEach { (label, icon, sh) ->
+        listOf(Triple("Play", MusicIcons.play, null), Triple("Shuffle", MusicIcons.shuffle, true)).forEach { (label, icon, sh) ->
             Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(bg).clickable { ui.play(songs, 0, sh) }.padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, tint = Accent, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
@@ -559,7 +560,7 @@ internal fun PlayShuffle(songs: List<Song>, ui: PlayerUi) {
 @Composable
 internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Unit, number: Int? = null,
                      extra: List<Pair<String, () -> Unit>> = emptyList(), menuState: androidx.compose.runtime.MutableState<Boolean>? = null,
-                     holdForMenu: Boolean = true, onClick: () -> Unit) {
+                     holdForMenu: Boolean = true, slim: Boolean = false, onClick: () -> Unit) {
     val ctx = LocalContext.current
     // test 289: inside a playlist, holding a song starts dragging it, and the menu opens from outside when you let go without moving
     val ownMenu = remember { mutableStateOf(false) }
@@ -571,24 +572,36 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
         Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = if (holdForMenu) ({ menu = true }) else null).padding(horizontal = 16.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically) {
             if (number != null) Text(if (isCurrent) "♪" else "$number", Modifier.width(28.dp), color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            else { Cover(song, 160, Modifier.size(48.dp), corner = 6); Spacer(Modifier.width(12.dp)) }
+            else {
+                if (isCurrent && ui.playing) PlayingCover(song, ui) else Cover(song, 160, Modifier.size(48.dp), corner = 6)
+                Spacer(Modifier.width(12.dp))
+            }
             Column(Modifier.weight(1f)) {
-                Text(song.title, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurface)
-                Text(if (number != null) time(song.durationMs) else "${song.artist} · ${song.album}", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+                val second = if (number != null) time(song.durationMs) else "${song.artist} · ${song.album}"
+                // test 308 (Jarrod): the song that's playing moves like the mini player: rolling name, artist shine
+                if (isCurrent && ui.playing) {
+                    RollText(song.title, Accent, 16f, center = false, bold = false)
+                    ShineText(second, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), 13f)
+                } else {
+                    Text(song.title, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurface)
+                    Text(second, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+                }
             }
             if (song.id in Favourites.ids.value) Icon(MusicIcons.heart, null, tint = Accent, modifier = Modifier.size(14.dp))
             IconButton(onClick = { menu = true }) { Icon(MusicIcons.more, "More", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
         }
         DropdownMenu(menu, { menu = false }) {
+            // test 308 (Jarrod: too many options in a playlist): [slim] drops Play Last, Favourite and Share, adds Metadata / artwork
             DropdownMenuItem({ Text("Play Next") }, { ui.playNext(song); menu = false })
-            DropdownMenuItem({ Text("Play Last") }, { ui.playLast(song); menu = false })
+            if (!slim) DropdownMenuItem({ Text("Play Last") }, { ui.playLast(song); menu = false })
             DropdownMenuItem({ Text("Add to Playlist…") }, { PlaylistPicker.songs.value = listOf(song.id); menu = false })
             extra.forEach { (label, action) -> DropdownMenuItem({ Text(label) }, { menu = false; action() }) }
-            DropdownMenuItem({ Text(if (song.id in Favourites.ids.value) "Remove from Favourites" else "Favourite") }, { Favourites.toggle(ctx, song.id); menu = false })
+            if (!slim) DropdownMenuItem({ Text(if (song.id in Favourites.ids.value) "Remove from Favourites" else "Favourite") }, { Favourites.toggle(ctx, song.id); menu = false })
             DropdownMenuItem({ Text("Go to Album") }, { open(Page.AlbumPage(song.albumId)); menu = false })
             DropdownMenuItem({ Text("Go to Artist") }, { open(Page.ArtistPage(song.albumArtist.ifBlank { song.artist })); menu = false })
-            DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
+            if (slim) DropdownMenuItem({ Text("Metadata / artwork") }, { menu = false; open(Page.FixOne(song.id)) })
+            if (!slim) DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
             DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = song })
             DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(song.id)) })
             DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = song })
@@ -700,7 +713,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         else Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to tint)))
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
-            NowTopBar(song, ui, open, onClose)
+            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0)
             when (mode) {
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.94f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")
@@ -772,10 +785,14 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
 
 /** Samsung's top row: close on the left; Smart View, volume, equaliser and more on the right. */
 @Composable
-private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit) {
+private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false) {
     val ctx = LocalContext.current
     Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClose) { Icon(MusicIcons.sDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
+        // test 308 (Jarrod): lyrics and Up next need a way back that doesn't rely on the phone's back gesture
+        if (back) Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { onClose() }.padding(horizontal = 6.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(MusicIcons.arrowBack, "Back", tint = Color.White, modifier = Modifier.size(26.dp)); Spacer(Modifier.width(6.dp)); Text("Back", color = Color.White, fontSize = 17.sp)
+        }
+        else IconButton(onClose) { Icon(MusicIcons.sDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
         Spacer(Modifier.weight(1f))
         IconButton({
             runCatching { ctx.startActivity(Intent("android.settings.CAST_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -857,7 +874,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(s)) })
                 DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = s })
                 // test 267 (Jarrod): playing a song with no cover? add one right here
-                DropdownMenuItem({ Text("Add or change artwork") }, { menu = false; open(Page.FixOne(s.id)) })
+                DropdownMenuItem({ Text("Metadata / artwork") }, { menu = false; open(Page.FixOne(s.id)) })
                 DropdownMenuItem({ Text("Album") }, { menu = false; open(Page.AlbumPage(s.albumId)) })
                 DropdownMenuItem({ Text("Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
                 DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
@@ -995,10 +1012,30 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 viewH.intValue = constraints.maxHeight
                 LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 40.dp)) {
+                    // test 308: plain lyrics can't follow the song; offer to look for a timed copy
+                    if (!l.synced && song != null) item {
+                        var trying by remember(song.id) { mutableStateOf(false) }
+                        var none by remember(song.id) { mutableStateOf(false) }
+                        Column(Modifier.fillMaxWidth().padding(bottom = 16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp)) {
+                            Text(if (none) "No timed lyrics found for this song." else "These lyrics have no timing, so they can't follow the song karaoke style.",
+                                color = Color.White, fontSize = 14.sp)
+                            if (!none) TextButton(enabled = !trying, onClick = {
+                                trying = true
+                                scope.launch { val t = Lyrics.findTimed(ctx, song); if (t != null) lyrics = t else none = true; trying = false }
+                            }) { Text(if (trying) "Looking…" else "Find timed lyrics", color = Accent, fontWeight = FontWeight.Bold) }
+                        }
+                    }
                     itemsIndexed(l.lines) { i, line ->
                         val on = !l.synced || i == cur
                         val a by animateFloatAsState(if (on) 1f else 0.32f, tween(300), label = "line")
                         val s by animateFloatAsState(if (i == cur) 1.04f else 1f, tween(300), label = "lineScale")
+                        if (l.synced && i == cur && line.text.isNotBlank()) {
+                            // test 308 (Jarrod): karaoke, the words light up as they're sung
+                            val nextMs = l.lines.getOrNull(i + 1)?.timeMs ?: (line.timeMs + 6000)
+                            KaraokeLine(line, nextMs, ui, Modifier.fillMaxWidth().graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
+                                .clickable { ui.seek(line.timeMs) }.padding(vertical = 10.dp))
+                            return@itemsIndexed
+                        }
                         Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 28.sp else 20.sp, fontWeight = FontWeight.Bold,
                             lineHeight = if (l.synced) 34.sp else 28.sp,
                             modifier = Modifier.fillMaxWidth().alpha(a).graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
@@ -1009,6 +1046,23 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             }
         }
     }
+}
+
+/** The line being sung: sung words bright with a soft glow, the word being sung filling up letter by letter, the rest dim. */
+@Composable
+private fun KaraokeLine(line: LyricLine, nextMs: Long, ui: PlayerUi, modifier: Modifier) {
+    val clock = rememberBeatClock(ui, ui.playing)
+    val sung = line.sungChars(if (ui.playing) clock.ms else ui.position, nextMs)
+    val text = androidx.compose.ui.text.buildAnnotatedString {
+        line.text.forEachIndexed { i, c ->
+            val k = (sung - i).coerceIn(0f, 1f)
+            val col = androidx.compose.ui.graphics.lerp(Color.White.copy(alpha = 0.38f), Accent, k * 0.35f).let { if (k >= 1f) Color.White else it }
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = androidx.compose.ui.graphics.lerp(Color.White.copy(alpha = 0.38f), col, k).copy(alpha = 0.38f + 0.62f * k),
+                shadow = if (k > 0f) androidx.compose.ui.graphics.Shadow(Accent.copy(alpha = 0.55f * k), blurRadius = 16f) else null))
+            append(c); pop()
+        }
+    }
+    Text(text, fontSize = 28.sp, fontWeight = FontWeight.Bold, lineHeight = 34.sp, modifier = modifier)
 }
 
 @Composable

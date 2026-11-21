@@ -91,9 +91,8 @@ internal object TitleFx {
 }
 
 @Composable
-internal fun AnimatedTitle(playing: Boolean, modifier: Modifier = Modifier) {
+internal fun AnimatedTitle(playing: Boolean, modifier: Modifier = Modifier, text: String = "Open Waves", fontSize: Float = 26f, colourFrom: Int = 5) {
     val base = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
-    val text = "Open Waves"
     var effect by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
     val p = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(playing) {
@@ -112,8 +111,8 @@ internal fun AnimatedTitle(playing: Boolean, modifier: Modifier = Modifier) {
     val pv = if (effect >= 0) p.value else 0f
     androidx.compose.foundation.layout.Row(modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         text.forEachIndexed { i, c ->
-            val color = if (i < 5) base else androidx.compose.ui.graphics.lerp(Color(0xFF1FE3FF), Color(0xFF8E5BFF), (i - 5) / 4f)
-            TitleLetter(c, color, i, text.length, effect, pv)
+            val color = if (i < colourFrom) base else androidx.compose.ui.graphics.lerp(Color(0xFF1FE3FF), Color(0xFF8E5BFF), (i - colourFrom) / 4f)
+            TitleLetter(c, color, i, maxOf(text.length, 2), effect, pv, fontSize)
         }
     }
 }
@@ -131,7 +130,7 @@ private fun bounce(x: Float): Float {
 }
 
 @Composable
-private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Float) {
+private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Float, fontSize: Float = 26f) {
     val dens = androidx.compose.ui.platform.LocalDensity.current
     val px = with(dens) { 1f * density }
     val s = i / (n - 1f)                                       // 0 for the first letter, 1 for the last
@@ -190,7 +189,7 @@ private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Floa
             rotZ = 0f
         }
     }
-    val style = androidx.compose.ui.text.TextStyle(fontSize = 26.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+    val style = androidx.compose.ui.text.TextStyle(fontSize = fontSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         shadow = if (glow > 0.02f) androidx.compose.ui.graphics.Shadow(c.copy(alpha = 0.9f * glow), blurRadius = 22f * glow) else null)
     val t = ch.toString()
     Box {

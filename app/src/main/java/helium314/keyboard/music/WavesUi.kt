@@ -978,14 +978,14 @@ internal fun ShineText(text: String, color: Color, size: Float) {
 
 /** Test 263: a name that always rolls across: rests 2 s in the middle, slides out left while it comes back in from the right. */
 @Composable
-internal fun RollText(text: String, color: Color, size: Float) {
+internal fun RollText(text: String, color: Color, size: Float, center: Boolean = true, bold: Boolean = true) {
     BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
         val cw = constraints.maxWidth.toFloat()
         val dens = androidx.compose.ui.platform.LocalDensity.current
         var tw by remember(text) { mutableIntStateOf(0) }
         val gap = with(dens) { 48.dp.toPx() }
         val d = maxOf(tw + gap, cw)
-        val start = if (tw < cw) (cw - tw) / 2f else 0f
+        val start = if (center && tw < cw) (cw - tw) / 2f else 0f
         val off = remember(text) { androidx.compose.animation.core.Animatable(0f) }
         LaunchedEffect(text, tw, cw) {
             if (tw == 0) return@LaunchedEffect
@@ -997,7 +997,7 @@ internal fun RollText(text: String, color: Color, size: Float) {
                 off.snapTo(0f)
             }
         }
-        @Composable fun copy(x: Float, measure: Boolean) = Text(text, color = color, fontSize = size.sp, fontWeight = FontWeight.SemiBold,
+        @Composable fun copy(x: Float, measure: Boolean) = Text(text, color = color, fontSize = size.sp, fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1, softWrap = false,
             modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
                 .then(if (measure) Modifier.onSizeChanged { tw = it.width } else Modifier)

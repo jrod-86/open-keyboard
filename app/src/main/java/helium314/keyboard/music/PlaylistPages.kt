@@ -60,6 +60,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -327,7 +329,16 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             }
         }) {
         LazyColumn(Modifier.fillMaxSize(), state = state) {
-            item { Header(p.name, onBack) }
+            // test 308 (Jarrod): while this playlist plays, its name does the Open Waves title effects, one a minute
+            item {
+                val playingHere = ui.playing && ui.currentId in p.songs
+                Header(p.name, onBack) {
+                    Box(Modifier.fillMaxWidth().clipToBounds()) {
+                        if (playingHere) AnimatedTitle(true, Modifier.wrapContentWidth(Alignment.Start, unbounded = true), text = p.name, fontSize = 32f, colourFrom = Int.MAX_VALUE)
+                        else Text(p.name, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${shown.size} songs, ${songs.sumOf { it.durationMs } / 60000} minutes", Modifier.weight(1f), fontSize = 13.sp,
@@ -402,11 +413,9 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
                         if (lineTop) drawRect(Accent, size = androidx.compose.ui.geometry.Size(size.width, h))
                         if (lineBottom) drawRect(Accent, androidx.compose.ui.geometry.Offset(0f, size.height - h), androidx.compose.ui.geometry.Size(size.width, h))
                     }) {
-                    SongRow(e.song, ui, lib, open, menuState = menuOpen, holdForMenu = false, extra = listOf(
+                    SongRow(e.song, ui, lib, open, menuState = menuOpen, holdForMenu = false, slim = true, extra = listOf(
                         "Move to top" to { moveTo(e.key, true) },
                         "Move to bottom" to { moveTo(e.key, false) },
-                        "Move Up" to { val l = shown.toMutableList(); val at = l.indexOfFirst { it.key == e.key }; if (at > 0) { l.add(at - 1, l.removeAt(at)); commit(l) } },
-                        "Move Down" to { val l = shown.toMutableList(); val at = l.indexOfFirst { it.key == e.key }; if (at in 0 until l.size - 1) { l.add(at + 1, l.removeAt(at)); commit(l) } },
                         "Remove from Playlist" to { val at = order.indexOfFirst { it.key == e.key }; if (at >= 0) { order.removeAt(at); save() } },
                     )) { ui.play(shownSongs, i) }
                 }

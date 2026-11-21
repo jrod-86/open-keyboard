@@ -122,6 +122,7 @@ private val popFilters = listOf("All", "Chart hits", "#1s", "Top 10s", "Hidden g
  * Test 297 (Jarrod): the Popular tab. Your whole library, most played in the world first. The lookup runs in the
  * background in chunks and can be paused and resumed without losing progress. Only this tab uses the popularity order.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ctx = LocalContext.current
@@ -205,8 +206,10 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             }
         }
         if (list.isNotEmpty()) {
-            item {
-                androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+            // test 308 (Jarrod): the filter chips stay at the top while you scroll down the list
+            stickyHeader(key = "filters") {
+                androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(vertical = 4.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(popFilters + decades.map { "${it}s" }) { f ->
                         androidx.compose.material3.FilterChip(f == filter, { filter = f }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
