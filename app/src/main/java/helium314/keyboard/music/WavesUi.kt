@@ -416,7 +416,9 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             if (depth == 0f) { heldMs = 0f; continue }
             heldMs += dt
             val speed = (0.25f + 1.6f * depth * depth) * (1f + (heldMs / 800f).coerceAtMost(2.5f)) // px per ms
-            val used = state.scrollBy((if (depth < 0) -speed else speed) * dt)
+            // test 291 (Jarrod: still stopped): moving a row asks the list to hold its place, and Android cancels any scroll
+            // that is running at that moment, which ended this whole loop. Now a cancelled step just counts as no scroll.
+            val used = try { state.scrollBy((if (depth < 0) -speed else speed) * dt) } catch (e: kotlinx.coroutines.CancellationException) { 0f }
             if (used == 0f) continue
             dragOffset += used // the row stays under your finger while the list slides past
             swapIfNeeded()
