@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.music
 
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -657,6 +658,9 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
     var shownHint by remember { mutableStateOf("") }
     // test 301 (Jarrod): the label shows over the middle of the heart row, not over the song's chart line
     var hintY by remember { mutableIntStateOf(-1) }
+    // test 302 (Jarrod: too low, it covered the heart): halfway between the song's words and the heart
+    var artistBottom by remember { mutableIntStateOf(-1) }
+    var storyBottom by remember { mutableIntStateOf(-1) }
     var hintH by remember { mutableIntStateOf(0) }
     LaunchedEffect(hint) { hint?.let { shownHint = it; delay(1600); hint = null } }
 
@@ -708,11 +712,14 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 20.dp))
                             Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                    .onGloballyPositioned { artistBottom = it.boundsInRoot().bottom.toInt() }
                                     .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } })
                             // test 296 (Jarrod): what "Sort by popularity" found about this song, e.g. its best chart spot and year
                             val story = remember(song?.id, MusicSettings.popularOn) { song?.takeIf { MusicSettings.popularOn }?.let { Popularity.known(ctx, it)?.story() } }
                             if (story != null) Text(story, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 2,
-                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 12.dp, end = 12.dp))
+                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 12.dp, end = 12.dp)
+                                    .onGloballyPositioned { storyBottom = it.boundsInRoot().bottom.toInt() })
+                            else SideEffect { storyBottom = -1 }
                         }
                     }
                 }
@@ -738,7 +745,10 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
             Controls(ui) { hint = it }
         }
         // a little label that says what a button just did (Jarrod: "no one knows what they are")
-        AnimatedVisibility(hint != null, if (hintY >= 0) Modifier.align(Alignment.TopCenter).offset { IntOffset(0, hintY - hintH / 2) }.onSizeChanged { hintH = it.height }
+        val iconHalf = with(density) { (13 * k).dp.toPx() }.toInt()
+        val words = if (storyBottom >= 0) storyBottom else artistBottom
+        val hintCenter = if (mode == 0 && words >= 0 && hintY > words) (words + hintY - iconHalf) / 2 else hintY
+        AnimatedVisibility(hint != null, if (hintY >= 0) Modifier.align(Alignment.TopCenter).offset { IntOffset(0, hintCenter - hintH / 2) }.onSizeChanged { hintH = it.height }
             else Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (85 * k + 140).dp),
             enter = fadeIn(), exit = fadeOut()) {
             Text(shownHint, color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium,
