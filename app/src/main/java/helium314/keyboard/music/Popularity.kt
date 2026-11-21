@@ -46,7 +46,9 @@ object Popularity {
     @Volatile private var cache: MutableMap<String, Pop>? = null
 
     private fun file(ctx: Context) = File(ctx.filesDir, "music/popularity.json")
-    fun key(s: Song) = AlbumRules.titleKey(s.title) + "|" + AlbumRules.artistKey(s.artist)
+    // test 298 (Jarrod: swiping between tabs got glitchy): the key is worked out once per song, not on every look
+    private val keys = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun key(s: Song): String = keys.getOrPut(s.title + "\u0000" + s.artist) { AlbumRules.titleKey(s.title) + "|" + AlbumRules.artistKey(s.artist) }
 
     private fun load(ctx: Context): MutableMap<String, Pop> {
         cache?.let { return it }
@@ -71,6 +73,14 @@ object Popularity {
         runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText(j.toString()) }
     }
 
+    /** Test 298: forget everything looked up. */
+    fun clear(ctx: Context) {
+        (cache ?: load(ctx)).clear()
+        file(ctx).delete()
+        PopScan.done.intValue = 0
+        PopScan.version.intValue++
+    }
+
     fun known(ctx: Context, s: Song): Pop? = load(ctx)[key(s)]?.takeIf { System.currentTimeMillis() - it.at < KEEP_MS }
 
     /**
@@ -92,35 +102,23 @@ object Popularity {
         val wikiGate = Semaphore(2)
         val peaks = todo.associate { s -> key(s) to async(Dispatchers.IO) { wikiGate.withPermit { runCatching { chartPeaks(s) }.getOrNull() } } }
 
-        // MusicBrainz ids, one song a second
-        val ids = HashMap<String, List<String>>()
-        for (s in todo) {
-            val found = recordingIds(s)
-            if (found != null) reached = true
-            ids[key(s)] = found.orEmpty()
-            done++
-            // show the step for MusicBrainz as most of the bar; ListenBrainz is one quick request at the end
-            progress(done, total + 1, results.toMap())
-        }
-
-        // play counts for all of them at once
-        val counts = listenCounts(ids.values.flatten().distinct())
-        if (counts != null) reached = true
-        val now = System.currentTimeMillis()
+        // test 298 (Jarrod): each song is finished and saved before the next one starts, so a pause loses nothing
         for (s in todo) {
             val k = key(s)
-            val c = ids[k].orEmpty().mapNotNull { counts?.get(it) }
-            val best = c.maxByOrNull { it.first }
+            val ids = recordingIds(s) ?: continue // MusicBrainz didn't answer: leave it for next time
+            reached = true
+            val counts = listenCounts(ids) ?: continue // ListenBrainz didn't answer: leave it for next time
+            val best = ids.mapNotNull { counts[it] }.maxByOrNull { it.first }
             val pk = peaks[k]?.await()
-            if (pk != null) reached = true
             val pop = Pop(best?.first ?: 0, best?.second ?: 0, pk?.get(0) ?: 0, pk?.get(1) ?: 0, pk?.get(2) ?: 0,
-                found = best != null || (pk?.take(3)?.any { it > 0 } == true), at = now, year = pk?.getOrNull(3) ?: 0)
+                found = best != null || (pk?.take(3)?.any { it > 0 } == true), at = System.currentTimeMillis(), year = pk?.getOrNull(3) ?: 0)
             results[k] = pop
-            // nothing reached: don't save "not found", it may just be no internet
-            if (counts != null) synchronized(map) { map[k] = pop }
+            map[k] = pop
+            save(ctx)
+            done++
+            progress(done, total, results.toMap())
         }
-        save(ctx)
-        progress(total + 1, total + 1, results.toMap())
+        progress(total, total, results.toMap())
         reached
     }
 

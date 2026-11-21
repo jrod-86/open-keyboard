@@ -112,7 +112,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-val WavesTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Albums", "Artists", "Folders") // test 297: Popular
+private val allTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Albums", "Artists", "Folders") // test 297: Popular
+/** test 298: the Popular tab goes when popularity features are turned off */
+val WavesTabs: List<String> get() = if (MusicSettings.popularOn) allTabs else allTabs - "Popular"
 
 private val dimText @Composable get() = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
 
@@ -171,13 +173,13 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
         WavesTabHeader(pager)
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
             .background(if (MusicSettings.theme != -1) Color.Black.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
-            when (page) {
-                0 -> FavouritesTab(lib, ui, open)
-                1 -> PlaylistsTab(lib, ui, open)
-                2 -> TracksTab(lib, ui, open)
-                3 -> PopularTab(lib, ui, open)
-                4 -> AlbumsTab(lib, open)
-                5 -> ArtistsTab(lib, open)
+            when (WavesTabs.getOrNull(page)) {
+                "Favourites" -> FavouritesTab(lib, ui, open)
+                "Playlists" -> PlaylistsTab(lib, ui, open)
+                "Tracks" -> TracksTab(lib, ui, open)
+                "Popular" -> PopularTab(lib, ui, open)
+                "Albums" -> AlbumsTab(lib, open)
+                "Artists" -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
             }
         }

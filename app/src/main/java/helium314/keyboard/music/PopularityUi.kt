@@ -110,6 +110,10 @@ internal fun PopularitySort(songs: List<Song>, onApply: (List<Song>) -> Unit, on
 }
 
 /** One entry on the Popular tab. */
+private class PopView(val lib: Library, val version: Int, val ranked: List<Ranked>, val left: Int, val unique: Int) {
+    companion object { @Volatile var last: PopView? = null }
+}
+
 private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?)
 
 private val popFilters = listOf("All", "Chart hits", "#1s", "Top 10s", "Hidden gems")
@@ -127,9 +131,14 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     // keep re-sorting while the lookup runs
     LaunchedEffect(running) { while (PopScan.running.value) { kotlinx.coroutines.delay(15_000); PopScan.version.intValue++ } }
     val songs = lib.uniqueSongs
-    val ranked by androidx.compose.runtime.produceState<List<Ranked>?>(null, lib, version) {
+    // test 298 (Jarrod: swiping between tabs got glitchy): everything is worked out away from the screen, and kept,
+    // so swiping onto this tab again shows the last result straight away instead of working it all out again
+    val view by androidx.compose.runtime.produceState(PopView.last?.takeIf { it.lib === lib && it.version == version }, lib, version) {
+        if (value?.lib === lib && value?.version == version) return@produceState
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             PlayStats.load(ctx)
+            val unique = songs.distinctBy { Popularity.key(it) }.size
+            val left = PopScan.left(ctx, songs)
             val found = songs.mapNotNull { s -> Popularity.known(ctx, s)?.takeIf { it.found }?.let { s to it } }.distinctBy { Popularity.key(it.first) }
             val worldSorted = found.map { it.second.plays }.filter { it > 0 }.sorted()
             val median = worldSorted.getOrElse(worldSorted.size / 2) { 0L }
@@ -144,8 +153,10 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 }
                 Ranked(s, p, best, if (p.year > 0) p.year else s.year, badge)
             }.sortedWith(compareBy<Ranked>({ if (it.pop.plays > 0) 0 else 1 }, { -it.pop.plays }, { if (it.best > 0) it.best else Int.MAX_VALUE }))
-        }
+                .let { r -> PopView(lib, version, r, left, unique) }
+        }.also { PopView.last = it }
     }
+    val ranked = view?.ranked
     var filter by remember { mutableStateOf("All") }
     val list = ranked.orEmpty()
     val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1950 }.distinct().sorted() }
@@ -158,13 +169,14 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
         }
     }
-    val left = remember(lib, version) { PopScan.left(ctx, songs) }
+    val left = view?.left ?: 0
+    val unique = view?.unique ?: 0
     var wifiOnly by remember { mutableStateOf(PopScan.wifiOnly(ctx)) }
     var saved by remember { mutableStateOf("") }
 
     LazyColumn(Modifier.fillMaxSize(), state = TabScroll.popular) {
         // the lookup card: start, progress with Pause, or resume
-        if (left > 0 || running) item {
+        if (view != null && (left > 0 || running)) item {
             Column(Modifier.fillMaxWidth().padding(12.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
                 .background(Accent.copy(alpha = 0.10f)).padding(14.dp)) {
                 val total = PopScan.total.intValue.takeIf { it > 0 } ?: songs.size
@@ -176,7 +188,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                     Text(PopScan.status.value.ifBlank { "About $mins min left. Runs in the background, the list fills in as it goes." }, fontSize = 12.sp, color = dim)
                     OutlinedButton({ PopScan.pause(ctx) }, Modifier.padding(top = 8.dp)) { Text("Pause", color = Accent) }
                 } else {
-                    val started = list.isNotEmpty() || left < songs.distinctBy { Popularity.key(it) }.size
+                    val started = list.isNotEmpty() || left < unique
                     val mins = maxOf(1, left * 11 / 600)
                     Text(if (started) "$left songs still to look up" else "Rank your whole library by popularity", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     Text((if (started) "Carries on where it stopped. " else "Play counts from ListenBrainz and chart spots from Wikipedia. ") +
@@ -229,7 +241,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 }
             }
         } else if (ranked != null && !running && left == 0) item { Text("None of your songs were found online.", Modifier.padding(16.dp), color = dim) }
-        val notFound = songs.distinctBy { Popularity.key(it) }.size - left - list.size
+        val notFound = unique - left - list.size
         if (list.isNotEmpty() && notFound > 0) item {
             Text("$notFound songs weren't found online, so they aren't ranked.", Modifier.padding(16.dp), fontSize = 12.sp, color = dim)
         }

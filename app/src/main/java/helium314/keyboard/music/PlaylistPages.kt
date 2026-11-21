@@ -268,7 +268,7 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
                     Box {
                         IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Accent) }
                         DropdownMenu(menu, { menu = false }) {
-                            if (songs.size > 1) DropdownMenuItem({ Text("Sort by popularity") }, { menu = false; sorting = true })
+                            if (songs.size > 1 && MusicSettings.popularOn) DropdownMenuItem({ Text("Sort by popularity") }, { menu = false; sorting = true })
                             DropdownMenuItem({ Text("Rename") }, { menu = false; renaming = true })
                             DropdownMenuItem({ Text("Delete Playlist") }, { menu = false; deleting = true })
                         }

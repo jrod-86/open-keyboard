@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Open Waves test 297 (Jarrod): look up the popularity of the whole library for the Popular tab.
- * Songs are done in chunks of 25 and every chunk is saved straight away, so Pause (or losing internet, or the phone
+ * Songs are done in chunks of 25 and (test 298) every song is saved as soon as it's done, so Pause (or losing internet, or the phone
  * stopping the app) never loses progress: the next start skips everything already looked up. Songs you play most go first.
  */
 object PopScan {
@@ -103,7 +103,8 @@ class PopScanService : Service() {
                 delay(10_000)
             }
             PopScan.status.value = ""
-            val ok = runCatching { Popularity.lookUp(ctx, chunk) { _, _, _ -> } }.getOrDefault(false)
+            val base = PopScan.done.intValue
+            val ok = runCatching { Popularity.lookUp(ctx, chunk) { d, _, _ -> PopScan.done.intValue = base + d; update() } }.getOrDefault(false)
             if (!ok) {
                 // the sites didn't answer: wait a bit and go on; nothing is lost because this chunk wasn't saved
                 failures++

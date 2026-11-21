@@ -113,6 +113,8 @@ object MusicSettings {
     var floatTheme by mutableIntStateOf(-3)
     var floatSize by mutableFloatStateOf(1f)
     var floatCover by mutableIntStateOf(1)
+    /** test 298 (Jarrod): all the popularity things (Popular tab, Sort by popularity, chart line on Now Playing) on or off */
+    var popularOn by mutableStateOf(true)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -123,6 +125,7 @@ object MusicSettings {
         miniTheme = p.getInt("mini_theme", -3); miniCover = p.getInt("mini_cover", 0)
         floatOn = p.getBoolean("float_on", false); floatStyle = p.getInt("float_style", 1); floatTheme = p.getInt("float_theme", -3)
         floatSize = p.getFloat("float_size", 1f); floatCover = p.getInt("float_cover", 1)
+        popularOn = p.getBoolean("pop_on", true)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
@@ -131,7 +134,7 @@ object MusicSettings {
             .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme)
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
-            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).apply()
+            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).apply()
     }
 }
 
@@ -294,6 +297,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
             }
         }
         item { HiddenSongsRow(onLibraryChanged) }
+        item { PopularitySettings() }
         item {
             TextButton({ addHomeShortcut(ctx) }, Modifier.padding(8.dp)) { Text("Add Music to Home screen", color = Accent) }
         }
@@ -1007,4 +1011,33 @@ private fun ArtistCoverPicker(r: FixRow, artOnly: Boolean, onSave: () -> Unit, o
             LinkButton("Skip", dim, onSkip)
         }
     }
+}
+
+/** Test 298 (Jarrod): turn the popularity things off, or remove everything they looked up. */
+@Composable
+private fun PopularitySettings() {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    var confirm by remember { mutableStateOf(false) }
+    var removed by remember { mutableStateOf(false) }
+    Column {
+        Section("Popularity")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Popularity features", fontSize = 17.sp)
+                Text("The Popular tab, Sort by popularity in playlists, and chart facts on the playing screen.", fontSize = 13.sp, color = dim)
+            }
+            Switch(MusicSettings.popularOn, {
+                MusicSettings.popularOn = it; MusicSettings.save(ctx)
+                if (!it && PopScan.running.value) PopScan.pause(ctx)
+            }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+        TextButton({ confirm = true }, Modifier.padding(horizontal = 8.dp)) { Text("Delete all popularity info", color = Accent) }
+        if (removed) Text("Removed. Your songs and playlists are untouched.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+    }
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+        title = { Text("Delete all popularity info?") },
+        text = { Text("Removes every play count and chart spot that was looked up, so the Popular tab starts again from nothing. Your songs, playlists and playlist order stay as they are.") },
+        confirmButton = { TextButton({ if (PopScan.running.value) PopScan.pause(ctx); Popularity.clear(ctx); confirm = false; removed = true }) { Text("Delete", color = Accent) } },
+        dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } })
 }
