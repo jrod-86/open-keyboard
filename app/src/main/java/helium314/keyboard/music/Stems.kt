@@ -85,12 +85,99 @@ object Stems {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
 
+    /**
+     * Test 314 (Jarrod: "while stem mode's on, it applies to everything you play"): one switch for the whole app.
+     * While it's on, every song plays its split version with the same sliders; songs are split in the background,
+     * the playing one first, then the next one, so it keeps ahead. Your music files are never changed.
+     */
+    val modeOn = mutableStateOf(false)
+    /** songs waiting to be split, first = next to do */
+    private val waiting = java.util.ArrayDeque<Long>()
+    val waitingCount = mutableStateOf(0)
+    private var appCtx: Context? = null
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
+    fun load(ctx: Context) {
+        appCtx = ctx.applicationContext
+        val p = prefs(ctx)
+        modeOn.value = p.getBoolean("stem_mode", false) && installed(ctx)
+        val g = p.getString("stem_gains", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }
+        if (g != null && g.size == 4) { for (i in 0 until 4) gains[i] = g[i]; live = g.toFloatArray() }
+    }
+    private fun saveGains() { appCtx?.let { prefs(it).edit().putString("stem_gains", gains.joinToString(",")).apply() } }
+
     fun setGain(i: Int, v: Float) {
         val g = (Math.round(v.coerceIn(0f, 1.5f) * 20) / 20f)
         gains[i] = g
         live = FloatArray(4) { gains[it] }
+        saveGains()
     }
-    fun setAll(vararg v: Float) { for (i in 0 until 4) gains[i] = v[i]; live = FloatArray(4) { gains[it] } }
+    fun setAll(vararg v: Float) { for (i in 0 until 4) gains[i] = v[i]; live = FloatArray(4) { gains[it] }; saveGains() }
+
+    /** Turns stem mode on or off for everything you play. */
+    fun setMode(ctx: Context, on: Boolean) {
+        appCtx = ctx.applicationContext
+        modeOn.value = on
+        prefs(ctx).edit().putBoolean("stem_mode", on).apply()
+        if (on) songChanged(ctx) else { synchronized(waiting) { waiting.clear(); waitingCount.value = 0 }; if (autoJob) job?.cancel() }
+        swapAll(ctx)
+    }
+
+    /** Called by the music service when a new song starts (and by stem mode turning on): gets this song and the next one ready. */
+    fun songChanged(ctx: Context) {
+        if (!modeOn.value || !installed(ctx)) return
+        val p = player() ?: return
+        val lib = Library.cached ?: return
+        val ids = listOfNotNull(p.currentMediaItemIndex, p.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET })
+            .mapNotNull { p.getMediaItemAt(it).mediaId.toLongOrNull() }
+        // skipped past the song being split: stop it, the playing one matters more
+        if (autoJob && working.value != null && working.value !in ids) job?.cancel()
+        // first in line: the playing song, then the next one
+        ids.reversed().forEach { id -> if (!has(ctx, id) && working.value != id) want(id, first = true) }
+        swapAll(ctx)
+        work(ctx, lib)
+    }
+
+    private fun want(id: Long, first: Boolean) = synchronized(waiting) {
+        waiting.remove(id)
+        if (first) waiting.addFirst(id) else waiting.addLast(id)
+        while (waiting.size > 3) waiting.removeLast() // only what's coming up soon
+        waitingCount.value = waiting.size
+    }
+
+    @Volatile private var autoJob = false
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private var swapping = false
+    private fun work(ctx: Context, lib: Library) {
+        if (job?.isActive == true) return
+        val next = synchronized(waiting) { waiting.pollFirst().also { waitingCount.value = waiting.size } } ?: return
+        val song = lib.byId[next] ?: return work(ctx, lib)
+        if (has(ctx, next)) return work(ctx, lib)
+        autoJob = true
+        split(ctx, song) { swapAll(ctx) }
+    }
+
+    /** Puts the split version in the queue for every song that has one (stem mode on), or the originals back (off). */
+    fun swapAll(ctx: Context) {
+        if (swapping) return
+        val p = player() ?: return
+        val lib = Library.cached ?: return
+        swapping = true
+        try { swapEach(ctx, p, lib) } finally { swapping = false }
+    }
+
+    private fun swapEach(ctx: Context, p: androidx.media3.common.Player, lib: Library) {
+        val on = modeOn.value
+        // on: only the songs around the playing one (a whole library can be in the queue); off: put every song back
+        val range = if (on) maxOf(0, p.currentMediaItemIndex - 1) until minOf(p.mediaItemCount, p.currentMediaItemIndex + 6) else 0 until p.mediaItemCount
+        for (i in range) {
+            val item = p.getMediaItemAt(i)
+            val id = item.mediaId.toLongOrNull() ?: continue
+            val isStem = item.localConfiguration?.uri?.path?.contains("/stems/") == true
+            if (on && !isStem && has(ctx, id)) lib.byId[id]?.let { use(ctx, it, true, i) }
+            else if (!on && isStem) lib.byId[id]?.let { use(ctx, it, false, i) }
+        }
+    }
 
     fun cancel() { job?.cancel() }
 
@@ -151,8 +238,13 @@ object Stems {
 
     // ---- splitting ----
     fun split(ctx: Context, song: Song, then: () -> Unit) {
-        if (job?.isActive == true) return
+        if (job?.isActive == true) {
+            // busy with another song: this one goes first in the line
+            if (working.value != song.id) { want(song.id, first = true) }
+            return
+        }
         val app = ctx.applicationContext
+        appCtx = app
         job = scope.launch {
             working.value = song.id; progress.value = 0f; status.value = "Reading the song…"
             val wake = (app.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
@@ -174,20 +266,27 @@ object Stems {
                 status.value = "Not enough memory on the phone for this song"
             } catch (e: Exception) {
                 android.util.Log.w("OpenWaves", "stem split failed", e)
-                status.value = "Couldn't split this song: ${e.message}"
+                status.value = "Couldn't split “${song.title}”: ${e.message}"
             } finally {
                 tmp.delete(); progress.value = null; working.value = null
                 runCatching { wake.release() }
             }
         }
+        // when this one is done (or fails), carry on with the next song waiting
+        job?.invokeOnCompletion { main.post { autoJob = false; appCtx?.let { c -> Library.cached?.let { work(c, it) } } } }
     }
 
-    /** Keeps the 5 newest split songs (stems take about 42 MB for each minute of song). */
-    private fun tidy(ctx: Context, keep: Long) {
+    /** Keeps the newest split songs up to about 1.5 GB (stems take about 42 MB for each minute of song); never ones in the queue now. */
+    private suspend fun tidy(ctx: Context, keep: Long) {
         val files = File(ctx.filesDir, "stems").listFiles { f -> f.name.endsWith(".wav") }?.sortedByDescending { it.lastModified() } ?: return
-        files.drop(5).forEach { if (it.name != "$keep.wav") it.delete() }
+        val inQueue = withContext(Dispatchers.Main) { player()?.let { p -> (0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId + ".wav" }.toSet() }.orEmpty() }
+        var total = 0L
+        for (f in files) {
+            total += f.length()
+            if (total > 1_500_000_000L && f.name != "$keep.wav" && f.name !in inQueue) { total -= f.length(); f.delete() }
+        }
     }
-    fun deleteAll(ctx: Context) { File(ctx.filesDir, "stems").deleteRecursively() }
+    fun deleteAll(ctx: Context) { setMode(ctx, false); File(ctx.filesDir, "stems").deleteRecursively() }
     fun usedMb(ctx: Context) = (File(ctx.filesDir, "stems").listFiles()?.sumOf { it.length() } ?: 0L) / 1_000_000
 
     /** The whole song as 44.1 kHz stereo floats. */
@@ -292,10 +391,10 @@ object Stems {
     }
 
     /** Swaps the song in the queue for its split version (or back), keeping the spot in the song. */
-    fun use(ctx: Context, song: Song, on: Boolean) {
+    fun use(ctx: Context, song: Song, on: Boolean, at: Int = -1) {
         val p = player() ?: return
         if (on && !has(ctx, song.id)) return
-        val idx = (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == song.id.toString() } ?: return
+        val idx = at.takeIf { it >= 0 } ?: (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == song.id.toString() } ?: return
         val base = song.toMediaItem()
         val item = if (on) base.buildUpon().setUri(Uri.fromFile(wav(ctx, song.id))).setMimeType(MimeTypes.AUDIO_WAV).build() else base
         val current = idx == p.currentMediaItemIndex
@@ -307,9 +406,9 @@ object Stems {
     }
 
     /** "Back to normal": every stem at 100% and the original file again. */
-    fun reset(ctx: Context, song: Song) {
+    fun reset(ctx: Context) {
         setAll(1f, 1f, 1f, 1f)
-        if (playingStems(song.id)) use(ctx, song, false)
+        setMode(ctx, false)
     }
 
     /** Saves your mix (or each stem on its own) as WAV files in Downloads/Open Waves stems. Returns what was saved. */

@@ -97,6 +97,8 @@ class MusicService : MediaLibraryService() {
                 counted = -1L; count()
                 Radio.topUp(this@MusicService, player)
                 PlayerWidget.update(this@MusicService)
+                // test 314: stem mode on: get this song and the next one split, and play the split versions
+                handler.post { runCatching { Stems.songChanged(this@MusicService) } }
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) Announcer.songStarted(this@MusicService, mediaItem?.mediaId?.toLongOrNull())
                 // test 311: long tracks carry on from where you stopped
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
@@ -121,6 +123,7 @@ class MusicService : MediaLibraryService() {
             .build()
         session = s
         PlayerWidget.player = player; PlayerWidget.update(this)
+        Stems.load(this)
         player.addListener(object : Player.Listener {
             // shuffle or repeat changed in the app: update the buttons on the phone's player too
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
@@ -132,7 +135,7 @@ class MusicService : MediaLibraryService() {
         scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
         Playback.load(this)
         scope.launch { Playback.speed.collect { Tuning.apply(player) } }
-        scope.launch { Library.load(this@MusicService); kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
+        scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
         restore(player)
         MusicSettings.load(this)
         floating = FloatingPlayer(this, player).also { it.start() }

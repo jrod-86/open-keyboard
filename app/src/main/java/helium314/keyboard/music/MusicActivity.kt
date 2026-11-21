@@ -464,7 +464,7 @@ private fun MusicApp(ui: PlayerUi) {
                     is Page.SmartListPage -> SmartListPage(p.id, library, ui, ::open, ::back)
                     Page.Year -> YearPage(library, ui, ::open, ::back)
                     Page.Car -> CarModePage(ui, library, ::back)
-                    is Page.Stems -> library.byId[p.id]?.let { StemsPage(it, ui, ::back) }
+                    is Page.Stems -> (song ?: library.byId[p.id])?.let { StemsPage(it, ui, ::back) }
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
@@ -922,7 +922,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = s })
                 DropdownMenuItem({ Text("Edit tags") }, { menu = false; TagEdit.asking.value = s })
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
-                DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass") }, { menu = false; open(Page.Stems(s.id)) })
+                DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass" + if (Stems.modeOn.value) " (on)" else "") }, { menu = false; open(Page.Stems(s.id)) })
             }
             DropdownMenuItem({ Text(if (Eq.sing) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
                 menu = false; Eq.sing = !Eq.sing

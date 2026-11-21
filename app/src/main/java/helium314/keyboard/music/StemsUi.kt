@@ -57,16 +57,14 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val r = refresh + Stems.changed.value + (ui.current?.hashCode() ?: 0)
     val installed = remember(refresh) { Stems.installed(ctx) }
     val split = remember(refresh, song.id) { Stems.has(ctx, song.id) }
-    val on = Stems.playingStems(song.id)
+    val on = Stems.modeOn.value
     val busy = Stems.progress.value
     var exporting by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
     val isPlayingThis = ui.current?.mediaId == song.id.toString()
 
-    fun turnOn() {
-        if (!isPlayingThis) { Toast.makeText(ctx, "Play the song first, then turn stem mode on", Toast.LENGTH_SHORT).show(); return }
-        Stems.use(ctx, song, true); refresh++
-    }
+    @Suppress("UNUSED_VARIABLE") val unused = isPlayingThis
+    fun turnOn() { Stems.setMode(ctx, true); refresh++ }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { Header("Stems", onBack) }
@@ -87,7 +85,7 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
                     Text("Split this song", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Text("Takes about a minute or two for a 4-minute song. You can keep listening while it works. The 5 songs you split last are kept.",
                         fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
-                    if (busy == null) Button({ Stems.split(ctx, song) { refresh++; if (ui.current?.mediaId == song.id.toString()) Stems.use(ctx, song, true) } },
+                    if (busy == null) Button({ Stems.split(ctx, song) { refresh++ }; Stems.setMode(ctx, true) },
                         Modifier.padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("✂️ Split into stems") }
                 }
                 if (busy != null) {
@@ -99,15 +97,23 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
                 } else if (Stems.status.value.isNotBlank()) Text(Stems.status.value, Modifier.padding(top = 6.dp), fontSize = 12.sp, color = Accent)
             }
         }
-        if (split) {
-            // 2. stem mode on or off
+        if (installed && (split || on)) {
+            // 2. stem mode on or off, for everything you play (test 314)
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Stem mode", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (on) "Playing the split version: the sliders work live" else "Off: playing the song as normal", fontSize = 12.sp, color = dim)
+                        Text("Stem mode (all songs)", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (on) "On for every song you play, with these sliders. Each song gets split in the background, the next one while this one plays."
+                            else "Off: every song plays as normal", fontSize = 12.sp, color = dim)
                     }
-                    Switch(on, { if (it) turnOn() else { Stems.use(ctx, song, false); refresh++ } }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+                    Switch(on, { Stems.setMode(ctx, it); refresh++ }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+                }
+                if (on && !split) Text(if (Stems.working.value == song.id) "Splitting this song now. It switches over by itself when it's ready."
+                    else "This song is waiting its turn to be split. Until then it plays as normal.",
+                    Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
+                if (on && busy != null && Stems.working.value != null && Stems.working.value != song.id) {
+                    val other = Library.cached?.byId?.get(Stems.working.value!!)
+                    Text("Getting “${other?.title ?: "the next song"}” ready… ${(busy * 100).toInt()}%", Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
                 }
             }
             // 3. quick picks
@@ -148,13 +154,13 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
             // 5. back to normal, export
             item {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Button({ Stems.reset(ctx, song); refresh++; Toast.makeText(ctx, "Back to normal: the original song", Toast.LENGTH_SHORT).show() },
+                    Button({ Stems.reset(ctx); refresh++; Toast.makeText(ctx, "Back to normal: the original song", Toast.LENGTH_SHORT).show() },
                         Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("↺  Back to normal", fontSize = 16.sp) }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton({ asking = true }, Modifier.fillMaxWidth(), enabled = !exporting) { Text(if (exporting) "Saving…" else "💾 Export", color = Accent) }
-                    Text("100% is as recorded. Up to 150% makes a part louder. Stems take about 42 MB per minute of song on your phone (${Stems.usedMb(ctx)} MB now).",
+                    Text("100% is as recorded. Up to 150% makes a part louder. Your music files are never changed: split copies are kept separately, about 42 MB per minute of song, up to 1.5 GB (${Stems.usedMb(ctx)} MB now).",
                         Modifier.padding(top = 8.dp), fontSize = 12.sp, color = dim)
-                    TextButton({ if (Stems.playingStems(song.id)) Stems.use(ctx, song, false); Stems.deleteAll(ctx); refresh++ }) { Text("Delete all split songs", color = dim) }
+                    TextButton({ Stems.deleteAll(ctx); refresh++ }) { Text("Delete all split songs", color = dim) }
                 }
             }
         }
