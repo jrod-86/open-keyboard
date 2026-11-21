@@ -74,6 +74,9 @@ private object MoodState {
     var genre by mutableStateOf("")
     var popularFirst by mutableStateOf(false)
     var feeling by mutableStateOf("")
+    // test 312: how long the mix is and how it's sorted
+    var length by mutableStateOf(-1)
+    var sort by mutableStateOf("flow")
     var last: MoodView? = null
 }
 
@@ -109,7 +112,7 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         val songs = Moods.mix(ctx, placed, ask)
         if (songs.isEmpty()) { Toast.makeText(ctx, "No songs fit that yet", Toast.LENGTH_SHORT).show(); return }
         MoodState.mix = songs; MoodState.title = title; MoodState.moodId = ask.mood?.id; saved = ""
-        ui.play(songs, 0)
+        ui.play(moodShown(ctx, songs), 0)
     }
     fun current(mood: Moods.Ask? = null) = Moods.Ask(mood?.mood ?: MoodState.moodId?.let(Moods::byId), MoodState.lift, MoodState.genre, MoodState.popularFirst && MusicSettings.popularOn)
     fun feel() {
@@ -126,6 +129,11 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         }
     }
 
+    // test 312 (Jarrod): a picked mood opens on its own screen with a back button, a length and a sort
+    MoodState.mix?.let { full ->
+        MoodMixScreen(full, lib, ui, open, onBack = { MoodState.mix = null }, replay = { MoodState.moodId?.let { id -> play(current(Moods.Ask(Moods.byId(id))), MoodState.title) } })
+        return
+    }
     LazyColumn(Modifier.fillMaxSize(), state = TabScroll.moods, contentPadding = PaddingValues(bottom = 16.dp)) {
         // 1. getting the songs ready
         val left = view?.left ?: 0
@@ -174,35 +182,6 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         contentPadding = PaddingValues(horizontal = 14.dp)) { Text(if (thinking) "…" else "Go") }
                 }
                 if (thinking) Text("Working out the right music…", Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
-            }
-            // 3. the mix you're playing
-            MoodState.mix?.let { mix ->
-                item {
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(MoodState.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${mix.size} songs · ${Moods.liftLabel(MoodState.lift)}" + (if (MoodState.genre.isNotEmpty()) " · ${MoodState.genre}" else ""), fontSize = 12.sp, color = dim)
-                        }
-                        androidx.compose.material3.TextButton({ MoodState.mix = null }) { Text("✕", color = dim) }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ ui.play(mix, 0) }, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Play") }
-                        OutlinedButton({ ui.play(mix, 0, true) }) { Text("Shuffle", color = Accent) }
-                        OutlinedButton({ Playlists.create(ctx, MoodState.title, mix.map { it.id }); saved = "Saved as playlist “${MoodState.title}”" }) { Text("Save", color = Accent) }
-                    }
-                    if (saved.isNotEmpty()) Text(saved, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
-                    Text("Tap ✕ on a song that doesn't fit. It won't come back in this mood, and songs like it drop down.",
-                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 11.sp, color = dim)
-                }
-                itemsIndexed(mix.take(60), key = { i, s -> "mix/${s.id}/$i" }) { i, s ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { SongRow(s, ui, lib, open) { ui.play(mix, i) } }
-                        IconButton({
-                            MoodState.moodId?.let { Moods.remove(ctx, it, s.id) }
-                            MoodState.mix = mix.filterIndexed { k, _ -> k != i }
-                        }) { Text("✕", color = dim, fontSize = 16.sp) }
-                    }
-                }
             }
             // 4. the moods
             item {
@@ -307,6 +286,93 @@ private fun AiListenerCard(running: Boolean) {
                     }
                 }
             }, Modifier.padding(top = 8.dp), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Download (${Clap.MB} MB)") }
+        }
+    }
+}
+
+private val MOOD_LENGTHS = listOf(15 to "Short · 15", 30 to "Medium · 30", 60 to "Long · 60", -1 to "All")
+private val MOOD_SORTS = listOf("flow" to "Best flow", "popular" to "Popular", "newest" to "Newest", "oldest" to "Oldest", "az" to "A–Z", "random" to "Mixed up")
+
+/** The mix as it's shown and played: sorted, then cut to the length you picked. */
+private fun moodShown(ctx: android.content.Context, full: List<Song>): List<Song> {
+    if (MoodState.length == -1 && MoodState.sort == "flow") {
+        val p = ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
+        MoodState.length = p.getInt("mood_len", 30); MoodState.sort = p.getString("mood_sort", "flow")!!
+    }
+    // the mix's own order is best first, so a shorter list keeps the best fits
+    val picked = if (MoodState.length > 0) full.take(MoodState.length) else full
+    return when (MoodState.sort) {
+        "popular" -> picked.sortedByDescending { Popularity.known(ctx, it)?.plays ?: -1L }
+        "newest" -> picked.sortedWith(compareByDescending<Song> { it.year }.thenByDescending { it.dateAdded })
+        "oldest" -> picked.sortedWith(compareBy<Song> { if (it.year > 0) it.year else Int.MAX_VALUE }.thenBy { it.dateAdded })
+        "az" -> picked.sortedBy { it.title.lowercase() }
+        "random" -> picked.shuffled(java.util.Random(picked.size.toLong() * 31 + (MoodState.title.hashCode())))
+        else -> picked
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun MoodMixScreen(full: List<Song>, lib: Library, ui: PlayerUi, open: (Page) -> Unit, onBack: () -> Unit, replay: () -> Unit) {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+    var saved by remember { mutableStateOf("") }
+    androidx.activity.compose.BackHandler { onBack() }
+    val shown = remember(full, MoodState.length, MoodState.sort) { moodShown(ctx, full) }
+    fun choose(len: Int? = null, sort: String? = null) {
+        len?.let { MoodState.length = it }; sort?.let { MoodState.sort = it }
+        ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE).edit().putInt("mood_len", MoodState.length).putString("mood_sort", MoodState.sort).apply()
+        ui.play(moodShown(ctx, full), 0)
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onBack) { androidx.compose.material3.Icon(MusicIcons.back, "Back to moods") }
+                Column(Modifier.weight(1f)) {
+                    Text(MoodState.title, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${shown.size} songs · ${Moods.liftLabel(MoodState.lift)}" + (if (MoodState.genre.isNotEmpty()) " · ${MoodState.genre}" else ""), fontSize = 12.sp, color = dim)
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ ui.play(shown, 0) }, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Play") }
+                OutlinedButton({ ui.play(shown, 0, true) }) { Text("Shuffle", color = Accent) }
+                OutlinedButton({ Playlists.create(ctx, MoodState.title, shown.map { it.id }); saved = "Saved as playlist “${MoodState.title}”" }) { Text("Save", color = Accent) }
+            }
+            if (saved.isNotEmpty()) Text(saved, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
+            Text("How long", Modifier.padding(start = 16.dp, top = 8.dp), fontSize = 13.sp, color = dim)
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(MOOD_LENGTHS) { (n, label) ->
+                    FilterChip(MoodState.length == n, { choose(len = n) }, { Text(if (n == -1) "All · ${full.size}" else label) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                }
+            }
+            Text("Sort by", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(MOOD_SORTS) { (id, label) ->
+                    FilterChip(MoodState.sort == id, { choose(sort = id) }, { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("😌 Calm", fontSize = 13.sp, color = dim)
+                Slider(MoodState.lift, { MoodState.lift = it }, Modifier.weight(1f).padding(horizontal = 8.dp), valueRange = -1f..1f,
+                    onValueChangeFinished = replay, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                Text("Hype 🔥", fontSize = 13.sp, color = dim)
+            }
+            Text("Tap ✕ on a song that doesn't fit. It won't come back in this mood, and songs like it drop down.",
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 11.sp, color = dim)
+        }
+        itemsIndexed(shown, key = { i, s -> "mix/${s.id}/$i" }) { i, s ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SongRow(s, ui, lib, open) { ui.play(shown, i) } }
+                IconButton({
+                    MoodState.moodId?.let { Moods.remove(ctx, it, s.id) }
+                    MoodState.mix = full.filter { it.id != s.id }
+                }) { Text("✕", color = dim, fontSize = 16.sp) }
+            }
+        }
+        item {
+            androidx.compose.material3.TextButton(onBack, Modifier.padding(12.dp)) { Text("← Back to moods", color = Accent) }
         }
     }
 }

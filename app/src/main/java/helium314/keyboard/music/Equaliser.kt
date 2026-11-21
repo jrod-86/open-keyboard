@@ -32,6 +32,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -100,6 +104,28 @@ object Eq {
         "Late night" to listOf(-3f, -2f, -1f, 0f, 1f, 1f, 1f, 0f, -2f, -4f),
         "Small speaker" to listOf(-4f, -2f, 1f, 2f, 2f, 2f, 2f, 2f, 1f, 0f),
     )
+
+    /** test 312 (Jarrod: "a selection of style choices"): ready-made sounds that also set bass and stereo width */
+    class Style(val emoji: String, val name: String, val about: String, val set: EqSet)
+    val STYLES = listOf(
+        Style("✨", "Clear", "Crisp and detailed", EqSet(true, listOf(-1f, -1f, 0f, 0f, 1f, 2f, 3f, 3f, 2f, 1f), 0f, 1.1f, "Clear")),
+        Style("🔊", "Big bass", "Deep, punchy low end", EqSet(true, listOf(4f, 4f, 2f, 0f, -1f, 0f, 0f, 0f, 1f, 1f), 0.5f, 1f, "Big bass")),
+        Style("🏟️", "Concert", "Wide and roomy, like live", EqSet(true, listOf(3f, 2f, 0f, -1f, 0f, 1f, 2f, 2f, 3f, 3f), 0.2f, 1.5f, "Concert")),
+        Style("🪩", "Club", "Loud bass and sparkle", EqSet(true, listOf(6f, 5f, 2f, 0f, -1f, -1f, 1f, 3f, 4f, 4f), 0.6f, 1.2f, "Club")),
+        Style("🎙️", "Voices", "Singers and podcasts up front", EqSet(true, listOf(-3f, -2f, -1f, 1f, 3f, 4f, 4f, 2f, 0f, -1f), 0f, 0.9f, "Voices")),
+        Style("🌙", "Soft", "Gentle for late at night", EqSet(true, listOf(-2f, -1f, 0f, 0f, 1f, 1f, 0f, -1f, -3f, -4f), 0f, 1f, "Soft")),
+        Style("🚗", "Car", "Fills a noisy car", EqSet(true, listOf(4f, 3f, 1f, 0f, 0f, 1f, 2f, 3f, 3f, 2f), 0.3f, 1.1f, "Car")),
+        Style("🎧", "Warm", "Smooth, rich and relaxed", EqSet(true, listOf(3f, 3f, 2f, 1f, 0f, 0f, -1f, -1f, 0f, 0f), 0.2f, 1f, "Warm")),
+    )
+    /** your own saved settings */
+    val mine = mutableStateOf<List<EqSet>>(emptyList())
+    fun loadMine(ctx: Context) {
+        mine.value = runCatching { JSONArray(prefs(ctx).getString("eq_mine", "[]")).let { a -> List(a.length()) { EqSet.from(a.getJSONObject(it)) } } }.getOrDefault(emptyList())
+    }
+    fun saveMine(ctx: Context, list: List<EqSet>) {
+        mine.value = list
+        prefs(ctx).edit().putString("eq_mine", JSONArray(list.map { it.json() }).toString()).apply()
+    }
 
     /** what the audio uses right now (read on the audio thread) */
     @Volatile var live = EqSet(); private set
@@ -304,6 +330,18 @@ internal fun EqualiserPage(onBack: () -> Unit) {
     val s by Eq.state
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     fun change(n: EqSet) = Eq.set(n, ctx)
+    var naming by remember { mutableStateOf(false) }
+    if (naming) {
+        var name by remember { mutableStateOf("My sound " + (Eq.mine.value.size + 1)) }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { naming = false }, title = { Text("Save this setting") },
+            text = { androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
+            confirmButton = { TextButton({
+                val n = name.trim().ifBlank { "My sound" }
+                val saved = s.copy(on = true, preset = n)
+                Eq.saveMine(ctx, Eq.mine.value.filter { it.preset != n } + saved); change(saved); naming = false
+            }) { Text("Save") } },
+            dismissButton = { TextButton({ naming = false }) { Text("Cancel") } })
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { Header("Equaliser", onBack) }
         item {
@@ -333,6 +371,44 @@ internal fun EqualiserPage(onBack: () -> Unit) {
             }
         }
         item {
+            // test 312: one big button to undo everything
+            val normal = s.gains.all { it == 0f } && s.bass == 0f && s.width == 1f
+            androidx.compose.material3.Button({ change(EqSet(on = false)); android.widget.Toast.makeText(ctx, "Back to normal: the song as it was recorded", android.widget.Toast.LENGTH_SHORT).show() },
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), enabled = !normal || s.on,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Accent)) { Text("↺  Back to normal", fontSize = 16.sp) }
+        }
+        item { Text("Styles", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        items(Eq.STYLES.chunked(2)) { row ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (st in row) {
+                    val sel = s.on && s.preset == st.name
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                        .background(if (sel) Accent.copy(alpha = 0.28f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                        .clickable { change(st.set) }.padding(12.dp)) {
+                        Text(st.emoji + "  " + st.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(st.about, fontSize = 12.sp, color = dim)
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        item {
+            LaunchedEffect(Unit) { Eq.loadMine(ctx) }
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("My settings", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                TextButton({ naming = true }) { Text("＋ Save this one", color = Accent) }
+            }
+            if (Eq.mine.value.isEmpty()) Text("Set it how you like, then Save. Your settings show here.", Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(Eq.mine.value) { m ->
+                    FilterChip(s.on && s.preset == m.preset, { change(m.copy(on = true)) }, { Text(m.preset) },
+                        trailingIcon = { Text("✕", Modifier.clickable { Eq.saveMine(ctx, Eq.mine.value - m) }, color = dim) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                }
+            }
+        }
+        item { Text("Presets", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        item {
             LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(Eq.PRESETS) { (name, g) ->
                     FilterChip(s.preset == name, { change(s.copy(on = true, gains = g, preset = name)) }, { Text(name) },
@@ -340,6 +416,7 @@ internal fun EqualiserPage(onBack: () -> Unit) {
                 }
             }
         }
+        item { Text("Fine tune", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
         items(10) { i ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(Eq.LABELS[i] + " Hz", Modifier.width(64.dp), fontSize = 13.sp, color = dim)
@@ -368,7 +445,7 @@ internal fun EqualiserPage(onBack: () -> Unit) {
         }
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ change(EqSet(on = s.on)) }) { Text("Reset", color = Accent) }
+                OutlinedButton({ change(EqSet(on = false)) }) { Text("↺ Back to normal", color = Accent) }
                 TextButton({ openEqualiser(ctx) }) { Text("Phone's own equaliser", color = Accent) }
             }
             Spacer(Modifier.height(8.dp))

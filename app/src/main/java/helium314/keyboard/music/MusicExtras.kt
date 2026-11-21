@@ -100,6 +100,8 @@ object MusicSettings {
     var blurBackground by mutableStateOf(false)
     /** Themes (test 239): -1 plain, 0..19 colour, 100+ FX (see WavesThemes) */
     var theme by mutableIntStateOf(-1)
+    /** test 312 (Jarrod: "they are mostly all too bright"): how much darker themes are drawn, 0 = as made, 0.9 = very dark */
+    var themeDark by mutableFloatStateOf(0f)
     /** Design studio (test 264, Jarrod): the mini player's own background. -3 song colour (as before), -2 same as the app,
      *  -1 plain black, 0.. colour theme, 100+ FX theme */
     var miniTheme by mutableIntStateOf(-3)
@@ -125,6 +127,7 @@ object MusicSettings {
         effectsOn = p.getBoolean("fx_on", true); cover = p.getInt("fx_cover", 1); background = p.getInt("fx_bg2", 0); strength = p.getFloat("fx_strength", 1f)
         coverSize = p.getFloat("look_cover3", 0.5f); buttonSize = p.getFloat("look_buttons", 1f)
         miniSize = p.getFloat("look_mini", 1.25f); blurBackground = p.getBoolean("look_blur", false); theme = p.getInt("look_theme", -1)
+        themeDark = p.getFloat("look_theme_dark", 0f)
         miniTheme = p.getInt("mini_theme", -3); miniCover = p.getInt("mini_cover", 0)
         floatOn = p.getBoolean("float_on", false); floatStyle = p.getInt("float_style", 1); floatTheme = p.getInt("float_theme", -3)
         floatSize = p.getFloat("float_size", 1f); floatCover = p.getInt("float_cover", 1)
@@ -135,7 +138,7 @@ object MusicSettings {
     fun save(ctx: Context) {
         prefs(ctx).edit().putBoolean("fx_on", effectsOn).putInt("fx_cover", cover).putInt("fx_bg2", background).putFloat("fx_strength", strength)
             .putFloat("look_cover3", coverSize).putFloat("look_buttons", buttonSize)
-            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme)
+            .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme).putFloat("look_theme_dark", themeDark)
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
             .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec).apply()
@@ -267,6 +270,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
     fun changed() = MusicSettings.save(ctx)
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding()) {
         item { Header("Settings", onBack) }
+        item { Section("Sound and driving") }
         item {
             Row(Modifier.fillMaxWidth().clickable { open(Page.Equaliser) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -381,9 +385,26 @@ private fun VolumeSettings() {
 
 @Composable
 internal fun Section(t: String) {
-    Text(t.uppercase(), Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+    // test 312 (Jarrod: "the headings are in too small of font"): a big heading with an icon and a coloured bar
+    val icon = SECTION_ICONS.entries.firstOrNull { t.startsWith(it.key) }?.value ?: "•"
+    Spacer(Modifier.height(18.dp))
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp))
+        .background(Accent.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(4.dp).height(24.dp).clip(RoundedCornerShape(2.dp)).background(Accent))
+        Spacer(Modifier.width(10.dp))
+        Text(icon, fontSize = 20.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(t, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    }
+    Spacer(Modifier.height(6.dp))
 }
+
+private val SECTION_ICONS = linkedMapOf(
+    "Playback" to "▶️", "Backup" to "💾", "Scrobbling" to "📡", "AI radio" to "📻", "Tuning" to "🎼", "Look" to "🎨",
+    "Your music" to "🎵", "Volume" to "🔉", "Popularity" to "📈", "Song blending" to "🔀", "App background" to "🖼️",
+    "Mini player" to "⬇️", "Floating player" to "🫧", "Album cover" to "💿", "Now Playing" to "🎶", "Beat effects" to "💥",
+    "Sound" to "🎚️", "Driving" to "🚗",
+)
 
 @Composable
 internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {

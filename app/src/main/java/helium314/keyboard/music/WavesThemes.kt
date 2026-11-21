@@ -132,6 +132,7 @@ object WavesThemes {
 @Composable
 internal fun ThemeBackground(id: Int, modifier: Modifier = Modifier, dim: Float = 0.35f, preview: Boolean = false) {
     val t = WavesThemes.of(id) ?: return
+    @Suppress("NAME_SHADOWING") val dim = dim + (1f - dim) * MusicSettings.themeDark
     if (!WavesThemes.isFx(id)) {
         Box(modifier.fillMaxSize().background(Brush.linearGradient(t.colors, start = Offset.Zero, end = Offset(900f, 2200f)))
             .background(Color.Black.copy(alpha = dim)))
@@ -246,6 +247,22 @@ internal fun ThemesPage(onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onBack) { Icon(MusicIcons.arrowBack, "Back") }
                 Text("Themes", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        // test 312: brightness for every theme, in 5% steps
+        item(span = { GridItemSpan(3) }) {
+            Column(Modifier.fillMaxWidth().padding(6.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)).padding(12.dp)) {
+                val bright = 1f - MusicSettings.themeDark
+                fun set(v: Float) { MusicSettings.themeDark = (1f - (Math.round(v.coerceIn(0.1f, 1f) * 20) / 20f)).coerceIn(0f, 0.9f); MusicSettings.save(ctx) }
+                Text("☀️ Theme brightness: ${Math.round(bright * 100)}%", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text("Turn it down for a darker look. Works on every theme, moving ones too.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.FilledTonalIconButton({ set(bright - 0.05f) }, enabled = bright > 0.1f) { Text("−", fontSize = 22.sp) }
+                    androidx.compose.material3.Slider(bright, { set(it) }, Modifier.weight(1f).padding(horizontal = 4.dp), valueRange = 0.1f..1f, steps = 17,
+                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                    androidx.compose.material3.FilledTonalIconButton({ set(bright + 0.05f) }, enabled = bright < 1f) { Text("+", fontSize = 22.sp) }
+                }
+                if (bright < 1f) androidx.compose.material3.TextButton({ set(1f) }) { Text("↺ Back to normal", color = Accent) }
             }
         }
         item(span = { GridItemSpan(3) }) { Text("Colour themes", Modifier.padding(6.dp), fontWeight = FontWeight.SemiBold, fontSize = 17.sp) }

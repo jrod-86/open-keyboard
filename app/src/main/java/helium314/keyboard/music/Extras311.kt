@@ -263,6 +263,18 @@ internal fun SpeedDialog() {
                             colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
                     }
                 }
+                // test 312 (Jarrod): a slider in 5% steps with − and + buttons
+                Spacer(Modifier.height(10.dp))
+                fun step(v: Float) = Playback.setSpeed(ctx, (Math.round(v.coerceIn(0.5f, 2f) * 20) / 20f))
+                Text(if (cur == 1f) "Normal (100%)" else "${Math.round(cur * 100)}%", fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.FilledTonalIconButton({ step(cur - 0.05f) }, enabled = cur > 0.5f) { Text("−", fontSize = 22.sp) }
+                    Slider(cur, { step(it) }, Modifier.weight(1f).padding(horizontal = 4.dp), valueRange = 0.5f..2f, steps = 29,
+                        colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                    androidx.compose.material3.FilledTonalIconButton({ step(cur + 0.05f) }, enabled = cur < 2f) { Text("+", fontSize = 22.sp) }
+                }
+                if (cur != 1f) TextButton({ Playback.setSpeed(ctx, 1f) }, Modifier.align(Alignment.CenterHorizontally)) { Text("↺ Back to normal", color = Accent) }
                 Spacer(Modifier.height(8.dp))
                 Text("Faster or slower without the voices going high or low. Handy for podcasts, audiobooks and practice.", fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
@@ -296,7 +308,7 @@ internal fun PlaybackSettings() {
         }
         Row(Modifier.fillMaxWidth().clickable { Playback.asking.value = true }.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text("Playback speed", Modifier.weight(1f), fontSize = 16.sp)
-            Text(if (Playback.speed.value == 1f) "Normal" else "${Playback.speed.value}×", color = Accent, fontWeight = FontWeight.SemiBold)
+            Text(if (Playback.speed.value == 1f) "Normal" else "${Math.round(Playback.speed.value * 100)}%", color = Accent, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(1.dp))
     }

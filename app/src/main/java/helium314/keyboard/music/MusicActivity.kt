@@ -428,11 +428,22 @@ private fun MusicApp(ui: PlayerUi) {
     var npMode by remember { mutableIntStateOf(0) }
     val npAnim = remember { androidx.compose.animation.core.Animatable(0f) }
     val library = lib
-    BackHandler(enabled = nowPlaying || stack.size > 1) {
-        if (nowPlaying) nowPlaying = false else stack.removeAt(stack.lastIndex)
+    // test 312: a page opened from Now Playing (Equaliser, Car mode, Design studio…) goes back to Now Playing
+    var backToNowAt by remember { mutableIntStateOf(-1) }
+    fun back() {
+        if (stack.size <= 1) return
+        stack.removeAt(stack.lastIndex)
+        if (stack.size == backToNowAt) { backToNowAt = -1; nowPlaying = true }
+        else if (backToNowAt > stack.size) backToNowAt = -1
     }
-    fun open(p: Page) { if (p == Page.Home) { stack.clear(); stack.add(Page.Home) } else stack.add(p); nowPlaying = false }
-    fun back() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+    BackHandler(enabled = nowPlaying || stack.size > 1) {
+        if (nowPlaying) nowPlaying = false else back()
+    }
+    fun open(p: Page) {
+        if (p == Page.Home) { stack.clear(); stack.add(Page.Home); backToNowAt = -1 }
+        else { if (nowPlaying) backToNowAt = stack.size; stack.add(p) }
+        nowPlaying = false
+    }
     val song = songOf(ui, library)
     val art by produceState<Bitmap?>(null, song?.id, song?.artFile) { value = song?.let { Covers.load(ctx, it, 200) } }
     val tint = remember(art) { art?.let { averageColor(it) } ?: Color(0xFF3A3A40) }
