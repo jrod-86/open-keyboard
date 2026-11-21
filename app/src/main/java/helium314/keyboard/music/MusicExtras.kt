@@ -267,6 +267,15 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
     fun changed() = MusicSettings.save(ctx)
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding()) {
         item { Header("Settings", onBack) }
+        item {
+            Row(Modifier.fillMaxWidth().clickable { open(Page.Equaliser) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("🎚️ Equaliser", fontSize = 17.sp)
+                    Text("10 bands, bass boost, wide stereo and presets, per device", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+                Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+            }
+        }
         item { VolumeSettings() }
         item { BlendSettings() }
         item {

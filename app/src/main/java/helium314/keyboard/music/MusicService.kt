@@ -62,12 +62,14 @@ class MusicService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        Eq.load(this)
+        val player = ExoPlayer.Builder(this, Eq.renderers(this))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true) // headphones unplugged: pause
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
         MusicState.audioSession = player.audioSessionId
+        runCatching { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).registerAudioDeviceCallback(devices, handler) }
         var counted = -1L
         // Most played / Recently played (test 238): count a song once each time it starts playing
         fun count() {
@@ -89,6 +91,7 @@ class MusicService : MediaSessionService() {
                 save()
                 leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
                 counted = -1L; count()
+                Radio.topUp(this@MusicService, player)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count() }
         })
@@ -128,7 +131,14 @@ class MusicService : MediaSessionService() {
         if (p == null || !p.playWhenReady || p.mediaItemCount == 0) { save(); stopSelf() }
     }
 
+    // test 311: the equaliser follows you from speaker to headphones to the car
+    private val devices = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>?) { Eq.deviceChanged(this@MusicService) }
+        override fun onAudioDevicesRemoved(removed: Array<out android.media.AudioDeviceInfo>?) { Eq.deviceChanged(this@MusicService) }
+    }
+
     override fun onDestroy() {
+        runCatching { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).unregisterAudioDeviceCallback(devices) }
         save()
         handler.removeCallbacksAndMessages(null)
         scope.cancel()

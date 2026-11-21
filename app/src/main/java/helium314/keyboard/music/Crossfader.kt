@@ -38,7 +38,7 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
     fun start() { handler.post(tick) }
     fun release() { handler.removeCallbacks(tick); cancel(); helper?.release(); helper = null }
 
-    private fun helper(): ExoPlayer = helper ?: ExoPlayer.Builder(ctx)
+    private fun helper(): ExoPlayer = helper ?: ExoPlayer.Builder(ctx, Eq.renderers(ctx))
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
         .build().also { helper = it }
 

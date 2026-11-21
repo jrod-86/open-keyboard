@@ -233,6 +233,7 @@ class PlayerUi {
     fun play(songs: List<Song>, index: Int, shuffled: Boolean? = null) {
         val c = controller ?: return
         if (songs.isEmpty()) return
+        Radio.stop() // playing something else ends the radio (Radio.start turns it back on after)
         c.shuffleModeEnabled = shuffled ?: c.shuffleModeEnabled
         val start = if (shuffled == true) songs.indices.random() else index
         c.setMediaItems(songs.map { it.toMediaItem() }, start, 0)
@@ -350,6 +351,8 @@ internal sealed class Page {
     data object Studio : Page()
     /** "Add artwork" for one song, from the Now Playing menu (test 267) */
     data class FixOne(val id: Long) : Page()
+    /** test 311: Open Waves' own equaliser */
+    data object Equaliser : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -432,6 +435,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Edit -> EditPage(library, ::back)
                     Page.Themes -> ThemesPage(::back)
                     Page.Studio -> StudioPage(::open, ::back)
+                    Page.Equaliser -> EqualiserPage(::back)
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
@@ -596,6 +600,7 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
             DropdownMenuItem({ Text("Play Next") }, { ui.playNext(song); menu = false })
             if (!slim) DropdownMenuItem({ Text("Play Last") }, { ui.playLast(song); menu = false })
             DropdownMenuItem({ Text("Add to Playlist…") }, { PlaylistPicker.songs.value = listOf(song.id); menu = false })
+            DropdownMenuItem({ Text("📻 Radio from this song") }, { menu = false; Radio.start(ctx, ui, lib, song) })
             extra.forEach { (label, action) -> DropdownMenuItem({ Text(label) }, { menu = false; action() }) }
             if (!slim) DropdownMenuItem({ Text(if (song.id in Favourites.ids.value) "Remove from Favourites" else "Favourite") }, { Favourites.toggle(ctx, song.id); menu = false })
             DropdownMenuItem({ Text("Go to Album") }, { open(Page.AlbumPage(song.albumId)); menu = false })
@@ -802,7 +807,7 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
         }) { Icon(MusicIcons.sVolume, "Volume", tint = Color.White, modifier = Modifier.size(27.dp)) }
-        IconButton({ openEqualiser(ctx) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
+        IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
         MoreMenu(song, ui, open)
     }
 }
@@ -880,6 +885,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
                 DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
+                Library.cached?.let { l -> DropdownMenuItem({ Text("📻 Radio from this song") }, { menu = false; Radio.start(ctx, ui, l, s) }) }
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
             DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })
