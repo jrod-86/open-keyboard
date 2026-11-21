@@ -119,7 +119,7 @@ object SongFixer {
     @Volatile var lastFailed = false
         private set
 
-    private suspend fun get(url: String): String? {
+    internal suspend fun get(url: String): String? {
         // Test 260 (Jarrod: artist search came up empty on the first tap, worked on the second):
         // MusicBrainz often answers 503 "slow down" when asked again quickly, so wait and try again.
         lastFailed = false
@@ -214,7 +214,7 @@ object SongFixer {
         BitmapFactory.decodeFile(f.absolutePath)
     }
 
-    private fun exact(title: String, artist: String) = buildString {
+    internal fun exact(title: String, artist: String) = buildString {
         append("recording:\"").append(esc(title)).append('"')
         if (artist.isNotBlank()) append(" AND artist:\"").append(esc(artist)).append('"')
     }

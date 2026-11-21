@@ -203,7 +203,7 @@ object AlbumRules {
     fun titleKey(t: String) = noise.replace(t, "").lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
     /** artist for spotting copies: main artist, without "The" and punctuation ("The Smashing Pumpkins" = "Smashing Pumpkins") */
-    private fun artistKey(a: String) = mainArtist(a).removePrefix("the ").replace(Regex("[^\\p{L}\\p{N}]+"), "")
+    fun artistKey(a: String) = mainArtist(a).removePrefix("the ").replace(Regex("[^\\p{L}\\p{N}]+"), "")
 
     fun unique(songs: List<Song>): List<Song> =
         // test 284 (Jarrod: still doubles): the same song from a different album (e.g. a Greatest Hits) can differ in length

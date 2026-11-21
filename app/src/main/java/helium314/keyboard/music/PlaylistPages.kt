@@ -155,8 +155,11 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var sorting by remember { mutableStateOf(false) }
+    var undoSort by remember(id) { mutableStateOf<List<Long>?>(null) } // the order before "Sort by popularity", for Undo
     val state = androidx.compose.foundation.lazy.rememberLazyListState()
     val menuFor = remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     /*
      * Test 292 (Jarrod: the drag still stopped, three times): dragging is now handled by the page around the list, not by the
@@ -265,9 +268,20 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
                     Box {
                         IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Accent) }
                         DropdownMenu(menu, { menu = false }) {
+                            if (songs.size > 1) DropdownMenuItem({ Text("Sort by popularity") }, { menu = false; sorting = true })
                             DropdownMenuItem({ Text("Rename") }, { menu = false; renaming = true })
                             DropdownMenuItem({ Text("Delete Playlist") }, { menu = false; deleting = true })
                         }
+                    }
+                }
+            }
+            undoSort?.let { before ->
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(10.dp))
+                        .background(Accent.copy(alpha = 0.12f)).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sorted by popularity", Modifier.weight(1f), fontSize = 14.sp)
+                        TextButton({ Playlists.setSongs(ctx, id, before); undoSort = null }) { Text("Undo", color = Accent, fontWeight = FontWeight.Bold) }
+                        TextButton({ undoSort = null }) { Text("✕", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)) }
                     }
                 }
             }
@@ -317,6 +331,13 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             }
         }
     }
+    if (sorting) PopularitySort(songs, onApply = { sorted ->
+        val before = p.songs
+        val gone = p.songs.filter { it !in lib.byId }
+        Playlists.setSongs(ctx, id, sorted.map { it.id } + gone)
+        undoSort = before; sorting = false
+        scope.launch { state.scrollToItem(0) }
+    }, onClose = { sorting = false })
     if (renaming) NameDialog("Rename Playlist", p.name, "Save") { n -> renaming = false; if (n != null) Playlists.rename(ctx, id, n) }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Delete “${p.name}”?") },
         text = { Text("The songs stay in your library.") },
