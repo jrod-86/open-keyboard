@@ -16,7 +16,19 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** How popular a song is: play count from ListenBrainz, chart peaks from Wikipedia (0 = not known). */
-data class Pop(val plays: Long, val listeners: Long, val us: Int, val au: Int, val uk: Int, val found: Boolean, val at: Long) {
+data class Pop(val plays: Long, val listeners: Long, val us: Int, val au: Int, val uk: Int, val found: Boolean, val at: Long, val year: Int = 0) {
+    /** Test 296 (Jarrod): the line under the song on Now Playing, e.g. "Reached #10 in the US and #3 in Australia (2010) · 12.3M plays". */
+    fun story(): String? {
+        val spots = listOfNotNull(
+            us.takeIf { it > 0 }?.let { "#$it in the US" }, au.takeIf { it > 0 }?.let { "#$it in Australia" }, uk.takeIf { it > 0 }?.let { "#$it in the UK" },
+        )
+        val chart = if (spots.isEmpty()) null else "Reached " + when (spots.size) {
+            1 -> spots[0]; 2 -> spots[0] + " and " + spots[1]; else -> spots[0] + ", " + spots[1] + " and " + spots[2]
+        } + (if (year > 0) " ($year)" else "")
+        val p = if (plays > 0) Popularity.plays(plays) else null
+        return listOfNotNull(chart, p).joinToString(" · ").ifBlank { null }?.let { (if (chart != null) "🏆 " else "🎧 ") + it }
+    }
+
     fun peaks(): String = listOfNotNull(
         us.takeIf { it > 0 }?.let { "US #$it" }, au.takeIf { it > 0 }?.let { "AU #$it" }, uk.takeIf { it > 0 }?.let { "UK #$it" },
     ).joinToString(" · ")
@@ -43,7 +55,8 @@ object Popularity {
             val j = JSONObject(file(ctx).readText())
             j.keys().forEach { k ->
                 val o = j.getJSONObject(k)
-                m[k] = Pop(o.optLong("p"), o.optLong("l"), o.optInt("us"), o.optInt("au"), o.optInt("uk"), o.optBoolean("f"), o.optLong("t"))
+                m[k] = Pop(o.optLong("p"), o.optLong("l"), o.optInt("us"), o.optInt("au"), o.optInt("uk"), o.optBoolean("f"),
+                    if (o.has("y")) o.optLong("t") else 0L /* saved by test 295, before the year: look again */, o.optInt("y"))
             }
         }
         return m.also { cache = it }
@@ -53,7 +66,7 @@ object Popularity {
         val m = cache ?: return
         val j = JSONObject()
         synchronized(m) {
-            m.forEach { (k, p) -> j.put(k, JSONObject().put("p", p.plays).put("l", p.listeners).put("us", p.us).put("au", p.au).put("uk", p.uk).put("f", p.found).put("t", p.at)) }
+            m.forEach { (k, p) -> j.put(k, JSONObject().put("p", p.plays).put("l", p.listeners).put("us", p.us).put("au", p.au).put("uk", p.uk).put("f", p.found).put("t", p.at).put("y", p.year)) }
         }
         runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText(j.toString()) }
     }
@@ -101,7 +114,7 @@ object Popularity {
             val pk = peaks[k]?.await()
             if (pk != null) reached = true
             val pop = Pop(best?.first ?: 0, best?.second ?: 0, pk?.get(0) ?: 0, pk?.get(1) ?: 0, pk?.get(2) ?: 0,
-                found = best != null || (pk?.any { it > 0 } == true), at = now)
+                found = best != null || (pk?.take(3)?.any { it > 0 } == true), at = now, year = pk?.getOrNull(3) ?: 0)
             results[k] = pop
             // nothing reached: don't save "not found", it may just be no internet
             if (counts != null) synchronized(map) { map[k] = pop }
@@ -218,9 +231,15 @@ object Popularity {
             val wt = p.optJSONArray("revisions")?.optJSONObject(0)?.optJSONObject("slots")?.optJSONObject("main")?.optString("content") ?: continue
             if (!Regex("(?i)\\{\\{\\s*infobox (song|single)").containsMatchIn(wt)) continue
             if (wantArtist.isNotEmpty() && !norm(wt.take(4000)).contains(wantArtist)) continue
-            return peaksIn(wt)
+            return peaksIn(wt) + intArrayOf(releaseYear(wt))
         }
         return null
+    }
+
+    /** The year from the song box ("| released = {{start date|2010|5|3}}" or "| released = 3 May 2010"). */
+    internal fun releaseYear(wt: String): Int {
+        val line = Regex("(?im)^\\s*\\|\\s*released\\s*=(.*)$").find(wt)?.groupValues?.get(1) ?: return 0
+        return Regex("\\b(19[0-9]{2}|20[0-9]{2})\\b").find(line)?.value?.toInt() ?: 0
     }
 
     internal fun peaksIn(wt: String): IntArray {

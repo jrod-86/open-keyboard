@@ -703,6 +703,10 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
                             Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                                     .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } })
+                            // test 296 (Jarrod): what "Sort by popularity" found about this song, e.g. its best chart spot and year
+                            val story = remember(song?.id) { song?.let { Popularity.known(ctx, it)?.story() } }
+                            if (story != null) Text(story, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 2,
+                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 12.dp, end = 12.dp))
                         }
                     }
                 }
