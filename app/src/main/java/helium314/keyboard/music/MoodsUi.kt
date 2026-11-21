@@ -376,3 +376,22 @@ private fun MoodMixScreen(full: List<Song>, lib: Library, ui: PlayerUi, open: (P
         }
     }
 }
+
+/** Test 316: the Moods tab's own settings (in the tab settings box): how long a mix is and how it's sorted. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun MoodTabOptions() {
+    val ctx = LocalContext.current
+    val p = ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
+    var len by remember { mutableStateOf(p.getInt("mood_len", 30)) }
+    var sort by remember { mutableStateOf(p.getString("mood_sort", "flow") ?: "flow") }
+    fun save() { MoodState.length = len; MoodState.sort = sort; p.edit().putInt("mood_len", len).putString("mood_sort", sort).apply() }
+    Text("Mix length", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        MOOD_LENGTHS.forEach { (n, label) -> Chip(label, len == n) { len = n; save() } }
+    }
+    Text("Mix order", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        MOOD_SORTS.forEach { (id, label) -> Chip(label, sort == id) { sort = id; save() } }
+    }
+}

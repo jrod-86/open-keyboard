@@ -413,7 +413,7 @@ private fun MusicApp(ui: PlayerUi) {
         onDispose { TagEdit.askWrite = null; TagEdit.afterSave = null }
     }
     LaunchedEffect(Unit) {
-        Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); RecentSearches.load(ctx)
+        Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); TabOpts.load(ctx); RecentSearches.load(ctx)
         SmartLists.load(ctx); Playback.load(ctx); Eq.load(ctx)
         withContext(Dispatchers.IO) { PlayStats.load(ctx) }
         lib = Library.load(ctx, fresh = true)
@@ -424,7 +424,7 @@ private fun MusicApp(ui: PlayerUi) {
     LaunchedEffect(ui.controller) { while (true) { ui.controller?.let { ui.position = it.currentPosition; ui.positionAt = android.os.SystemClock.elapsedRealtime() }; delay(250) } }
 
     val stack = remember { mutableStateListOf<Page>(Page.Home) }
-    val pager = rememberPagerState(initialPage = WavesTabs.indexOf("Tracks").coerceAtLeast(0)) { WavesTabs.size }
+    val pager = rememberPagerState(initialPage = (WavesTabs.indexOf(MusicSettings.startTab).takeIf { it >= 0 } ?: WavesTabs.indexOf("Tracks")).coerceAtLeast(0)) { WavesTabs.size }
     var nowPlaying by remember { mutableStateOf(false) }
     var npMode by remember { mutableIntStateOf(0) }
     val npAnim = remember { androidx.compose.animation.core.Animatable(0f) }

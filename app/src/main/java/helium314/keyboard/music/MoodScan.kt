@@ -45,9 +45,10 @@ object MoodScan {
     fun chargingOnly(ctx: Context) = prefs(ctx).getBoolean("mood_charging", false)
     fun setChargingOnly(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("mood_charging", on).apply()
 
-    fun start(ctx: Context) {
+    /** test 316: [measureOnly] = just the first listen (loudness, tempo, feel) for every song, no AI listener (Settings > Measure all). */
+    fun start(ctx: Context, measureOnly: Boolean = false) {
         running.value = true; status.value = "Starting…"
-        ContextCompat.startForegroundService(ctx, Intent(ctx, MoodScanService::class.java))
+        ContextCompat.startForegroundService(ctx, Intent(ctx, MoodScanService::class.java).putExtra("measure_only", measureOnly))
     }
     fun pause(ctx: Context) {
         running.value = false; status.value = ""
@@ -70,11 +71,13 @@ class MoodScanService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
     private var lastNote = 0L
+    private var measureOnly = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == PAUSE) { job?.cancel(); stop(); return START_NOT_STICKY }
+        measureOnly = intent?.getBooleanExtra("measure_only", false) == true
         note("Getting ready…", 0, 0)
         if (job?.isActive != true) job = scope.launch { run() }
         return START_NOT_STICKY
@@ -100,7 +103,7 @@ class MoodScanService : Service() {
         awake()
         val lib = Library.load(ctx)
         PlayStats.load(ctx)
-        val songs = lib.uniqueSongs
+        val songs = if (measureOnly) lib.songs else lib.uniqueSongs
         // test 305: each artist's genres from MusicBrainz, at the same time (one a second, saved after each)
         val artists = scope.launch {
             var fails = 0
@@ -112,7 +115,7 @@ class MoodScanService : Service() {
         // more than one pass: if the AI listener is downloaded while this runs, the next pass listens to the songs already measured
         var pass = 0
         while (scope.isActive && pass++ < 3) {
-            val ai = Clap.ready(ctx)
+            val ai = Clap.ready(ctx) && !measureOnly
             val feels = Moods.feels(ctx)
             val heard = Clap.scores(ctx)
             // the songs you play most are ready first

@@ -69,6 +69,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
@@ -112,10 +116,94 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-private val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
-/** test 298: the Popular tab goes when popularity features are turned off */
+internal val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
+/** test 298: the Popular tab goes when popularity features are turned off. Test 316 (Jarrod): any tab can be hidden; at least one always stays. */
 val WavesTabs: List<String> get() = allTabs.filter { t ->
-    when (t) { "Popular" -> MusicSettings.popularOn && MusicSettings.popularTab; "Moods" -> MusicSettings.moodsTab; else -> true }
+    t !in MusicSettings.hiddenTabs && (t != "Popular" || MusicSettings.popularOn)
+}.ifEmpty { listOf("Tracks") }
+
+/** Test 316: small per-tab tweaks (each tab's own settings box). */
+object TabOpts {
+    var az by mutableStateOf(true)        // A–Z bar down the side of long lists
+    var favMost by mutableStateOf(true)   // Most played row on Favourites
+    fun load(ctx: Context) { val p = ctx.getSharedPreferences("music", Context.MODE_PRIVATE); az = p.getBoolean("tab_az", true); favMost = p.getBoolean("fav_most", true) }
+    fun save(ctx: Context) { ctx.getSharedPreferences("music", Context.MODE_PRIVATE).edit().putBoolean("tab_az", az).putBoolean("fav_most", favMost).apply() }
+}
+
+private val tabBlurbs = mapOf("Popular" to "Your songs ranked by how popular they are in the charts.", "Moods" to "Mixes for how you feel, made from your songs.",
+    "Favourites" to "Songs you hearted, and your most played.", "Playlists" to "Your playlists and smart playlists.", "Tracks" to "Every song.",
+    "Albums" to "Your albums.", "Artists" to "Your artists.", "Folders" to "Songs by the folder they're in.")
+
+/** Test 316 (Jarrod): every tab has its own little settings box: show or hide it, open the app on it, and that tab's tweaks. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun TabSettingsDialog(tab: String, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    @Composable fun SwitchRow(title: String, note: String?, on: Boolean, set: (Boolean) -> Unit) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { Text(title, fontSize = 16.sp); note?.let { Text(it, fontSize = 12.sp, color = dim) } }
+            Switch(on, set, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+    }
+    @Composable fun SortChips(options: List<String>, chosen: androidx.compose.runtime.MutableIntState) {
+        Text("Sort by", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEachIndexed { i, o -> Chip(o, chosen.intValue == i) { chosen.intValue = i; Sorts.save(ctx) } }
+        }
+    }
+    AlertDialog(onDismissRequest = onClose, title = { Text("$tab tab") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text(tabBlurbs[tab] ?: "", fontSize = 13.sp, color = dim)
+            val shown = tab !in MusicSettings.hiddenTabs
+            val others = allTabs.count { it != tab && it !in MusicSettings.hiddenTabs }
+            SwitchRow("Show this tab", if (shown && others == 0) "It's the only tab left, so it stays." else "Off hides it. You can bring it back in Settings > Tabs.", shown) {
+                if (!it && others == 0) return@SwitchRow
+                MusicSettings.hiddenTabs = if (it) MusicSettings.hiddenTabs - tab else MusicSettings.hiddenTabs + tab; MusicSettings.save(ctx)
+            }
+            SwitchRow("Open the app on this tab", null, MusicSettings.startTab == tab) {
+                MusicSettings.startTab = if (it) tab else "Tracks"; MusicSettings.save(ctx)
+            }
+            when (tab) {
+                "Tracks" -> { SortChips(Sorts.tracks, Sorts.trackSort); SwitchRow("A–Z bar down the side", null, TabOpts.az) { TabOpts.az = it; TabOpts.save(ctx) } }
+                "Albums" -> { SortChips(Sorts.albums, Sorts.albumSort); SwitchRow("A–Z bar down the side", null, TabOpts.az) { TabOpts.az = it; TabOpts.save(ctx) } }
+                "Artists" -> { SortChips(Sorts.artists, Sorts.artistSort); SwitchRow("A–Z bar down the side", null, TabOpts.az) { TabOpts.az = it; TabOpts.save(ctx) } }
+                "Playlists" -> SortChips(Sorts.playlists, Sorts.playlistSort)
+                "Folders" -> SwitchRow("A–Z bar down the side", null, TabOpts.az) { TabOpts.az = it; TabOpts.save(ctx) }
+                "Favourites" -> SwitchRow("Show Most played", "The row of your most played songs under Favourite tracks.", TabOpts.favMost) { TabOpts.favMost = it; TabOpts.save(ctx) }
+                "Moods" -> MoodTabOptions()
+                "Popular" -> SwitchRow("Popularity features", "Off also turns off Sort by popularity and chart facts, and hides this tab.", MusicSettings.popularOn) {
+                    MusicSettings.popularOn = it; MusicSettings.save(ctx); if (!it && PopScan.running.value) PopScan.pause(ctx)
+                }
+            }
+        }
+    }, confirmButton = { TextButton(onClose) { Text("Done", color = Accent) } })
+}
+
+/** Settings > Tabs: a switch for every tab and a ⚙ for its own settings. */
+@Composable
+internal fun TabsSettings() {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    var open by remember { mutableStateOf<String?>(null) }
+    Column {
+        Section("Tabs")
+        Text("Pick which tabs show. Tap ⚙ for a tab's own settings (you can also long-press a tab's name).", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
+        allTabs.forEach { t ->
+            val shown = t !in MusicSettings.hiddenTabs
+            val others = allTabs.count { it != t && it !in MusicSettings.hiddenTabs }
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(t + if (MusicSettings.startTab == t) "  · opens here" else "", fontSize = 17.sp)
+                    if (t == "Popular" && !MusicSettings.popularOn) Text("Popularity features are off", fontSize = 12.sp, color = dim)
+                }
+                IconButton({ open = t }) { Icon(MusicIcons.settings, "$t settings", Modifier.size(22.dp)) }
+                Switch(shown, { if (it || others > 0) { MusicSettings.hiddenTabs = if (it) MusicSettings.hiddenTabs - t else MusicSettings.hiddenTabs + t; MusicSettings.save(ctx) } },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            }
+        }
+    }
+    open?.let { TabSettingsDialog(it) { open = null } }
 }
 
 private val dimText @Composable get() = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
@@ -152,6 +240,7 @@ internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: 
 internal fun WavesTabHeader(pager: PagerState) {
     val scope = rememberCoroutineScope()
     val row = rememberLazyListState()
+    var tabSettings by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pager.currentPage) { row.animateScrollToItem((pager.currentPage - 1).coerceAtLeast(0)) }
     LazyRow(state = row, modifier = Modifier.fillMaxWidth().height(58.dp), contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -159,9 +248,12 @@ internal fun WavesTabHeader(pager: PagerState) {
             val on = i == pager.currentPage
             Text(name, fontSize = if (on) 30.sp else 17.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                 color = if (on) MaterialTheme.colorScheme.onSurface else dimText,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { scope.launch { pager.animateScrollToPage(i) } })
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).combinedClickable(onLongClick = { tabSettings = name }) { scope.launch { pager.animateScrollToPage(i) } })
         }
+        // test 316: the open tab's own settings
+        item { IconButton({ tabSettings = WavesTabs.getOrNull(pager.currentPage) }) { Icon(MusicIcons.settings, "Tab settings", Modifier.size(20.dp), tint = dimText) } }
     }
+    tabSettings?.let { TabSettingsDialog(it) { tabSettings = null } }
 }
 
 @Composable
@@ -290,9 +382,9 @@ private fun FavouritesTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 Text("${favs.size} tracks", Modifier.padding(top = 8.dp), fontSize = 15.sp)
             }
         }
-        item { HorizontalDivider(Modifier.padding(vertical = 18.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) }
-        item { Text(if (most.isEmpty()) "Most played (play some songs and they'll show here)" else "Most played", fontSize = 17.sp, color = dimText) }
-        item {
+        if (TabOpts.favMost) item { HorizontalDivider(Modifier.padding(vertical = 18.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) }
+        if (TabOpts.favMost) item { Text(if (most.isEmpty()) "Most played (play some songs and they'll show here)" else "Most played", fontSize = 17.sp, color = dimText) }
+        if (TabOpts.favMost) item {
             LazyRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(most) { i, s ->
                     Column(Modifier.width(150.dp).clickable { ui.play(most, i) }, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -531,7 +623,7 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 Text("  ≡", fontSize = 22.sp, color = Accent)
             }
             }
-            if (order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
+            if (TabOpts.az && order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
         }
         // test 289 (Jarrod): send the chosen playlists straight to the top or the bottom
         if (PlaylistSelect.active) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 6.dp),
@@ -604,7 +696,7 @@ private fun TracksTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             LazyColumn(Modifier.weight(1f), state = state) {
                 itemsIndexed(songs, key = { _, s -> s.id }) { i, s -> SongRow(s, ui, lib, open) { ui.play(songs, i) } }
             }
-            if (by <= 2 && songs.size > 12) AzBar(Modifier, songs.map { when (by) { 1 -> it.artist; 2 -> it.album; else -> it.title } }) { scope.launch { state.scrollToItem(it) } }
+            if (TabOpts.az && by <= 2 && songs.size > 12) AzBar(Modifier, songs.map { when (by) { 1 -> it.artist; 2 -> it.album; else -> it.title } }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }
@@ -638,7 +730,7 @@ private fun AlbumsTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (by <= 1 && albums.size > 12) AzBar(Modifier, albums.map { if (by == 1) it.artist else it.title }) { scope.launch { grid.scrollToItem(it) } }
+            if (TabOpts.az && by <= 1 && albums.size > 12) AzBar(Modifier, albums.map { if (by == 1) it.artist else it.title }) { scope.launch { grid.scrollToItem(it) } }
         }
     }
 }
@@ -665,7 +757,7 @@ private fun ArtistsTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (by == 0 && artists.size > 12) AzBar(Modifier, artists.map { it.name }) { scope.launch { state.scrollToItem(it) } }
+            if (TabOpts.az && by == 0 && artists.size > 12) AzBar(Modifier, artists.map { it.name }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }
@@ -700,7 +792,7 @@ private fun FoldersTab(lib: Library, open: (Page) -> Unit) {
                     }
                 }
             }
-            if (list.size > 12) AzBar(Modifier, list.map { it.name }) { scope.launch { state.scrollToItem(it) } }
+            if (TabOpts.az && list.size > 12) AzBar(Modifier, list.map { it.name }) { scope.launch { state.scrollToItem(it) } }
         }
     }
 }

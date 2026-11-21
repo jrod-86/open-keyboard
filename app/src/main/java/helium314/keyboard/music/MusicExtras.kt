@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -55,6 +56,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -124,8 +126,11 @@ object MusicSettings {
     /** test 298 (Jarrod): all the popularity things (Popular tab, Sort by popularity, chart line on Now Playing) on or off */
     var popularOn by mutableStateOf(true)
     /** test 315 (Jarrod): hide the Popular or Moods tab */
-    var popularTab by mutableStateOf(true)
-    var moodsTab by mutableStateOf(true)
+    // test 316 (Jarrod): any tab can be hidden, and you pick which one the app opens on
+    var hiddenTabs by mutableStateOf(emptySet<String>())
+    var startTab by mutableStateOf("Tracks")
+    var popularTab: Boolean get() = "Popular" !in hiddenTabs; set(v) { hiddenTabs = if (v) hiddenTabs - "Popular" else hiddenTabs + "Popular" }
+    var moodsTab: Boolean get() = "Moods" !in hiddenTabs; set(v) { hiddenTabs = if (v) hiddenTabs - "Moods" else hiddenTabs + "Moods" }
     /** test 299 (Jarrod): songs blend into each other like a DJ mix, off by default; [blendSec] = how long the overlap is */
     var blendOn by mutableStateOf(false)
     var blendSec by mutableFloatStateOf(6f)
@@ -143,7 +148,9 @@ object MusicSettings {
         floatOn = p.getBoolean("float_on", false); floatStyle = p.getInt("float_style", 1); floatTheme = p.getInt("float_theme", -3)
         floatSize = p.getFloat("float_size", 1f); floatCover = p.getInt("float_cover", 1)
         popularOn = p.getBoolean("pop_on", true)
-        popularTab = p.getBoolean("pop_tab", true); moodsTab = p.getBoolean("moods_tab", true)
+        hiddenTabs = p.getStringSet("hidden_tabs", null)?.toSet()
+            ?: (setOfNotNull("Popular".takeIf { !p.getBoolean("pop_tab", true) }, "Moods".takeIf { !p.getBoolean("moods_tab", true) }))
+        startTab = p.getString("start_tab", "Tracks") ?: "Tracks"
         blendOn = p.getBoolean("blend_on", false); blendSec = p.getFloat("blend_sec", 6f)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
@@ -154,7 +161,7 @@ object MusicSettings {
             .putFloat("look_t_contrast", themeContrast).putFloat("look_t_sat", themeSat).putFloat("look_t_warm", themeWarm).putFloat("look_t_hue", themeHue).putFloat("look_t_shadow", themeShadow)
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
-            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putBoolean("pop_tab", popularTab).putBoolean("moods_tab", moodsTab).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec).apply()
+            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putStringSet("hidden_tabs", HashSet(hiddenTabs)).putString("start_tab", startTab).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec).apply()
     }
 }
 
@@ -340,6 +347,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
         }
         item { HiddenSongsRow(onLibraryChanged) }
         item { PopularitySettings() }
+        item { TabsSettings() }
         item { ScrobbleSettings() }
         item { BackupSettings() }
         item {
@@ -380,7 +388,24 @@ private fun VolumeSettings() {
                     }
                 }
             }
-            Text(Leveler.levelNotes[level.coerceIn(0, 4)] + ". LUFS is how loudness is measured; −16 is the usual middle ground, closer to 0 is louder.",
+            val custom by Leveler.custom.collectAsState()
+            val onC = level == Leveler.CUSTOM
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+                .background(if (onC) Accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                .clickable { Leveler.setCustom(ctx, custom) }.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(78.dp).clip(RoundedCornerShape(12.dp)).background(if (onC) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("%.1f".format(custom).removeSuffix(".0"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (onC) Color.White else MaterialTheme.colorScheme.onSurface)
+                    Text("LUFS", fontSize = 9.sp, color = if (onC) Color.White.copy(alpha = 0.8f) else dim)
+                    Text("Custom", fontSize = 12.sp, color = if (onC) Color.White else MaterialTheme.colorScheme.onSurface)
+                }
+                IconButton({ Leveler.setCustom(ctx, custom - 0.5f) }) { Text("−", fontSize = 22.sp) }
+                Slider(custom, { Leveler.setCustom(ctx, it) }, Modifier.weight(1f), valueRange = Leveler.CUSTOM_MIN..Leveler.CUSTOM_MAX, steps = 31,
+                    colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+                IconButton({ Leveler.setCustom(ctx, custom + 0.5f) }) { Text("+", fontSize = 22.sp) }
+            }
+            Text((if (onC) "Custom: your own level, −24 (very quiet) to −8 (as loud as it goes cleanly), in half steps" else Leveler.levelNotes[level.coerceIn(0, 4)]) +
+                ". LUFS is how loudness is measured; −16 is the usual middle ground, closer to 0 is louder.",
                 Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
             Text("Even out by", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
             FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -397,8 +422,12 @@ private fun VolumeSettings() {
                 Column(Modifier.weight(1f)) {
                     @Suppress("UNUSED_VARIABLE") val sc = scan
                     val running = MoodScan.running.value
-                    Text(if (running) "Measuring: ${MoodScan.measured.intValue} of ${MoodScan.total.intValue} songs done" else "Songs are measured the first time they play, or all at once here.",
-                        fontSize = 13.sp, color = dim)
+                    val counts by produceState<Pair<Int, Int>?>(null, running, MoodScan.done.intValue / 20) { value = Leveler.measured(ctx) }
+                    Text(when {
+                        running -> "Measuring: ${MoodScan.done.intValue} of ${MoodScan.total.intValue} songs done"
+                        counts != null -> "${counts!!.first} of ${counts!!.second} songs measured" + if (counts!!.first >= counts!!.second) " ✓" else ""
+                        else -> "Songs are measured the first time they play, or all at once here."
+                    }, fontSize = 13.sp, color = if (running) Accent else dim)
                     Text("Same listen as Moods: in the background, carries on where it stopped. Pause any time.", fontSize = 11.sp, color = dim)
                 }
                 if (MoodScan.running.value) TextButton({ Leveler.stopMeasuring(ctx) }) { Text("Pause", color = Accent) }
@@ -1105,22 +1134,8 @@ private fun PopularitySettings() {
                 if (!it && PopScan.running.value) PopScan.pause(ctx)
             }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
         }
-        if (MusicSettings.popularOn) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Show the Popular tab", fontSize = 17.sp)
-                Text("Off hides the tab but keeps the rest (sorting, chart facts).", fontSize = 13.sp, color = dim)
-            }
-            Switch(MusicSettings.popularTab, { MusicSettings.popularTab = it; MusicSettings.save(ctx) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
-        }
         TextButton({ confirm = true }, Modifier.padding(horizontal = 8.dp)) { Text("Delete all popularity info", color = Accent) }
-        Section("Moods")
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Show the Moods tab", fontSize = 17.sp)
-                Text("Mixes for how you feel. Off hides the tab; what it learnt about your songs is kept.", fontSize = 13.sp, color = dim)
-            }
-            Switch(MusicSettings.moodsTab, { MusicSettings.moodsTab = it; MusicSettings.save(ctx) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
-        }
+        Text("Show or hide the Popular and Moods tabs in Tabs below.", Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
         if (removed) Text("Removed. Your songs and playlists are untouched.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false },

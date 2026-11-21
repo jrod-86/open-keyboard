@@ -244,6 +244,8 @@ object Announcer {
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
     fun voiceId(ctx: Context) = prefs(ctx).getString("ann_voice2", "savannah")!!
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
+    /** test 316: let the writing model write the lines (more fun, more battery), or use simple ready-made lines */
+    fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai", true)
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
         if (key == "ann_on" && v == false) { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
@@ -262,7 +264,12 @@ object Announcer {
     @Volatile private var making: Long = -1
     @Volatile private var speaking: Job? = null
     @Volatile private var track: AudioTrack? = null
-    private var songsSince = 0
+    // test 316: the first song after turning it on gets a DJ line too
+    private var songsSince = 1000
+    /** a song the line couldn't be made for: not tried again (test 316: it kept retrying, the phone got hot) */
+    @Volatile private var failedFor: Long = -1
+    /** how long before the end the DJ starts talking (over the fade into the next song) */
+    private const val TALK_BEFORE_END_MS = 9_000L
 
     // test 315 (Jarrod): Zonos voices only (and your own made voices), Savannah by default
     fun voices(ctx: Context): List<helium314.keyboard.tts.ZonosTts.Voice> =
@@ -272,31 +279,53 @@ object Announcer {
     /** The whole line as sound (44.1 kHz). */
     private fun speech(ctx: Context, text: String): FloatArray {
         val parts = ArrayList<FloatArray>()
-        helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(ctx), null, { false }) { parts += it }
+        // test 316: the voice engine is only running while it makes the line, then it gives its memory back
+        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(ctx), null, { !on(ctx) }) { parts += it } }
+        finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
         return out
     }
 
-    /** Called every second by the music service: makes the next song's line before this one ends. */
+    /**
+     * Called every second by the music service. Test 316 (Jarrod): the line for the next song is made early (as soon as
+     * this song is playing, slowly, in the background), and the DJ talks over the last seconds of this song and the
+     * fade into the next one, with the music dipped.
+     */
     fun tick(ctx: Context, p: Player) {
         if (!on(ctx) || !p.isPlaying || p.duration <= 0) return
         if (songsSince + 1 < every(ctx)) return
-        if (p.duration - p.currentPosition > 45_000) return
         val nextIndex = p.nextMediaItemIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET } ?: return
         val lib = Library.cached ?: return
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
-        if (ready?.forId == next.id || making == next.id) return
+        val left = p.duration - p.currentPosition
+        val r = ready
+        // 2. ready and near the end: talk now
+        if (r != null && r.forId == next.id) {
+            if (left <= TALK_BEFORE_END_MS && speaking?.isActive != true) {
+                ready = null; songsSince = 0
+                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title}")
+                say(r.audio)
+            }
+            return
+        }
+        // 1. make the line for the next song (once), at low priority so the music and the phone stay smooth
+        if (making == next.id || failedFor == next.id || !ready(ctx)) return
+        if (left < 25_000) return // too late for this one
         val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
-        if (!ready(ctx)) return
         making = next.id
         val app = ctx.applicationContext
         scope.launch {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            val t0 = System.currentTimeMillis()
             runCatching {
                 val line = line(app, cur, next)
+                android.util.Log.w("OpenWaves", "announcer: line ready in ${System.currentTimeMillis() - t0} ms: $line")
                 val audio = speech(app, line)
+                if (audio.isEmpty()) throw IllegalStateException("no sound")
                 ready = Ready(next.id, audio)
-            }.onFailure { android.util.Log.w("OpenWaves", "announcer couldn't make a line", it) }
+                android.util.Log.w("OpenWaves", "announcer: voice ready in ${System.currentTimeMillis() - t0} ms (${audio.size / 441} cs)")
+            }.onFailure { failedFor = next.id; android.util.Log.w("OpenWaves", "announcer couldn't make a line", it) }
             making = -1
         }
     }
@@ -318,13 +347,17 @@ object Announcer {
             append(". Say the link into the next song.")
         }
         val written = runCatching {
-            withTimeoutOrNull(40_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 90) }
+            if (!aiLines(ctx)) null else withTimeoutOrNull(60_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 70) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.takeIf { it.length in 8..400 }
-        return written ?: buildString {
-            if (cur != null) append("That was ${cur.title} by ${cur.artist}. ")
-            append("Up next, ${next.title} by ${next.artist}.")
+        if (written != null) return written
+        val r = java.util.Random()
+        val intro = listOf("Up next", "Coming up", "Here's", "Next on Open Waves", "Turn it up for")[r.nextInt(5)]
+        val year = if (next.year > 0) listOf(" from ${next.year}", "").random() else ""
+        return buildString {
+            if (cur != null) append(listOf("That was ${cur.title} by ${cur.artist}. ", "You just heard ${cur.artist}. ", "")[r.nextInt(3)])
+            append("$intro, ${next.title} by ${next.artist}$year.")
         }
     }
 
@@ -332,10 +365,8 @@ object Announcer {
     fun songStarted(ctx: Context, id: Long?) {
         if (!on(ctx)) return
         songsSince++
-        val r = ready ?: return
-        if (r.forId != id) return
-        ready = null; songsSince = 0
-        say(r.audio)
+        // skipped before the DJ could talk: that line is old now
+        ready?.let { if (it.forId == id && speaking?.isActive != true) ready = null }
     }
 
     /** Plays it now (also the settings' "Hear a sample"). The music dips under the voice. */
@@ -424,6 +455,14 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 for ((n, label) in listOf(1 to "Every song", 2 to "Every 2nd", 3 to "Every 3rd", 5 to "Every 5th")) chip(label, every == n) { every = n; Announcer.set(ctx, "ann_every", n) }
             }
+            var ai by remember { mutableStateOf(Announcer.aiLines(ctx)) }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("AI writes what the DJ says", fontSize = 15.sp)
+                    Text("Off: short ready-made lines. Lighter on the battery and the phone stays cooler.", fontSize = 12.sp, color = dim)
+                }
+                Switch(ai, { ai = it; Announcer.set(ctx, "ann_ai", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            }
             Text("Style", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 Announcer.STYLES.forEachIndexed { i, (label, _) -> chip(label, style == i) { style = i; Announcer.set(ctx, "ann_style", i) } }
@@ -442,7 +481,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 Spacer(Modifier.width(8.dp))
             }
             sample?.let { Text(it, Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim) }
-            Text("The first line can take a little while as the model loads.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = dim)
+            Text("The DJ talks over the last few seconds of a song and the fade into the next one. Each line is made while the song before it plays.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = dim)
         }
         Spacer(Modifier.width(1.dp))
     }

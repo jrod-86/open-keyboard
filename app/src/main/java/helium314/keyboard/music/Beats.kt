@@ -63,6 +63,8 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
         private const val VERSION = 3
 
         private fun file(ctx: Context, id: Long) = File(ctx.cacheDir, "music/beats/$id.v$VERSION")
+        /** test 316: measured already (for the volume settings' count) */
+        fun has(ctx: Context, id: Long) = file(ctx, id).exists()
 
         fun cached(ctx: Context, id: Long): BeatMap? = runCatching {
             val f = file(ctx, id)

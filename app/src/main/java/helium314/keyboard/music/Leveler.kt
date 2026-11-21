@@ -32,6 +32,17 @@ object Leveler {
     // test 315 (Jarrod): five levels, the standard one in the middle, each with its normalisation level shown
     val levels = listOf("Quietest" to -20f, "Quiet" to -18f, "Normal" to -16f, "Loud" to -14f, "Louder" to -11f)
     val levelNotes = listOf("Very gentle", "Soft", "Standard · Apple Music", "Spotify · YouTube", "Extra punch")
+    /** test 316 (Jarrod): a 6th "Custom" box with a slider, from −24 (very quiet) to −8 LUFS (as loud as it can go cleanly) */
+    const val CUSTOM = 5
+    const val CUSTOM_MIN = -24f
+    const val CUSTOM_MAX = -8f
+    val custom = MutableStateFlow(-16f)
+    fun target(): Float = if (level.value == CUSTOM) custom.value else levels[level.value.coerceIn(0, levels.size - 1)].second
+    fun setCustom(ctx: Context, v: Float) {
+        custom.value = (Math.round(v * 2) / 2f).coerceIn(CUSTOM_MIN, CUSTOM_MAX)
+        level.value = CUSTOM
+        prefs(ctx).edit().putFloat("level_custom", custom.value).putInt("level_target2", CUSTOM).apply()
+    }
     private const val REPLAYGAIN_REF = -18f // ReplayGain 2 reference loudness
 
     val mode = MutableStateFlow(SONG)
@@ -48,7 +59,7 @@ object Leveler {
         if (contains("level_target2")) getInt("level_target2", 2)
         // the old four (Quiet -18, Normal -14, Loud -11, Louder -8) moved to the nearest new one
         else when (getInt("level_target", 1)) { 0 -> 1; 1 -> 3; else -> 4 }
-    }.coerceIn(0, levels.size - 1) }
+    }.coerceIn(0, CUSTOM); custom.value = prefs(ctx).getFloat("level_custom", -16f).coerceIn(CUSTOM_MIN, CUSTOM_MAX) }
     fun setMode(ctx: Context, m: Int) { mode.value = m; prefs(ctx).edit().putInt("level_mode", m).apply() }
     fun setLevel(ctx: Context, l: Int) { level.value = l; prefs(ctx).edit().putInt("level_target2", l).apply() }
 
@@ -94,8 +105,9 @@ object Leveler {
     /** Turn down as much as needed; turn up at most 6 dB (9 dB for the louder levels), the limiter keeps it clean. */
     fun gainFor(lufs: Float?): Float {
         if (lufs == null) return 0f
-        val target = levels[level.value.coerceIn(0, levels.size - 1)].second
-        return (target - lufs).coerceIn(-20f, if (target >= -14f) 9f else 6f)
+        val target = target()
+        // louder targets need more room to turn quiet songs up; the limiter keeps it clean
+        return (target - lufs).coerceIn(-20f, if (target >= -10f) 12f else if (target >= -14f) 9f else 6f)
     }
 
     /** Works out the song's loudness if we don't know it yet (a second or two), in the background. */
@@ -104,7 +116,17 @@ object Leveler {
     }
 
     /** Test 315: "Measure all now" is the same first listen Moods uses: in the background, keeps the phone awake, and carries on where it stopped. */
-    fun measureAll(ctx: Context) { MoodScan.start(ctx) }
+    fun measureAll(ctx: Context) {
+        val lib = Library.cached
+        if (lib != null && lib.songs.all { BeatMap.has(ctx, it.id) }) {
+            android.widget.Toast.makeText(ctx, "All ${lib.songs.size} songs are already measured", android.widget.Toast.LENGTH_SHORT).show(); return
+        }
+        MoodScan.start(ctx, measureOnly = true)
+    }
+    /** how many songs are measured: done to total */
+    suspend fun measured(ctx: Context): Pair<Int, Int> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val lib = Library.load(ctx); lib.songs.count { BeatMap.has(ctx, it.id) } to lib.songs.size
+    }
     fun stopMeasuring(ctx: Context) { MoodScan.pause(ctx) }
 }
 

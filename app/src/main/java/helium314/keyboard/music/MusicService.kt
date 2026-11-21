@@ -135,7 +135,7 @@ class MusicService : MediaLibraryService() {
         scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
         Playback.load(this)
         scope.launch { Playback.speed.collect { Tuning.apply(player) } }
-        scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
+        scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level, Leveler.custom) { a, b, c -> Triple(a, b, c) }.collect { leveler?.apply() } }
         restore(player)
         MusicSettings.load(this)
         floating = FloatingPlayer(this, player).also { it.start() }

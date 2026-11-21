@@ -64,7 +64,13 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
     val isPlayingThis = ui.current?.mediaId == song.id.toString()
 
     @Suppress("UNUSED_VARIABLE") val unused = isPlayingThis
-    fun turnOn() { Stems.setMode(ctx, true); refresh++ }
+    // test 316 (Jarrod): a battery warning when stem mode is switched on
+    var warn by remember { mutableStateOf(false) }
+    val prefs = remember { ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE) }
+    fun turnOn() {
+        if (Stems.modeOn.value) return
+        if (prefs.getBoolean("stem_no_warn", false)) { Stems.setMode(ctx, true); refresh++ } else warn = true
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { Header("Stems", onBack) }
@@ -85,7 +91,7 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
                     Text("Split this song", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Text("Takes about a minute or two for a 4-minute song. You can keep listening while it works. The 5 songs you split last are kept.",
                         fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
-                    if (busy == null) Button({ Stems.split(ctx, song) { refresh++ }; Stems.setMode(ctx, true) },
+                    if (busy == null) Button({ Stems.split(ctx, song) { refresh++ }; turnOn() },
                         Modifier.padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("✂️ Split into stems") }
                 }
                 if (busy != null) {
@@ -106,7 +112,7 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
                         Text(if (on) "On for every song you play, with these sliders. Each song gets split in the background, the next one while this one plays."
                             else "Off: every song plays as normal", fontSize = 12.sp, color = dim)
                     }
-                    Switch(on, { Stems.setMode(ctx, it); refresh++ }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+                    Switch(on, { if (it) turnOn() else { Stems.setMode(ctx, false); refresh++ } }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
                 }
                 if (on && !split) Text(if (Stems.working.value == song.id) "Splitting this song now. It switches over by itself when it's ready."
                     else "This song is waiting its turn to be split. Until then it plays as normal.",
@@ -164,6 +170,26 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (warn) {
+        var never by remember { mutableStateOf(false) }
+        AlertDialog(onDismissRequest = { warn = false },
+            title = { Text("🔋 Stem mode uses a lot of battery") },
+            text = {
+                Column {
+                    Text("While it's on, the AI splits every song you play on the phone itself. That works the processor hard, so the battery " +
+                        "drains faster and the phone can get warm. Best on the charger or for a listening session.")
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(never, { never = it })
+                        Text("Don't warn me again", fontSize = 14.sp)
+                    }
+                }
+            },
+            confirmButton = { TextButton({
+                if (never) prefs.edit().putBoolean("stem_no_warn", true).apply()
+                warn = false; Stems.setMode(ctx, true); refresh++
+            }) { Text("Turn on", color = Accent) } },
+            dismissButton = { TextButton({ warn = false }) { Text("Cancel") } })
     }
     if (asking) AlertDialog(onDismissRequest = { asking = false },
         title = { Text("Export") },
