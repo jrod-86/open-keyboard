@@ -120,7 +120,7 @@ object Tuning {
     val hz = MutableStateFlow(440f)
     fun load(ctx: Context) { hz.value = ctx.getSharedPreferences("music", Context.MODE_PRIVATE).getFloat("tuning_hz", 440f) }
     fun set(ctx: Context, v: Float) { hz.value = v; ctx.getSharedPreferences("music", Context.MODE_PRIVATE).edit().putFloat("tuning_hz", v).apply() }
-    fun apply(player: Player) { player.playbackParameters = androidx.media3.common.PlaybackParameters(1f, hz.value / 440f) }
+    fun apply(player: Player) { player.playbackParameters = androidx.media3.common.PlaybackParameters(Playback.speed.value, hz.value / 440f) }
 }
 
 /** Applies the volume change to the player. Lives in the music service. */

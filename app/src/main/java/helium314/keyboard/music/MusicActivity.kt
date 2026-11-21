@@ -353,6 +353,7 @@ internal sealed class Page {
     data class FixOne(val id: Long) : Page()
     /** test 311: Open Waves' own equaliser */
     data object Equaliser : Page()
+    data class SmartListPage(val id: Long) : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -401,6 +402,7 @@ private fun MusicApp(ui: PlayerUi) {
     }
     LaunchedEffect(Unit) {
         Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); RecentSearches.load(ctx)
+        SmartLists.load(ctx); Playback.load(ctx); Eq.load(ctx)
         withContext(Dispatchers.IO) { PlayStats.load(ctx) }
         lib = Library.load(ctx, fresh = true)
         // files marked "not music" (test 307), looked at once each
@@ -436,6 +438,7 @@ private fun MusicApp(ui: PlayerUi) {
                     Page.Themes -> ThemesPage(::back)
                     Page.Studio -> StudioPage(::open, ::back)
                     Page.Equaliser -> EqualiserPage(::back)
+                    is Page.SmartListPage -> SmartListPage(p.id, library, ui, ::open, ::back)
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
@@ -486,6 +489,7 @@ private fun MusicApp(ui: PlayerUi) {
         PlaylistPickerDialog()
         TrackDetailsDialog()
         NotMusicDialog(ui)
+        RateDialog(); SmartListDialog(); SpeedDialog()
     }
 }
 
@@ -606,6 +610,7 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
             DropdownMenuItem({ Text("Go to Album") }, { open(Page.AlbumPage(song.albumId)); menu = false })
             DropdownMenuItem({ Text("Go to Artist") }, { open(Page.ArtistPage(song.albumArtist.ifBlank { song.artist })); menu = false })
             if (slim) DropdownMenuItem({ Text("Metadata / artwork") }, { menu = false; open(Page.FixOne(song.id)) })
+            if (!slim) DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = song })
             if (!slim) DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
             DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = song })
             DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(song.id)) })
@@ -886,7 +891,9 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
                 DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
                 Library.cached?.let { l -> DropdownMenuItem({ Text("📻 Radio from this song") }, { menu = false; Radio.start(ctx, ui, l, s) }) }
+                DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = s })
             }
+            DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
             DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })
             DropdownMenuItem({ Text("Settings") }, { menu = false; open(Page.Settings) })

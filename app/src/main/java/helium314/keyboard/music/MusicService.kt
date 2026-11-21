@@ -92,6 +92,12 @@ class MusicService : MediaSessionService() {
                 leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
                 counted = -1L; count()
                 Radio.topUp(this@MusicService, player)
+                // test 311: long tracks carry on from where you stopped
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                    val id = mediaItem?.mediaId?.toLongOrNull()
+                    val spot = id?.let { Playback.spotOf(this@MusicService, it) } ?: 0L
+                    if (spot > 0 && player.currentPosition < 5_000) player.seekTo(spot)
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count() }
         })
@@ -114,6 +120,8 @@ class MusicService : MediaSessionService() {
         leveler = LevelApplier(this, player).also { player.addListener(it.listener) }
         Tuning.load(this)
         scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
+        Playback.load(this)
+        scope.launch { Playback.speed.collect { Tuning.apply(player) } }
         scope.launch { Library.load(this@MusicService); kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level) { a, b -> a to b }.collect { leveler?.apply() } }
         restore(player)
         MusicSettings.load(this)
@@ -131,9 +139,18 @@ class MusicService : MediaSessionService() {
         if (p == null || !p.playWhenReady || p.mediaItemCount == 0) { save(); stopSelf() }
     }
 
+    private val startedAt = System.currentTimeMillis()
     // test 311: the equaliser follows you from speaker to headphones to the car
     private val devices = object : android.media.AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>?) { Eq.deviceChanged(this@MusicService) }
+        override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>?) {
+            Eq.deviceChanged(this@MusicService)
+            // test 311: headphones, earbuds or the car just connected (the first call is only the list of what's already there)
+            if (System.currentTimeMillis() - startedAt < 3000 || !Playback.autoPlay(this@MusicService)) return
+            val heard = added.orEmpty().any { it.type in listOf(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_HEADSET) || (android.os.Build.VERSION.SDK_INT >= 31 && it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET) }
+            val p = session?.player ?: return
+            if (heard && !p.isPlaying && p.mediaItemCount > 0) handler.postDelayed({ if (!p.isPlaying) { p.prepare(); p.play() } }, 1500)
+        }
         override fun onAudioDevicesRemoved(removed: Array<out android.media.AudioDeviceInfo>?) { Eq.deviceChanged(this@MusicService) }
     }
 
@@ -154,6 +171,7 @@ class MusicService : MediaSessionService() {
 
     private fun save() {
         val p = session?.player ?: return
+        p.currentMediaItem?.mediaId?.toLongOrNull()?.let { if (p.duration > 0) Playback.saveSpot(this, it, p.currentPosition, p.duration) }
         if (p.mediaItemCount == 0) return
         val ids = (0 until p.mediaItemCount).joinToString(",") { p.getMediaItemAt(it).mediaId }
         prefs().edit()

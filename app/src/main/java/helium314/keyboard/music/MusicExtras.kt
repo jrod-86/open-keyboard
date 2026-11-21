@@ -276,6 +276,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
                 Icon(MusicIcons.chevron, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
             }
         }
+        item { PlaybackSettings() }
         item { VolumeSettings() }
         item { BlendSettings() }
         item {

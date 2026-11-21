@@ -311,7 +311,7 @@ private fun SmartTile(label: String, count: Int, cover: Song?, onClick: () -> Un
             else Icon(MusicIcons.note, null, Modifier.size(44.dp))
         }
         Text(label, Modifier.padding(top = 6.dp), fontSize = 14.sp, maxLines = 1)
-        Text("$count tracks", fontSize = 12.sp, color = dimText)
+        Text(if (count >= 0) "$count tracks" else " ", fontSize = 12.sp, color = dimText)
     }
 }
 
@@ -469,6 +469,12 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         item { SmartTile("Recently added", added.size, null) { open(Page.Smart("added")) } }
                         item { SmartTile("Most played", most.size, most.firstOrNull()) { open(Page.Smart("most")) } }
                         item { SmartTile("Recently played", recent.size, recent.firstOrNull()) { open(Page.Smart("recent")) } }
+                        // test 311: your own smart playlists (rules), and a tile to make one
+                        items(SmartLists.all.value, key = { "smart" + it.id }) { s ->
+                            val first = remember(s, lib) { SmartLists.songs(ctx, lib, s).firstOrNull() }
+                            SmartTile("⚡ " + s.name, -1, first) { open(Page.SmartListPage(s.id)) }
+                        }
+                        item { SmartTile("＋ Smart playlist", -1, null) { SmartLists.editing.value = SmartList(System.currentTimeMillis(), "Top rated", minStars = 4, sort = "rating") } }
                     }
                 }
                 item {

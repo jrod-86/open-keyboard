@@ -44,6 +44,9 @@ object PlayStats {
     }
 
     @Synchronized fun count(id: Long) = counts[id] ?: 0
+    @Synchronized fun lastPlayed(id: Long) = last[id] ?: 0L
+    /** for Year in music and backups (test 311) */
+    @Synchronized fun snapshot(): Map<Long, Pair<Int, Long>> = counts.mapValues { (k, n) -> n to (last[k] ?: 0L) }
     @Synchronized fun mostPlayed(lib: Library, n: Int = 100) = counts.entries.sortedByDescending { it.value }.mapNotNull { lib.byId[it.key] }.take(n)
     @Synchronized fun recentlyPlayed(lib: Library, n: Int = 100) = last.entries.sortedByDescending { it.value }.mapNotNull { lib.byId[it.key] }.take(n)
     fun recentlyAdded(lib: Library, n: Int = 200) = lib.songs.sortedByDescending { it.dateAdded }.take(n)
