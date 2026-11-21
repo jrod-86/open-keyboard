@@ -112,7 +112,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-private val allTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Moods", "Albums", "Artists", "Folders") // test 297: Popular
+private val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
 /** test 298: the Popular tab goes when popularity features are turned off */
 val WavesTabs: List<String> get() = if (MusicSettings.popularOn) allTabs else allTabs - "Popular"
 
@@ -164,12 +164,12 @@ internal fun WavesTabHeader(pager: PagerState) {
 
 @Composable
 internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Page) -> Unit) {
-    val selecting = PlaylistSelect.active && pager.currentPage == 1
+    val selecting = PlaylistSelect.active && WavesTabs.getOrNull(pager.currentPage) == "Playlists"
     BackHandler(enabled = PlaylistSelect.active) { PlaylistSelect.clear() }
-    LaunchedEffect(pager.currentPage) { if (pager.currentPage != 1) PlaylistSelect.clear() }
+    LaunchedEffect(pager.currentPage) { if (WavesTabs.getOrNull(pager.currentPage) != "Playlists") PlaylistSelect.clear() }
     Column(Modifier.fillMaxSize()) {
         if (selecting) SelectHeader()
-        else WavesTopBar(open, ui.playing, extra = if (pager.currentPage == 1) ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
+        else WavesTopBar(open, ui.playing, extra = if (WavesTabs.getOrNull(pager.currentPage) == "Playlists") ({ IconButton({ PlaylistSelect.naming = true }) { Icon(MusicIcons.sPlus, "New playlist", Modifier.size(26.dp)) } }) else null)
         WavesTabHeader(pager)
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
             .background(if (MusicSettings.theme != -1) Color.Black.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceContainer), beyondViewportPageCount = 0, userScrollEnabled = !selecting) { page ->
