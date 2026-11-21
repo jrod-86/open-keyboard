@@ -137,6 +137,51 @@ private fun ActionRow(icon: String, label: String, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Test 306 (Jarrod): a Sort by bar on every playlist, remembered per playlist. "My order" is the order you set by dragging and is
+ * the only one that's saved into the playlist; every other sort only changes how the list looks. Dragging or moving a song while
+ * another sort shows saves what you see (with the move) as My order, with Undo.
+ */
+private val plSorts = listOf("mine" to "My order", "pop" to "Popularity", "az" to "Title A–Z", "za" to "Title Z–A",
+    "artist" to "Artist A–Z", "album" to "Album A–Z", "new" to "Newest songs first", "old" to "Oldest songs first",
+    "added" to "Recently added", "most" to "Most played", "least" to "Least played", "long" to "Longest first",
+    "short" to "Shortest first", "genre" to "Genre")
+
+private val collator by lazy { java.text.Collator.getInstance().apply { strength = java.text.Collator.PRIMARY } }
+private fun sortText(s: String): String {
+    val t = s.trimStart('"', '\'', '(', '[', '#', '-', '.', '_', ' ', '¿', '¡')
+    return if (t.startsWith("the ", true)) t.substring(4) else t
+}
+/** null = not looked up yet (only counted for the Popularity sort) */
+private fun sortEntries(ctx: android.content.Context, list: List<PlEntry>, mode: String): Pair<List<PlEntry>, Int> {
+    val byText = Comparator<String> { a, b -> collator.compare(sortText(a), sortText(b)) }
+    fun <T> last(v: T?, empty: Boolean) = if (v == null || empty) 1 else 0
+    val c: Comparator<PlEntry> = when (mode) {
+        "pop" -> {
+            val pops = HashMap<String, Pop>(); var missing = 0
+            list.map { it.song }.distinctBy { Popularity.key(it) }.forEach { s ->
+                val p = Popularity.known(ctx, s); if (p == null) missing++ else pops[Popularity.key(s)] = p
+            }
+            val ranked = Popularity.order(list.map { it.song }.distinct(), pops).withIndex().associate { it.value.id to it.index }
+            return list.sortedBy { ranked[it.song.id] ?: Int.MAX_VALUE } to missing
+        }
+        "az" -> compareBy(byText) { it.song.title }
+        "za" -> compareBy(byText.reversed()) { it.song.title }
+        "artist" -> compareBy<PlEntry, String>(byText) { it.song.artist }.thenBy(byText) { it.song.album }.thenBy { it.song.disc }.thenBy { it.song.track }
+        "album" -> compareBy<PlEntry, String>(byText) { it.song.album }.thenBy { it.song.disc }.thenBy { it.song.track }
+        "new" -> compareBy<PlEntry>({ last(it.song, it.song.year <= 0) }, { -it.song.year }).thenBy(byText) { it.song.title }
+        "old" -> compareBy<PlEntry>({ last(it.song, it.song.year <= 0) }, { it.song.year }).thenBy(byText) { it.song.title }
+        "added" -> compareByDescending { it.song.dateAdded }
+        "most" -> compareByDescending { PlayStats.count(it.song.id) }
+        "least" -> compareBy { PlayStats.count(it.song.id) }
+        "long" -> compareByDescending { it.song.durationMs }
+        "short" -> compareBy { it.song.durationMs }
+        "genre" -> compareBy<PlEntry>({ last(it.song, it.song.genre.isBlank()) }).thenBy(byText) { it.song.genre }.thenBy(byText) { it.song.artist }
+        else -> return list to 0
+    }
+    return list.sortedWith(c) to 0 // sortedWith is stable: ties keep My order
+}
+
 /** One song in a playlist, with a key that stays the same while you drag it around (the same song can be in twice). */
 private data class PlEntry(val key: String, val song: Song)
 
@@ -156,7 +201,20 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var sorting by remember { mutableStateOf(false) }
-    var undoSort by remember(id) { mutableStateOf<List<Long>?>(null) } // the order before "Sort by popularity", for Undo
+    var undoSort by remember(id) { mutableStateOf<List<Long>?>(null) } // My order before it was replaced, for Undo
+    var undoLabel by remember(id) { mutableStateOf("") }
+    val prefs = remember { ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE) }
+    var mode by remember(id) { mutableStateOf(prefs.getString("pl_sort_$id", "mine") ?: "mine") }
+    if (mode == "pop" && !MusicSettings.popularOn || plSorts.none { it.first == mode }) mode = "mine"
+    fun setMode(m: String) { mode = m; prefs.edit().putString("pl_sort_$id", m).apply() }
+    var popTick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val popVersion = PopScan.version.intValue
+    val sortedView by androidx.compose.runtime.produceState(order.toList() to 0, mode, order.toList(), popVersion, popTick) {
+        if (mode != "mine") value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { sortEntries(ctx, order.toList(), mode) }
+    }
+    val shown: List<PlEntry> = if (mode == "mine") order.toList() else sortedView.first.takeIf { it.size == order.size } ?: order.toList()
+    val notLookedUp = if (mode == "pop") sortedView.second else 0
+    val shownSongs = shown.map { it.song }
     val state = androidx.compose.foundation.lazy.rememberLazyListState()
     val menuFor = remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -179,10 +237,18 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
         val gone = p.songs.filter { it !in lib.byId }
         Playlists.setSongs(ctx, id, list.map { it.song.id } + gone)
     }
+    /** a move made on what you see; in another sort, what you see (with the move) becomes My order */
+    fun commit(list: List<PlEntry>) {
+        if (mode != "mine") {
+            undoSort = p.songs; undoLabel = "${plSorts.first { it.first == mode }.second} order saved as My order"; setMode("mine")
+        }
+        order.clear(); order.addAll(list); save()
+    }
     fun moveTo(key: String, top: Boolean) {
-        val i = order.indexOfFirst { it.key == key }; if (i < 0) return
-        val e = order.removeAt(i); if (top) order.add(0, e) else order.add(e)
-        save()
+        val l = shown.toMutableList()
+        val i = l.indexOfFirst { it.key == key }; if (i < 0) return
+        val e = l.removeAt(i); if (top) l.add(0, e) else l.add(e)
+        commit(l)
     }
     /** where the song would land if you let go now */
     fun findTarget() {
@@ -190,15 +256,16 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
         if (songsShown.isEmpty()) return
         val y = fingerY
         val hit = songsShown.firstOrNull { y < it.offset + it.size / 2f }
-        target = if (hit != null) order.indexOfFirst { it.key == hit.key } else order.indexOfFirst { it.key == songsShown.last().key } + 1
+        target = if (hit != null) shown.indexOfFirst { it.key == hit.key } else shown.indexOfFirst { it.key == songsShown.last().key } + 1
     }
     fun drop() {
         val k = dragKey ?: return
-        val from = order.indexOfFirst { it.key == k }
+        val l = shown.toMutableList()
+        val from = l.indexOfFirst { it.key == k }
         var to = target
         if (from >= 0 && to >= 0) {
             if (to > from) to -= 1
-            if (to != from) { order.add(to, order.removeAt(from)); save() }
+            if (to != from) { l.add(to, l.removeAt(from)); commit(l) }
         }
         dragKey = null; target = -1
     }
@@ -263,23 +330,54 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             item { Header(p.name, onBack) }
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${songs.size} songs, ${songs.sumOf { it.durationMs } / 60000} minutes", Modifier.weight(1f), fontSize = 13.sp,
+                    Text("${shown.size} songs, ${songs.sumOf { it.durationMs } / 60000} minutes", Modifier.weight(1f), fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
                     Box {
                         IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Accent) }
                         DropdownMenu(menu, { menu = false }) {
-                            if (songs.size > 1 && MusicSettings.popularOn) DropdownMenuItem({ Text("Sort by popularity") }, { menu = false; sorting = true })
+                            if (mode != "mine") DropdownMenuItem({ Text("Keep this as My order") }, { menu = false; commit(shown) })
                             DropdownMenuItem({ Text("Rename") }, { menu = false; renaming = true })
                             DropdownMenuItem({ Text("Delete Playlist") }, { menu = false; deleting = true })
                         }
                     }
                 }
             }
+            if (songs.size > 1) item {
+                var sortMenu by remember { mutableStateOf(false) }
+                val choices = plSorts.filter { it.first != "pop" || MusicSettings.popularOn }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { sortMenu = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(MusicIcons.sort, "Sort by", Modifier.size(20.dp), tint = if (mode == "mine") MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Accent)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sort by: " + plSorts.first { it.first == mode }.second, fontSize = 14.sp,
+                                color = if (mode == "mine") MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Accent)
+                        }
+                        DropdownMenu(sortMenu, { sortMenu = false }) {
+                            choices.forEach { (k, name) ->
+                                DropdownMenuItem({ Text(if (k == "mine") "$name (saved)" else name, fontWeight = if (k == mode) FontWeight.Bold else FontWeight.Normal) },
+                                    { sortMenu = false; if (k != mode) { setMode(k); scope.launch { state.scrollToItem(0) } } })
+                                if (k == "mine") HorizontalDivider()
+                            }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (mode != "mine") TextButton({ commit(shown) }) { Text("Keep as My order", color = Accent, fontSize = 13.sp) }
+                }
+            }
+            if (notLookedUp > 0) item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp).clip(RoundedCornerShape(10.dp))
+                    .background(Accent.copy(alpha = 0.08f)).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("$notLookedUp ${if (notLookedUp == 1) "song isn't" else "songs aren't"} looked up yet, so they're at the bottom",
+                        Modifier.weight(1f), fontSize = 13.sp)
+                    TextButton({ sorting = true }) { Text("Look up", color = Accent, fontWeight = FontWeight.Bold) }
+                }
+            }
             undoSort?.let { before ->
                 item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(10.dp))
                         .background(Accent.copy(alpha = 0.12f)).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Sorted by popularity", Modifier.weight(1f), fontSize = 14.sp)
+                        Text(undoLabel, Modifier.weight(1f), fontSize = 14.sp)
                         TextButton({ Playlists.setSongs(ctx, id, before); undoSort = null }) { Text("Undo", color = Accent, fontWeight = FontWeight.Bold) }
                         TextButton({ undoSort = null }) { Text("✕", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)) }
                     }
@@ -287,15 +385,16 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             }
             if (songs.isEmpty()) item { Text("No songs yet. Use ⋯ on any song, then Add to Playlist.", Modifier.padding(16.dp)) }
             else item {
-                PlayShuffle(songs, ui)
-                Text("Hold a song and drag it to move it, or use ⋯ for Move to top / bottom.", Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                PlayShuffle(shownSongs, ui)
+                Text(if (mode == "mine") "Hold a song and drag it to move it, or use ⋯ for Move to top / bottom."
+                    else "Moving a song here saves this order, with your move, as My order.", Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
             }
-            itemsIndexed(order, key = { _, e -> e.key }) { i, e ->
+            itemsIndexed(shown, key = { _, e -> e.key }) { i, e ->
                 val menuOpen = remember(e.key) { mutableStateOf(false) }
                 LaunchedEffect(menuFor.value) { if (menuFor.value == e.key) { menuOpen.value = true; menuFor.value = null } }
                 val lineTop = dragKey != null && target == i
-                val lineBottom = dragKey != null && target == order.size && i == order.size - 1
+                val lineBottom = dragKey != null && target == shown.size && i == shown.size - 1
                 Box(Modifier.graphicsLayer { alpha = if (dragKey == e.key) 0.3f else 1f }
                     .drawWithContent {
                         drawContent()
@@ -306,10 +405,10 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
                     SongRow(e.song, ui, lib, open, menuState = menuOpen, holdForMenu = false, extra = listOf(
                         "Move to top" to { moveTo(e.key, true) },
                         "Move to bottom" to { moveTo(e.key, false) },
-                        "Move Up" to { val at = order.indexOfFirst { it.key == e.key }; if (at > 0) { order.add(at - 1, order.removeAt(at)); save() } },
-                        "Move Down" to { val at = order.indexOfFirst { it.key == e.key }; if (at in 0 until order.size - 1) { order.add(at + 1, order.removeAt(at)); save() } },
+                        "Move Up" to { val l = shown.toMutableList(); val at = l.indexOfFirst { it.key == e.key }; if (at > 0) { l.add(at - 1, l.removeAt(at)); commit(l) } },
+                        "Move Down" to { val l = shown.toMutableList(); val at = l.indexOfFirst { it.key == e.key }; if (at in 0 until l.size - 1) { l.add(at + 1, l.removeAt(at)); commit(l) } },
                         "Remove from Playlist" to { val at = order.indexOfFirst { it.key == e.key }; if (at >= 0) { order.removeAt(at); save() } },
-                    )) { ui.play(songs, i) }
+                    )) { ui.play(shownSongs, i) }
                 }
             }
         }
@@ -331,13 +430,8 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             }
         }
     }
-    if (sorting) PopularitySort(songs, onApply = { sorted ->
-        val before = p.songs
-        val gone = p.songs.filter { it !in lib.byId }
-        Playlists.setSongs(ctx, id, sorted.map { it.id } + gone)
-        undoSort = before; sorting = false
-        scope.launch { state.scrollToItem(0) }
-    }, onClose = { sorting = false })
+    // looking up the songs the Popularity sort is missing; the view re-sorts itself, My order isn't touched
+    if (sorting) PopularitySort(songs, onApply = { sorting = false; popTick++ }, onClose = { sorting = false; popTick++ })
     if (renaming) NameDialog("Rename Playlist", p.name, "Save") { n -> renaming = false; if (n != null) Playlists.rename(ctx, id, n) }
     if (deleting) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Delete “${p.name}”?") },
         text = { Text("The songs stay in your library.") },
