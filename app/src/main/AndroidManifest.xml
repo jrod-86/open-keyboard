@@ -25,6 +25,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Open Waves (test 297): the Popular tab looks songs up in the background, with a Pause button in the notification -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Open Waves (test 277): the floating player over other apps, only if you turn it on and allow it -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
@@ -205,6 +207,10 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+        <service android:name="helium314.keyboard.music.PopScanService"
+            android:process=":music"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
         <service android:name="helium314.keyboard.music.MusicService"
             android:process=":music"
             android:foregroundServiceType="mediaPlayback"

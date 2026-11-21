@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -101,6 +105,133 @@ internal fun PopularitySort(songs: List<Song>, onApply: (List<Song>) -> Unit, on
                 Button({ onApply(ordered) }, Modifier.weight(1f), enabled = finished && !offline && notFound < songs.size,
                     colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text("Apply") }
             }
+        }
+    }
+}
+
+/** One entry on the Popular tab. */
+private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?)
+
+private val popFilters = listOf("All", "Chart hits", "#1s", "Top 10s", "Hidden gems")
+
+/**
+ * Test 297 (Jarrod): the Popular tab. Your whole library, most played in the world first. The lookup runs in the
+ * background in chunks and can be paused and resumed without losing progress. Only this tab uses the popularity order.
+ */
+@Composable
+internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+    val version = PopScan.version.intValue
+    val running = PopScan.running.value
+    // keep re-sorting while the lookup runs
+    LaunchedEffect(running) { while (PopScan.running.value) { kotlinx.coroutines.delay(15_000); PopScan.version.intValue++ } }
+    val songs = lib.uniqueSongs
+    val ranked by androidx.compose.runtime.produceState<List<Ranked>?>(null, lib, version) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            PlayStats.load(ctx)
+            val found = songs.mapNotNull { s -> Popularity.known(ctx, s)?.takeIf { it.found }?.let { s to it } }.distinctBy { Popularity.key(it.first) }
+            val worldSorted = found.map { it.second.plays }.filter { it > 0 }.sorted()
+            val median = worldSorted.getOrElse(worldSorted.size / 2) { 0L }
+            val top10 = worldSorted.getOrElse((worldSorted.size * 0.9).toInt()) { Long.MAX_VALUE }
+            found.map { (s, p) ->
+                val best = listOf(p.us, p.au, p.uk).filter { it > 0 }.minOrNull() ?: 0
+                val mine = PlayStats.count(s.id)
+                val badge = when {
+                    mine >= 5 && p.plays in 1 until median -> "❤️ Your hidden gem: you love it, few people know it"
+                    p.plays >= top10 && worldSorted.size >= 20 && mine <= 1 -> "🌍 A big hit you hardly play"
+                    else -> null
+                }
+                Ranked(s, p, best, if (p.year > 0) p.year else s.year, badge)
+            }.sortedWith(compareBy<Ranked>({ if (it.pop.plays > 0) 0 else 1 }, { -it.pop.plays }, { if (it.best > 0) it.best else Int.MAX_VALUE }))
+        }
+    }
+    var filter by remember { mutableStateOf("All") }
+    val list = ranked.orEmpty()
+    val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1950 }.distinct().sorted() }
+    val shown = remember(list, filter) {
+        when (filter) {
+            "Chart hits" -> list.filter { it.best > 0 }
+            "#1s" -> list.filter { it.best == 1 }
+            "Top 10s" -> list.filter { it.best in 1..10 }
+            "Hidden gems" -> list.filter { it.pop.plays > 0 }.sortedBy { it.pop.plays }
+            else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
+        }
+    }
+    val left = remember(lib, version) { PopScan.left(ctx, songs) }
+    var wifiOnly by remember { mutableStateOf(PopScan.wifiOnly(ctx)) }
+    var saved by remember { mutableStateOf("") }
+
+    LazyColumn(Modifier.fillMaxSize(), state = TabScroll.popular) {
+        // the lookup card: start, progress with Pause, or resume
+        if (left > 0 || running) item {
+            Column(Modifier.fillMaxWidth().padding(12.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .background(Accent.copy(alpha = 0.10f)).padding(14.dp)) {
+                val total = PopScan.total.intValue.takeIf { it > 0 } ?: songs.size
+                if (running) {
+                    val done = PopScan.done.intValue
+                    val mins = maxOf(1, (total - done) * 11 / 600)
+                    Text("Looking up $done of $total songs", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    LinearProgressIndicator(progress = { done.toFloat() / maxOf(total, 1) }, Modifier.fillMaxWidth().padding(vertical = 8.dp), color = Accent)
+                    Text(PopScan.status.value.ifBlank { "About $mins min left. Runs in the background, the list fills in as it goes." }, fontSize = 12.sp, color = dim)
+                    OutlinedButton({ PopScan.pause(ctx) }, Modifier.padding(top = 8.dp)) { Text("Pause", color = Accent) }
+                } else {
+                    val started = list.isNotEmpty() || left < songs.distinctBy { Popularity.key(it) }.size
+                    val mins = maxOf(1, left * 11 / 600)
+                    Text(if (started) "$left songs still to look up" else "Rank your whole library by popularity", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text((if (started) "Carries on where it stopped. " else "Play counts from ListenBrainz and chart spots from Wikipedia. ") +
+                        "About $mins min, in the background. You can pause any time and nothing is lost.", fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+                    PopScan.status.value.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp, color = Accent, modifier = Modifier.padding(top = 4.dp)) }
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button({ PopScan.start(ctx) }, colors = ButtonDefaults.buttonColors(containerColor = Accent)) { Text(if (started) "Resume" else "Start") }
+                        Spacer(Modifier.weight(1f))
+                        Text("Wi-Fi only", fontSize = 13.sp)
+                        androidx.compose.material3.Switch(wifiOnly, { wifiOnly = it; PopScan.setWifiOnly(ctx, it) }, Modifier.padding(start = 6.dp),
+                            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Accent))
+                    }
+                }
+            }
+        }
+        if (list.isNotEmpty()) {
+            item {
+                androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(popFilters + decades.map { "${it}s" }) { f ->
+                        androidx.compose.material3.FilterChip(f == filter, { filter = f }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
+                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button({ ui.play(shown.take(50).map { it.song }, 0) }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                        Text(if (shown.size > 50) "Play top 50" else "Play all")
+                    }
+                    OutlinedButton({
+                        val name = "Popular: $filter"
+                        Playlists.create(ctx, name, shown.map { it.song.id })
+                        saved = "Saved as playlist “$name”"
+                    }, enabled = shown.isNotEmpty()) { Text("Save as playlist", color = Accent) }
+                }
+                if (saved.isNotEmpty()) Text(saved, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
+            }
+            if (shown.isEmpty()) item { Text("No songs here yet.", Modifier.padding(16.dp), color = dim) }
+            itemsIndexed(shown, key = { _, r -> r.song.id }) { i, r ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}", Modifier.padding(start = 10.dp).width(30.dp), fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        color = if (i < 3 && filter != "Hidden gems") Accent else dim, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Column(Modifier.weight(1f)) {
+                        Box(Modifier.offset(x = (-10).dp)) { SongRow(r.song, ui, lib, open) { ui.play(shown.map { it.song }, i) } }
+                        val line = listOfNotNull(r.pop.story(), r.badge).joinToString("\n")
+                        if (line.isNotEmpty()) Text(line, Modifier.padding(start = 66.dp, end = 16.dp, bottom = 6.dp).offset(y = (-6).dp),
+                            fontSize = 12.sp, color = dim, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        } else if (ranked != null && !running && left == 0) item { Text("None of your songs were found online.", Modifier.padding(16.dp), color = dim) }
+        val notFound = songs.distinctBy { Popularity.key(it) }.size - left - list.size
+        if (list.isNotEmpty() && notFound > 0) item {
+            Text("$notFound songs weren't found online, so they aren't ranked.", Modifier.padding(16.dp), fontSize = 12.sp, color = dim)
         }
     }
 }

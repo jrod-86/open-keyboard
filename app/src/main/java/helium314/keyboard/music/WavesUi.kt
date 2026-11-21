@@ -112,7 +112,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-val WavesTabs = listOf("Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders")
+val WavesTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Albums", "Artists", "Folders") // test 297: Popular
 
 private val dimText @Composable get() = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
 
@@ -175,8 +175,9 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
                 0 -> FavouritesTab(lib, ui, open)
                 1 -> PlaylistsTab(lib, ui, open)
                 2 -> TracksTab(lib, ui, open)
-                3 -> AlbumsTab(lib, open)
-                4 -> ArtistsTab(lib, open)
+                3 -> PopularTab(lib, ui, open)
+                4 -> AlbumsTab(lib, open)
+                5 -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
             }
         }
@@ -1014,6 +1015,7 @@ internal fun RollText(text: String, color: Color, size: Float) {
 internal object TabScroll {
     val playlists = LazyListState()
     val tracks = LazyListState()
+    val popular = LazyListState()
     val artists = LazyListState()
     val folders = LazyListState()
     val albums = LazyGridState()

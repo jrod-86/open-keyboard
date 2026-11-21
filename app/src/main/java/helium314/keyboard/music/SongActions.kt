@@ -43,6 +43,7 @@ object PlayStats {
         version.value++
     }
 
+    @Synchronized fun count(id: Long) = counts[id] ?: 0
     @Synchronized fun mostPlayed(lib: Library, n: Int = 100) = counts.entries.sortedByDescending { it.value }.mapNotNull { lib.byId[it.key] }.take(n)
     @Synchronized fun recentlyPlayed(lib: Library, n: Int = 100) = last.entries.sortedByDescending { it.value }.mapNotNull { lib.byId[it.key] }.take(n)
     fun recentlyAdded(lib: Library, n: Int = 200) = lib.songs.sortedByDescending { it.dateAdded }.take(n)

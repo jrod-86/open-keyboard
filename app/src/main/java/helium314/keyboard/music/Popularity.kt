@@ -50,7 +50,7 @@ object Popularity {
 
     private fun load(ctx: Context): MutableMap<String, Pop> {
         cache?.let { return it }
-        val m = HashMap<String, Pop>()
+        val m: MutableMap<String, Pop> = java.util.concurrent.ConcurrentHashMap()
         runCatching {
             val j = JSONObject(file(ctx).readText())
             j.keys().forEach { k ->
