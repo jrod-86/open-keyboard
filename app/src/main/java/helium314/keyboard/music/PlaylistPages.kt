@@ -2,6 +2,12 @@
 package helium314.keyboard.music
 
 import android.net.Uri
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
@@ -136,14 +142,12 @@ private data class PlEntry(val key: String, val song: Song)
 @Composable
 internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val p = Playlists.all.value.find { it.id == id } ?: run { onBack(); return }
     fun entries(ids: List<Long>): List<PlEntry> {
         val seen = HashMap<Long, Int>()
         return ids.mapNotNull { sid -> lib.byId[sid]?.let { song -> val n = seen.merge(sid, 1, Int::plus)!!; PlEntry("$sid/$n", song) } }
     }
-    // the list as shown; while you drag a song it changes here first, then gets saved when you let go (test 289)
     val order = remember(id) { androidx.compose.runtime.mutableStateListOf<PlEntry>().apply { addAll(entries(p.songs)) } }
     LaunchedEffect(p.songs) { val now = entries(p.songs); if (order.toList() != now) { order.clear(); order.addAll(now) } }
     val songs = order.map { it.song }
@@ -151,48 +155,48 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     val state = androidx.compose.foundation.lazy.rememberLazyListState()
-    var dragKey by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    var moved by remember { mutableStateOf(false) }
     val menuFor = remember { mutableStateOf<String?>(null) }
 
-    /** saves the shown order; songs that are no longer on the phone keep their place at the end */
+    /*
+     * Test 292 (Jarrod: the drag still stopped, three times): dragging is now handled by the page around the list, not by the
+     * song's own row. The row being dragged can scroll off screen without ending the drag, and the list itself never moves rows
+     * around until you let go, so nothing cancels the scrolling. While you drag, a copy of the song follows your finger and a
+     * coloured line shows where it will land; near the top or bottom the list scrolls, faster the closer and the longer.
+     */
+    var dragKey by remember { mutableStateOf<String?>(null) }
+    var fingerY by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var grabY by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var dragH by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var target by remember { androidx.compose.runtime.mutableIntStateOf(-1) } // insert before this index of order (order.size = at the end)
+    var listH by remember { androidx.compose.runtime.mutableIntStateOf(1) }
+
     fun save(list: List<PlEntry> = order) {
-        val shown = list.map { it.song.id }
         val gone = p.songs.filter { it !in lib.byId }
-        Playlists.setSongs(ctx, id, shown + gone)
+        Playlists.setSongs(ctx, id, list.map { it.song.id } + gone)
     }
     fun moveTo(key: String, top: Boolean) {
         val i = order.indexOfFirst { it.key == key }; if (i < 0) return
         val e = order.removeAt(i); if (top) order.add(0, e) else order.add(e)
         save()
     }
-    fun swapOnce(): Boolean {
-        val k = dragKey ?: return false
-        val info = state.layoutInfo.visibleItemsInfo
-        val i = order.indexOfFirst { it.key == k }
-        if (i < 0) return false
-        // keep the list's place by position, not by the top row's song, or the drag gets dropped (see test 279)
-        fun keepPlace() = state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
-        // test 290 (Jarrod: "goes up a little and drops it"): when the dragged row is the top row on screen, keeping the place by
-        // position pushed it off the top of the screen, which ended the drag. Then the list keeps its place by that row instead.
-        fun firstIsMe() = info.firstOrNull()?.key == k
-        if (dragOffset > 0 && i < order.size - 1) {
-            val next = info.find { it.key == order[i + 1].key }
-            if (next != null && dragOffset > next.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i + 1, order.removeAt(i)); if (!mine) dragOffset -= next.size; moved = true; return true }
-        } else if (dragOffset < 0 && i > 0) {
-            val prev = info.find { it.key == order[i - 1].key }
-            if (prev != null && -dragOffset > prev.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i - 1, order.removeAt(i)); if (!mine) dragOffset += prev.size; moved = true; return true }
+    /** where the song would land if you let go now */
+    fun findTarget() {
+        val songsShown = state.layoutInfo.visibleItemsInfo.filter { it.key is String }
+        if (songsShown.isEmpty()) return
+        val y = fingerY
+        val hit = songsShown.firstOrNull { y < it.offset + it.size / 2f }
+        target = if (hit != null) order.indexOfFirst { it.key == hit.key } else order.indexOfFirst { it.key == songsShown.last().key } + 1
+    }
+    fun drop() {
+        val k = dragKey ?: return
+        val from = order.indexOfFirst { it.key == k }
+        var to = target
+        if (from >= 0 && to >= 0) {
+            if (to > from) to -= 1
+            if (to != from) { order.add(to, order.removeAt(from)); save() }
         }
-        return false
+        dragKey = null; target = -1
     }
-    fun swapIfNeeded() { repeat(30) { if (!swapOnce()) return } }
-    fun endDrag() {
-        val k = dragKey
-        if (moved) save() else if (k != null) menuFor.value = k // held without moving: the song's menu, like before
-        dragKey = null; dragOffset = 0f; moved = false
-    }
-    // held near the top or bottom: the list keeps scrolling, faster the closer and the longer (same as the Playlists tab)
     LaunchedEffect(dragKey) {
         if (dragKey == null) return@LaunchedEffect
         var heldMs = 0f; var last = 0L
@@ -200,68 +204,111 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             val now = androidx.compose.runtime.withFrameNanos { it }
             val dt = if (last == 0L) 16f else ((now - last) / 1e6f).coerceIn(1f, 50f)
             last = now
-            val me = state.layoutInfo.visibleItemsInfo.find { it.key == dragKey } ?: continue
-            val y = me.offset + dragOffset
-            val zone = maxOf(150f, (state.layoutInfo.viewportEndOffset - state.layoutInfo.viewportStartOffset) * 0.15f)
-            val top = state.layoutInfo.viewportStartOffset + zone - y
-            val bottom = y + me.size - (state.layoutInfo.viewportEndOffset - zone)
-            val depth = when { top > 0 -> -(top / zone).coerceAtMost(1.5f); bottom > 0 -> (bottom / zone).coerceAtMost(1.5f); else -> 0f }
-            if (depth == 0f) { heldMs = 0f; continue }
+            val zone = maxOf(150f, listH * 0.15f)
+            val depth = when {
+                fingerY < zone -> -((zone - fingerY) / zone).coerceAtMost(1.5f)
+                fingerY > listH - zone -> ((fingerY - (listH - zone)) / zone).coerceAtMost(1.5f)
+                else -> 0f
+            }
+            if (depth == 0f) { heldMs = 0f; findTarget(); continue }
             heldMs += dt
-            val speed = (0.25f + 1.6f * depth * depth) * (1f + (heldMs / 800f).coerceAtMost(2.5f))
-            // test 291 (Jarrod: still stopped): moving a row asks the list to hold its place, and Android cancels any scroll
-            // that is running at that moment, which ended this whole loop. Now a cancelled step just counts as no scroll.
-            val used = try { state.scrollBy((if (depth < 0) -speed else speed) * dt) } catch (e: kotlinx.coroutines.CancellationException) { 0f }
-            if (used == 0f) continue
-            dragOffset += used
-            swapIfNeeded()
+            val speed = (0.3f + 1.8f * depth * depth) * (1f + (heldMs / 700f).coerceAtMost(3f))
+            try { state.scrollBy((if (depth < 0) -speed else speed) * dt) } catch (e: kotlinx.coroutines.CancellationException) { }
+            findTarget()
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), state = state) {
-        item { Header(p.name, onBack) }
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${songs.size} songs, ${songs.sumOf { it.durationMs } / 60000} minutes", Modifier.weight(1f), fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
-                Box {
-                    IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Accent) }
-                    DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem({ Text("Rename") }, { menu = false; renaming = true })
-                        DropdownMenuItem({ Text("Delete Playlist") }, { menu = false; deleting = true })
+    Box(Modifier.fillMaxSize()
+        .onSizeChanged { listH = it.height }
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                // a long press on a song (without moving) picks it up; anything else is a normal tap or scroll
+                val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    while (true) {
+                        val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                        if (!c.pressed || c.isConsumed) return@withTimeoutOrNull true
+                        if ((c.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull true
+                    }
+                    @Suppress("UNREACHABLE_CODE") true
+                }
+                if (early != null) return@awaitEachGesture
+                val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key is String && down.position.y >= it.offset && down.position.y < it.offset + it.size }
+                    ?: return@awaitEachGesture
+                val key = item.key as String
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                fingerY = down.position.y; grabY = down.position.y - item.offset; dragH = item.size
+                dragKey = key; findTarget()
+                var moved = false
+                while (true) {
+                    val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    c.consume() // the list and the rows don't see it: no scrolling, no taps while you drag
+                    if (!c.pressed) break
+                    if (kotlin.math.abs(c.position.y - down.position.y) > viewConfiguration.touchSlop) moved = true
+                    fingerY = c.position.y
+                    findTarget()
+                }
+                if (moved) drop() else { dragKey = null; target = -1; menuFor.value = key } // held without moving: the song's menu
+            }
+        }) {
+        LazyColumn(Modifier.fillMaxSize(), state = state) {
+            item { Header(p.name, onBack) }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${songs.size} songs, ${songs.sumOf { it.durationMs } / 60000} minutes", Modifier.weight(1f), fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+                    Box {
+                        IconButton({ menu = true }) { Icon(MusicIcons.more, "More", tint = Accent) }
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem({ Text("Rename") }, { menu = false; renaming = true })
+                            DropdownMenuItem({ Text("Delete Playlist") }, { menu = false; deleting = true })
+                        }
                     }
                 }
             }
+            if (songs.isEmpty()) item { Text("No songs yet. Use ⋯ on any song, then Add to Playlist.", Modifier.padding(16.dp)) }
+            else item {
+                PlayShuffle(songs, ui)
+                Text("Hold a song and drag it to move it, or use ⋯ for Move to top / bottom.", Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            }
+            itemsIndexed(order, key = { _, e -> e.key }) { i, e ->
+                val menuOpen = remember(e.key) { mutableStateOf(false) }
+                LaunchedEffect(menuFor.value) { if (menuFor.value == e.key) { menuOpen.value = true; menuFor.value = null } }
+                val lineTop = dragKey != null && target == i
+                val lineBottom = dragKey != null && target == order.size && i == order.size - 1
+                Box(Modifier.graphicsLayer { alpha = if (dragKey == e.key) 0.3f else 1f }
+                    .drawWithContent {
+                        drawContent()
+                        val h = 3.dp.toPx()
+                        if (lineTop) drawRect(Accent, size = androidx.compose.ui.geometry.Size(size.width, h))
+                        if (lineBottom) drawRect(Accent, androidx.compose.ui.geometry.Offset(0f, size.height - h), androidx.compose.ui.geometry.Size(size.width, h))
+                    }) {
+                    SongRow(e.song, ui, lib, open, menuState = menuOpen, holdForMenu = false, extra = listOf(
+                        "Move to top" to { moveTo(e.key, true) },
+                        "Move to bottom" to { moveTo(e.key, false) },
+                        "Move Up" to { val at = order.indexOfFirst { it.key == e.key }; if (at > 0) { order.add(at - 1, order.removeAt(at)); save() } },
+                        "Move Down" to { val at = order.indexOfFirst { it.key == e.key }; if (at in 0 until order.size - 1) { order.add(at + 1, order.removeAt(at)); save() } },
+                        "Remove from Playlist" to { val at = order.indexOfFirst { it.key == e.key }; if (at >= 0) { order.removeAt(at); save() } },
+                    )) { ui.play(songs, i) }
+                }
+            }
         }
-        if (songs.isEmpty()) item { Text("No songs yet. Use ⋯ on any song, then Add to Playlist.", Modifier.padding(16.dp)) }
-        else item {
-            PlayShuffle(songs, ui)
-            Text("Hold a song and drag it to move it, or use ⋯ for Move to top / bottom.", Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-        }
-        itemsIndexed(order, key = { _, e -> e.key }) { i, e ->
-            val dragging = dragKey == e.key
-            val menuOpen = remember(e.key) { mutableStateOf(false) }
-            LaunchedEffect(menuFor.value) { if (menuFor.value == e.key) { menuOpen.value = true; menuFor.value = null } }
-            Box(Modifier.zIndex(if (dragging) 1f else 0f)
-                .graphicsLayer { if (dragging) { translationY = dragOffset; scaleX = 1.03f; scaleY = 1.03f; shadowElevation = 16f } }
-                .background(if (dragging) MaterialTheme.colorScheme.surfaceContainerHigh else androidx.compose.ui.graphics.Color.Transparent)
-                .pointerInput(e.key) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = {
-                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                            dragKey = e.key; dragOffset = 0f; moved = false
-                        },
-                        onDragEnd = { endDrag() }, onDragCancel = { endDrag() },
-                    ) { change, d -> change.consume(); dragOffset += d.y; if (kotlin.math.abs(dragOffset) > 8f) moved = true; swapIfNeeded() }
-                }) {
-                SongRow(e.song, ui, lib, open, menuState = menuOpen, holdForMenu = false, extra = listOf(
-                    "Move to top" to { moveTo(e.key, true) },
-                    "Move to bottom" to { moveTo(e.key, false) },
-                    "Move Up" to { val at = order.indexOfFirst { it.key == e.key }; if (at > 0) { order.add(at - 1, order.removeAt(at)); save() } },
-                    "Move Down" to { val at = order.indexOfFirst { it.key == e.key }; if (at in 0 until order.size - 1) { order.add(at + 1, order.removeAt(at)); save() } },
-                    "Remove from Playlist" to { val at = order.indexOfFirst { it.key == e.key }; if (at >= 0) { order.removeAt(at); save() } },
-                )) { ui.play(songs, i) }
+        // the song you're dragging, following your finger
+        val dragged = dragKey?.let { k -> order.firstOrNull { it.key == k } }
+        if (dragged != null) {
+            Row(Modifier.fillMaxWidth()
+                .graphicsLayer { translationY = fingerY - grabY; scaleX = 1.03f; scaleY = 1.03f; shadowElevation = 20f }
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Cover(dragged.song, 160, Modifier.size(48.dp), corner = 6)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(dragged.song.title, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${dragged.song.artist} · ${dragged.song.album}", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f))
+                }
+                Text("≡", fontSize = 22.sp, color = Accent)
             }
         }
     }
@@ -270,7 +317,7 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
         text = { Text("The songs stay in your library.") },
         confirmButton = { TextButton({ deleting = false; Playlists.delete(ctx, id); onBack() }) { Text("Delete", color = Accent) } },
         dismissButton = { TextButton({ deleting = false }) { Text("Cancel") } })
-    @Suppress("UNUSED_EXPRESSION") scope
+    @Suppress("UNUSED_EXPRESSION") dragH
 }
 
 /** Position in the saved playlist of the [i]th song shown (songs no longer on the phone are hidden). */
