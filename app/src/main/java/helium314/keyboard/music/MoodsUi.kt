@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -211,14 +212,14 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             item {
                 val (label, mood) = Moods.suggestion(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY))
                 Text("Moods", Modifier.padding(start = 16.dp, top = 16.dp), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                MoodTile(label, mood.color, "Suggested for now", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).height(64.dp)) {
+                MoodTile(label, mood.color, "Suggested for now", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).heightIn(min = 76.dp)) {
                     play(current(Moods.Ask(mood)), label.substringAfter(' '))
                 }
             }
             items(Moods.all.chunked(2)) { pair ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     pair.forEach { m ->
-                        MoodTile("${m.emoji} ${m.name}", m.color, null, Modifier.weight(1f).height(76.dp)) { play(current(Moods.Ask(m)), m.name + if (MoodState.genre.isNotEmpty()) " · ${MoodState.genre}" else "") }
+                        MoodTile("${m.emoji} ${m.name}", m.color, null, Modifier.weight(1f).heightIn(min = 76.dp)) { play(current(Moods.Ask(m)), m.name + if (MoodState.genre.isNotEmpty()) " · ${MoodState.genre}" else "") }
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
