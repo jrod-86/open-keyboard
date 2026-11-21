@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.music
 
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import android.content.Intent
 import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.DisposableEffect
@@ -652,6 +655,9 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
     val k = MusicSettings.buttonSize
     var hint by remember { mutableStateOf<String?>(null) }
     var shownHint by remember { mutableStateOf("") }
+    // test 301 (Jarrod): the label shows over the middle of the heart row, not over the song's chart line
+    var hintY by remember { mutableIntStateOf(-1) }
+    var hintH by remember { mutableIntStateOf(0) }
     LaunchedEffect(hint) { hint?.let { shownHint = it; delay(1600); hint = null } }
 
     // minimise (test 240): the whole screen follows your finger, shrinking into a rounded card that drops into the mini player
@@ -714,7 +720,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
                 else -> { SmallHeader(song); UpNext(ui, lib, Modifier.weight(1f)) }
             }
             // Samsung row: queue on the left, heart in the middle, add to playlist on the right
-            Box(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            Box(Modifier.fillMaxWidth().padding(top = 14.dp).onGloballyPositioned { hintY = it.boundsInRoot().center.y.toInt() }) {
                 IconButton({ mode = if (mode == 2) 0 else 2 }, Modifier.align(Alignment.CenterStart)) {
                     Icon(MusicIcons.sQueue, "Up Next", tint = if (mode == 2) Accent else Color.White, modifier = Modifier.size((26 * k).dp))
                 }
@@ -732,7 +738,8 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
             Controls(ui) { hint = it }
         }
         // a little label that says what a button just did (Jarrod: "no one knows what they are")
-        AnimatedVisibility(hint != null, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (85 * k + 140).dp),
+        AnimatedVisibility(hint != null, if (hintY >= 0) Modifier.align(Alignment.TopCenter).offset { IntOffset(0, hintY - hintH / 2) }.onSizeChanged { hintH = it.height }
+            else Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = (85 * k + 140).dp),
             enter = fadeIn(), exit = fadeOut()) {
             Text(shownHint, color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.92f)).padding(horizontal = 16.dp, vertical = 8.dp))
