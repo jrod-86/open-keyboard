@@ -356,6 +356,7 @@ internal sealed class Page {
     data class SmartListPage(val id: Long) : Page()
     data object Year : Page()
     data object Car : Page()
+    data class Stems(val id: Long) : Page()
 }
 
 private fun audioPermission() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -463,6 +464,7 @@ private fun MusicApp(ui: PlayerUi) {
                     is Page.SmartListPage -> SmartListPage(p.id, library, ui, ::open, ::back)
                     Page.Year -> YearPage(library, ui, ::open, ::back)
                     Page.Car -> CarModePage(ui, library, ::back)
+                    is Page.Stems -> library.byId[p.id]?.let { StemsPage(it, ui, ::back) }
                     is Page.Ringtone -> library.byId[p.id]?.let { RingtonePage(it, ui, ::back) }
                     Page.Songs -> SongsPage("Tracks", library.songs, ui, library, ::open, ::back)
                     Page.Favs -> SongsPage("Favourite tracks", library.songs.filter { it.id in Favourites.ids.value }, ui, library, ::open, ::back)
@@ -920,6 +922,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = s })
                 DropdownMenuItem({ Text("Edit tags") }, { menu = false; TagEdit.asking.value = s })
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
+                DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass") }, { menu = false; open(Page.Stems(s.id)) })
             }
             DropdownMenuItem({ Text(if (Eq.sing) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
                 menu = false; Eq.sing = !Eq.sing

@@ -185,7 +185,7 @@ object Eq {
     /** ExoPlayer with the equaliser in its sound chain. */
     fun renderers(ctx: Context) = object : DefaultRenderersFactory(ctx) {
         override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-            DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf<AudioProcessor>(EqProcessor()))
+            DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf<AudioProcessor>(StemProcessor(), EqProcessor()))
                 .setEnableFloatOutput(enableFloatOutput).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
     }
 
