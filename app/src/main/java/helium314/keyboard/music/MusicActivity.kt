@@ -402,6 +402,15 @@ private fun MusicApp(ui: PlayerUi) {
         NotMusic.afterHide = { reload() }
         onDispose { NotMusic.askWrite = null; NotMusic.afterHide = null }
     }
+    // test 311: the tag editor asks Android before changing the file too
+    val tagWriter = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        TagEdit.writeAnswered(ctx, it.resultCode == android.app.Activity.RESULT_OK)
+    }
+    DisposableEffect(Unit) {
+        TagEdit.askWrite = { sender -> tagWriter.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build()) }
+        TagEdit.afterSave = { reload() }
+        onDispose { TagEdit.askWrite = null; TagEdit.afterSave = null }
+    }
     LaunchedEffect(Unit) {
         Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); RecentSearches.load(ctx)
         SmartLists.load(ctx); Playback.load(ctx); Eq.load(ctx)
@@ -493,6 +502,8 @@ private fun MusicApp(ui: PlayerUi) {
         PlaylistPickerDialog()
         TrackDetailsDialog()
         NotMusicDialog(ui)
+        TagEditDialog()
+        LyricsEditDialog(ui)
         RateDialog(); SmartListDialog(); SpeedDialog()
     }
 }
@@ -896,7 +907,13 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
                 Library.cached?.let { l -> DropdownMenuItem({ Text("📻 Radio from this song") }, { menu = false; Radio.start(ctx, ui, l, s) }) }
                 DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = s })
+                DropdownMenuItem({ Text("Edit tags") }, { menu = false; TagEdit.asking.value = s })
+                DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
             }
+            DropdownMenuItem({ Text(if (Eq.sing) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
+                menu = false; Eq.sing = !Eq.sing
+                android.widget.Toast.makeText(ctx, if (Eq.sing) "Sing mode: the voice is taken out. Works best on studio songs." else "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
+            })
             DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
             DropdownMenuItem({ Text("🚗 Car mode") }, { menu = false; open(Page.Car) })
@@ -999,7 +1016,7 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
     var looked by remember(song?.id) { mutableStateOf(false) }
     var searching by remember(song?.id) { mutableStateOf(false) }
     var notFound by remember(song?.id) { mutableStateOf(false) }
-    LaunchedEffect(song?.id, embedded) {
+    LaunchedEffect(song?.id, embedded, LyricsEdit.version.intValue) {
         if (song == null) return@LaunchedEffect
         lyrics = Lyrics.local(ctx, song)
             ?: embedded?.takeIf { it.first == song.id }?.second?.let { Lyrics.parse(it, "In the song file") }
@@ -1021,6 +1038,7 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
                 Spacer(Modifier.height(8.dp))
                 Text("Looks up the song's name and artist on LRCLIB.net, a free lyrics site. Saved on your phone after.", color = Color.White.copy(alpha = 0.5f),
                     fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 280.dp))
+                if (song != null) TextButton({ LyricsEdit.editing.value = song }) { Text("✏️ Type them myself", color = Color.White) }
             }
         } else {
             val state = rememberLazyListState()
@@ -1039,7 +1057,12 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
                             modifier = Modifier.fillMaxWidth().alpha(a).graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
                                 .clickable(enabled = l.synced) { ui.seek(line.timeMs) }.padding(vertical = 10.dp))
                     }
-                    item { Text("Lyrics: ${l.source}", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, modifier = Modifier.padding(top = 24.dp)) }
+                    item {
+                        Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Lyrics: ${l.source}", Modifier.weight(1f), color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+                            if (song != null) TextButton({ LyricsEdit.editing.value = song }) { Text("✏️ Edit", color = Color.White.copy(alpha = 0.7f)) }
+                        }
+                    }
                 }
             }
         }

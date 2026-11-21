@@ -286,6 +286,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
             }
         }
         item { PlaybackSettings() }
+        item { AnnouncerSettings(null) }
         item { VolumeSettings() }
         item { BlendSettings() }
         item {

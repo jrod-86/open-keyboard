@@ -55,6 +55,7 @@ class MusicService : MediaLibraryService() {
         override fun run() {
             // test 311: ListenBrainz scrobbling counts listening time
             session?.player?.let { p -> p.currentMediaItem?.mediaId?.toLongOrNull()?.let { id -> Scrobble.tick(this@MusicService, id, p.isPlaying, p.duration) } }
+            session?.player?.let { p -> runCatching { Announcer.tick(this@MusicService, p) } }
             val at = MusicState.sleepAt.value
             if (at > 0 && System.currentTimeMillis() >= at) {
                 session?.player?.pause(); MusicState.sleepAt.value = 0
@@ -96,6 +97,7 @@ class MusicService : MediaLibraryService() {
                 counted = -1L; count()
                 Radio.topUp(this@MusicService, player)
                 PlayerWidget.update(this@MusicService)
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) Announcer.songStarted(this@MusicService, mediaItem?.mediaId?.toLongOrNull())
                 // test 311: long tracks carry on from where you stopped
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
                     val id = mediaItem?.mediaId?.toLongOrNull()
@@ -103,7 +105,10 @@ class MusicService : MediaLibraryService() {
                     if (spot > 0 && player.currentPosition < 5_000) player.seekTo(spot)
                 }
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) save() else count(); PlayerWidget.update(this@MusicService) }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying) { save(); if (player.playbackState != Player.STATE_BUFFERING) Announcer.hush() } else count()
+                PlayerWidget.update(this@MusicService)
+            }
         })
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
