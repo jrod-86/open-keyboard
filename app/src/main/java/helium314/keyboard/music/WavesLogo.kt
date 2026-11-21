@@ -82,10 +82,12 @@ internal fun WavesLogo(playing: Boolean, height: Dp) {
  * going through 10 different ones in turn and then starting again. Paused = still.
  */
 internal object TitleFx {
-    val names = listOf("Typewriter", "Wave", "Glitch", "Neon flicker", "Rainbow", "Pop", "Flip", "Drop", "Focus", "Heartbeat")
+    val names = listOf("Typewriter", "Wave", "Glitch", "Neon flicker", "Rainbow", "Pop", "Flip", "Drop", "Focus", "Heartbeat",
+        // test 308 (Jarrod): ten more, and every 30 seconds
+        "Spin", "Shake", "Gold shine", "Fire", "Zoom wave", "Swing", "Ghost", "Jelly", "Matrix", "Disco")
     /** which effect comes next (kept while the app is open, so it carries on through the list) */
     var next = 0
-    const val EVERY_MS = 60_000L
+    const val EVERY_MS = 30_000L
     const val FIRST_MS = 5_000L
     const val LENGTH_MS = 3500
 }
@@ -137,7 +139,7 @@ private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Floa
     fun stag(spread: Float, len: Float, at: Float = p) = ((at - s * spread) / len).coerceIn(0f, 1f)
     val bump = sin(Math.PI * p).toFloat()                      // 0 → 1 → 0 over the effect
     var alpha = 1f; var tx = 0f; var ty = 0f; var sc = 1f; var rotX = 0f; var rotZ = 0f; var blur = 0f
-    var c = color; var glow = 0f; var glitch = 0f
+    var c = color; var glow = 0f; var glitch = 0f; var sx = 1f; var sy = 1f
     when (fx) {
         0 -> { // Typewriter: wiped away left to right, then typed back in one letter at a time
             alpha = if (p < 0.38f) 1f - ((p - s * 0.3f) / 0.05f).coerceIn(0f, 1f) else ((p - 0.42f - s * 0.48f) / 0.02f).coerceIn(0f, 1f)
@@ -188,6 +190,53 @@ private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Floa
             c = androidx.compose.ui.graphics.lerp(color, Color(0xFFFF4D8D), 0.6f * b)
             rotZ = 0f
         }
+        10 -> { // Spin: each letter spins round once, one after another
+            rotZ = 360f * easeInOut(stag(0.5f, 0.4f))
+        }
+        11 -> { // Shake: the name rumbles like an earthquake and settles
+            val r = java.util.Random((p * 40).toInt() * 31L + i)
+            val k = bump * bump
+            tx = (r.nextFloat() - 0.5f) * 9f * px * k; ty = (r.nextFloat() - 0.5f) * 6f * px * k; rotZ = (r.nextFloat() - 0.5f) * 10f * k
+        }
+        12 -> { // Gold shine: a band of gold sweeps across with a glint
+            val d = kotlin.math.abs(p * 1.6f - 0.3f - s)
+            val k = (1f - d / 0.25f).coerceIn(0f, 1f)
+            c = androidx.compose.ui.graphics.lerp(color, Color(0xFFFFD34D), k); glow = 0.8f * k; sc = 1f + 0.06f * k
+        }
+        13 -> { // Fire: letters flicker orange and red and lick upwards
+            val r = java.util.Random((p * 26).toInt() * 13L + i * 5L)
+            val heat = bump * (0.6f + 0.4f * r.nextFloat())
+            c = androidx.compose.ui.graphics.lerp(color, if (r.nextBoolean()) Color(0xFFFF6A00) else Color(0xFFFF2D2D), heat)
+            ty = -4f * px * heat * r.nextFloat(); glow = heat; sy = 1f + 0.12f * heat
+        }
+        14 -> { // Zoom wave: a big swell runs through the letters
+            val k = sin(Math.PI * stag(0.55f, 0.45f)).toFloat()
+            sc = 1f + 0.35f * k; glow = 0.3f * k
+        }
+        15 -> { // Swing: letters swing like pendulums and slowly stop
+            val t = stag(0.25f, 0.75f)
+            rotZ = 22f * sin(t * 4f * Math.PI).toFloat() * (1f - t)
+        }
+        16 -> { // Ghost: fades almost away, blurry, and drifts back
+            val k = sin(Math.PI * stag(0.4f, 0.6f)).toFloat()
+            alpha = 1f - 0.85f * k; blur = 4f * k; ty = -6f * px * k
+        }
+        17 -> { // Jelly: letters squash and stretch, wobbling
+            val t = stag(0.35f, 0.65f)
+            val w = sin(t * 3f * Math.PI).toFloat() * (1f - t)
+            sx = 1f + 0.3f * w; sy = 1f - 0.3f * w
+        }
+        18 -> { // Matrix: green code rain, letters fall in from above
+            val k = stag(0.6f, 0.3f)
+            if (p < 0.5f) { c = androidx.compose.ui.graphics.lerp(color, Color(0xFF00FF66), (p * 4f).coerceAtMost(1f)); glow = 0.6f * bump }
+            else { ty = -30f * px * (1f - bounce(((p - 0.5f) * 2f - s * 0.4f).coerceIn(0f, 1f))); c = androidx.compose.ui.graphics.lerp(Color(0xFF00FF66), color, k) }
+        }
+        19 -> { // Disco: every letter flashes its own colour and hops on the beat
+            val step = (p * 16).toInt()
+            val hue = java.util.Random(step * 97L + i * 3L).nextFloat() * 360f
+            c = androidx.compose.ui.graphics.lerp(color, Color.hsv(hue, 0.85f, 1f), (bump * 2f).coerceAtMost(1f))
+            ty = if ((step + i) % 2 == 0) -4f * px * bump else 0f; glow = 0.5f * bump
+        }
     }
     val style = androidx.compose.ui.text.TextStyle(fontSize = fontSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         shadow = if (glow > 0.02f) androidx.compose.ui.graphics.Shadow(c.copy(alpha = 0.9f * glow), blurRadius = 22f * glow) else null)
@@ -201,7 +250,7 @@ private fun TitleLetter(ch: Char, color: Color, i: Int, n: Int, fx: Int, p: Floa
         }
         androidx.compose.material3.Text(t, style = style.copy(color = c), maxLines = 1, softWrap = false,
             modifier = Modifier.graphicsLayer {
-                this.alpha = alpha; translationX = tx; translationY = ty; scaleX = sc; scaleY = sc
+                this.alpha = alpha; translationX = tx; translationY = ty; scaleX = sc * sx; scaleY = sc * sy
                 rotationX = rotX; rotationZ = rotZ; cameraDistance = 12f * density
             }.then(if (blur > 0.3f) Modifier.blur(blur.dp) else Modifier))
     }

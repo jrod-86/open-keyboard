@@ -1012,30 +1012,10 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 viewH.intValue = constraints.maxHeight
                 LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 40.dp)) {
-                    // test 308: plain lyrics can't follow the song; offer to look for a timed copy
-                    if (!l.synced && song != null) item {
-                        var trying by remember(song.id) { mutableStateOf(false) }
-                        var none by remember(song.id) { mutableStateOf(false) }
-                        Column(Modifier.fillMaxWidth().padding(bottom = 16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp)) {
-                            Text(if (none) "No timed lyrics found for this song." else "These lyrics have no timing, so they can't follow the song karaoke style.",
-                                color = Color.White, fontSize = 14.sp)
-                            if (!none) TextButton(enabled = !trying, onClick = {
-                                trying = true
-                                scope.launch { val t = Lyrics.findTimed(ctx, song); if (t != null) lyrics = t else none = true; trying = false }
-                            }) { Text(if (trying) "Looking…" else "Find timed lyrics", color = Accent, fontWeight = FontWeight.Bold) }
-                        }
-                    }
                     itemsIndexed(l.lines) { i, line ->
                         val on = !l.synced || i == cur
                         val a by animateFloatAsState(if (on) 1f else 0.32f, tween(300), label = "line")
                         val s by animateFloatAsState(if (i == cur) 1.04f else 1f, tween(300), label = "lineScale")
-                        if (l.synced && i == cur && line.text.isNotBlank()) {
-                            // test 308 (Jarrod): karaoke, the words light up as they're sung
-                            val nextMs = l.lines.getOrNull(i + 1)?.timeMs ?: (line.timeMs + 6000)
-                            KaraokeLine(line, nextMs, ui, Modifier.fillMaxWidth().graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
-                                .clickable { ui.seek(line.timeMs) }.padding(vertical = 10.dp))
-                            return@itemsIndexed
-                        }
                         Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 28.sp else 20.sp, fontWeight = FontWeight.Bold,
                             lineHeight = if (l.synced) 34.sp else 28.sp,
                             modifier = Modifier.fillMaxWidth().alpha(a).graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
@@ -1046,23 +1026,6 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             }
         }
     }
-}
-
-/** The line being sung: sung words bright with a soft glow, the word being sung filling up letter by letter, the rest dim. */
-@Composable
-private fun KaraokeLine(line: LyricLine, nextMs: Long, ui: PlayerUi, modifier: Modifier) {
-    val clock = rememberBeatClock(ui, ui.playing)
-    val sung = line.sungChars(if (ui.playing) clock.ms else ui.position, nextMs)
-    val text = androidx.compose.ui.text.buildAnnotatedString {
-        line.text.forEachIndexed { i, c ->
-            val k = (sung - i).coerceIn(0f, 1f)
-            val col = androidx.compose.ui.graphics.lerp(Color.White.copy(alpha = 0.38f), Accent, k * 0.35f).let { if (k >= 1f) Color.White else it }
-            pushStyle(androidx.compose.ui.text.SpanStyle(color = androidx.compose.ui.graphics.lerp(Color.White.copy(alpha = 0.38f), col, k).copy(alpha = 0.38f + 0.62f * k),
-                shadow = if (k > 0f) androidx.compose.ui.graphics.Shadow(Accent.copy(alpha = 0.55f * k), blurRadius = 16f) else null))
-            append(c); pop()
-        }
-    }
-    Text(text, fontSize = 28.sp, fontWeight = FontWeight.Bold, lineHeight = 34.sp, modifier = modifier)
 }
 
 @Composable

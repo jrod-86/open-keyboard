@@ -208,7 +208,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         if (list.isNotEmpty()) {
             // test 308 (Jarrod): the filter chips stay at the top while you scroll down the list
             stickyHeader(key = "filters") {
-                androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(vertical = 4.dp),
+                androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 4.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(popFilters + decades.map { "${it}s" }) { f ->
