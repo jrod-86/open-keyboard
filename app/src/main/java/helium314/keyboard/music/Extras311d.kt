@@ -236,17 +236,17 @@ internal fun LyricsEditDialog(ui: PlayerUi) {
 // ---------------- AI radio announcer ----------------
 /**
  * Test 311 (Jarrod's idea): like a radio station, a DJ talks into the next song. The writing model (in Chat's process,
- * all on the phone) writes a line or two about it and the Kokoro voice says it while the music dips. Off by default.
+ * all on the phone) writes a line or two about it and the Zonos voice says it while the music dips. Off by default.
  */
 object Announcer {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun on(ctx: Context) = prefs(ctx).getBoolean("ann_on", false)
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
-    fun voiceId(ctx: Context) = prefs(ctx).getString("ann_voice", "am_michael")!!
+    fun voiceId(ctx: Context) = prefs(ctx).getString("ann_voice2", "savannah")!!
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
-        if (key == "ann_on" && v == false) { hush(); scope.launch { runCatching { helium314.keyboard.tts.KokoroTts.release() } } }
+        if (key == "ann_on" && v == false) { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
     }
 
     val STYLES = listOf(
@@ -264,7 +264,19 @@ object Announcer {
     @Volatile private var track: AudioTrack? = null
     private var songsSince = 0
 
-    private fun voice(ctx: Context) = helium314.keyboard.tts.KokoroTts.VOICES.firstOrNull { it.id == voiceId(ctx) } ?: helium314.keyboard.tts.KokoroTts.VOICES[0]
+    // test 315 (Jarrod): Zonos voices only (and your own made voices), Savannah by default
+    fun voices(ctx: Context): List<helium314.keyboard.tts.ZonosTts.Voice> =
+        helium314.keyboard.tts.ZonosTts.VOICES + runCatching { helium314.keyboard.tts.VoiceClones.list(ctx) }.getOrDefault(emptyList())
+    private fun voice(ctx: Context) = voices(ctx).firstOrNull { it.id == voiceId(ctx) } ?: helium314.keyboard.tts.ZonosTts.VOICES[0]
+    fun ready(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
+    /** The whole line as sound (44.1 kHz). */
+    private fun speech(ctx: Context, text: String): FloatArray {
+        val parts = ArrayList<FloatArray>()
+        helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(ctx), null, { false }) { parts += it }
+        val out = FloatArray(parts.sumOf { it.size }); var i = 0
+        for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
+        return out
+    }
 
     /** Called every second by the music service: makes the next song's line before this one ends. */
     fun tick(ctx: Context, p: Player) {
@@ -276,14 +288,13 @@ object Announcer {
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
         if (ready?.forId == next.id || making == next.id) return
         val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
-        if (!helium314.keyboard.tts.KokoroTts.installed(ctx)) return
+        if (!ready(ctx)) return
         making = next.id
         val app = ctx.applicationContext
         scope.launch {
             runCatching {
                 val line = line(app, cur, next)
-                val v = voice(app)
-                val audio = helium314.keyboard.tts.KokoroTts.engine(app, v).generate(helium314.keyboard.tts.ChatSpeaker.forSpeech(line), v.sid, 1.0f).samples
+                val audio = speech(app, line)
                 ready = Ready(next.id, audio)
             }.onFailure { android.util.Log.w("OpenWaves", "announcer couldn't make a line", it) }
             making = -1
@@ -331,7 +342,7 @@ object Announcer {
     fun say(audio: FloatArray) {
         hush()
         speaking = scope.launch(Dispatchers.IO) {
-            val rate = helium314.keyboard.tts.KokoroTts.RATE
+            val rate = helium314.keyboard.tts.ZonosTts.RATE
             val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
             val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
             val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
@@ -373,11 +384,10 @@ object Announcer {
         val app = ctx.applicationContext
         scope.launch {
             val msg = runCatching {
-                if (!helium314.keyboard.tts.KokoroTts.installed(app)) return@runCatching "First download the Kokoro voice in the keyboard's TTS tile."
+                if (!ready(app)) return@runCatching "First download the Zonos voices in the keyboard's TTS tile (✨ Zonos)."
                 val next = lib?.uniqueSongs?.filter { it.id != cur?.id }?.randomOrNull() ?: return@runCatching "No songs yet."
                 val line = line(app, cur, next)
-                val v = voice(app)
-                say(helium314.keyboard.tts.KokoroTts.engine(app, v).generate(helium314.keyboard.tts.ChatSpeaker.forSpeech(line), v.sid, 1.0f).samples)
+                say(speech(app, line))
                 "“$line”"
             }.getOrElse { "Couldn't make a sample: ${it.message}" }
             withContext(Dispatchers.Main) { done(msg) }
@@ -395,7 +405,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var sample by remember { mutableStateOf<String?>(null) }
     var making by remember { mutableStateOf(false) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-    val kokoro = remember { helium314.keyboard.tts.KokoroTts.installed(ctx) }
+    val kokoro = remember { Announcer.ready(ctx) }
     @Composable fun chip(label: String, sel: Boolean, click: () -> Unit) =
         FilterChip(sel, click, { Text(label) }, Modifier.padding(end = 6.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.3f)))
     Column {
@@ -403,9 +413,9 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("📻 DJ between songs", fontSize = 16.sp)
-                Text("Your writing model writes a short line about the next song and the Kokoro voice says it while the music dips. All on your phone.",
+                Text("Your writing model writes a short line about the next song and the Zonos voice says it while the music dips. All on your phone.",
                     fontSize = 12.sp, color = dim)
-                if (!kokoro) Text("Needs the Kokoro voice: download it in the keyboard's TTS tile first.", fontSize = 12.sp, color = Accent)
+                if (!kokoro) Text("Needs the Zonos voices: download them in the keyboard's TTS tile (✨ Zonos) first.", fontSize = 12.sp, color = Accent)
             }
             Switch(on, { on = it; Announcer.set(ctx, "ann_on", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
         }
@@ -420,7 +430,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
             }
             Text("Voice", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
-                for (v in helium314.keyboard.tts.KokoroTts.VOICES) chip(v.name, voice == v.id) { voice = v.id; Announcer.set(ctx, "ann_voice", v.id) }
+                for (v in remember { Announcer.voices(ctx) }) chip(v.name, voice == v.id) { voice = v.id; Announcer.set(ctx, "ann_voice2", v.id) }
             }
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton({

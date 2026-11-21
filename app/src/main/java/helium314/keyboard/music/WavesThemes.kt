@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -128,11 +130,49 @@ object WavesThemes {
     fun isFx(id: Int) = id >= 100
 }
 
+/** Test 315: the colour controls (contrast, colour, warmth, hue, shadows) as one colour matrix over the theme. */
+internal fun themeMatrix(): androidx.compose.ui.graphics.ColorMatrix? {
+    val c = MusicSettings.themeContrast; val sat = MusicSettings.themeSat; val warm = MusicSettings.themeWarm
+    val hue = MusicSettings.themeHue; val sh = MusicSettings.themeShadow
+    if (c == 1f && sat == 1f && warm == 0f && hue == 0f && sh == 0f) return null
+    val m = androidx.compose.ui.graphics.ColorMatrix()
+    m.setToSaturation(sat)
+    if (hue != 0f) {
+        val a = Math.toRadians(hue.toDouble()); val cs = kotlin.math.cos(a).toFloat(); val sn = kotlin.math.sin(a).toFloat()
+        m.timesAssign(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+            0.213f + cs * 0.787f - sn * 0.213f, 0.715f - cs * 0.715f - sn * 0.715f, 0.072f - cs * 0.072f + sn * 0.928f, 0f, 0f,
+            0.213f - cs * 0.213f + sn * 0.143f, 0.715f + cs * 0.285f + sn * 0.140f, 0.072f - cs * 0.072f - sn * 0.283f, 0f, 0f,
+            0.213f - cs * 0.213f - sn * 0.787f, 0.715f - cs * 0.715f + sn * 0.715f, 0.072f + cs * 0.928f + sn * 0.072f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f)))
+    }
+    // warmth: more red and less blue (or the other way)
+    val r = 1f + warm * 0.25f; val b = 1f - warm * 0.25f
+    // contrast round the middle grey, shadows lift (+) or deepen (−) the dark parts
+    val off = (1f - c) * 127.5f + sh * 40f
+    m.timesAssign(androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+        c * r, 0f, 0f, 0f, off,
+        0f, c, 0f, 0f, off,
+        0f, 0f, c * b, 0f, off,
+        0f, 0f, 0f, 1f, 0f)))
+    return m
+}
+
+@Composable
+private fun themeGrade(modifier: Modifier): Modifier {
+    val m = themeMatrix() ?: return modifier
+    val paint = remember(m) { androidx.compose.ui.graphics.Paint().apply { colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(m) } }
+    return modifier.drawWithContent {
+        drawIntoCanvas { cv -> cv.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), paint); drawContent(); cv.restore() }
+    }
+}
+
 /** The theme's background, drawn behind the whole app (and Now Playing). [dim] darkens it so text stays readable. */
 @Composable
 internal fun ThemeBackground(id: Int, modifier: Modifier = Modifier, dim: Float = 0.35f, preview: Boolean = false) {
     val t = WavesThemes.of(id) ?: return
     @Suppress("NAME_SHADOWING") val dim = dim + (1f - dim) * MusicSettings.themeDark
+    val graded = themeGrade(modifier)
+    @Suppress("NAME_SHADOWING") val modifier = graded
     if (!WavesThemes.isFx(id)) {
         Box(modifier.fillMaxSize().background(Brush.linearGradient(t.colors, start = Offset.Zero, end = Offset(900f, 2200f)))
             .background(Color.Black.copy(alpha = dim)))
@@ -249,22 +289,8 @@ internal fun ThemesPage(onBack: () -> Unit) {
                 Text("Themes", fontSize = 26.sp, fontWeight = FontWeight.Bold)
             }
         }
-        // test 312: brightness for every theme, in 5% steps
-        item(span = { GridItemSpan(3) }) {
-            Column(Modifier.fillMaxWidth().padding(6.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)).padding(12.dp)) {
-                val bright = 1f - MusicSettings.themeDark
-                fun set(v: Float) { MusicSettings.themeDark = (1f - (Math.round(v.coerceIn(0.1f, 1f) * 20) / 20f)).coerceIn(0f, 0.9f); MusicSettings.save(ctx) }
-                Text("☀️ Theme brightness: ${Math.round(bright * 100)}%", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                Text("Turn it down for a darker look. Works on every theme, moving ones too.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.FilledTonalIconButton({ set(bright - 0.05f) }, enabled = bright > 0.1f) { Text("−", fontSize = 22.sp) }
-                    androidx.compose.material3.Slider(bright, { set(it) }, Modifier.weight(1f).padding(horizontal = 4.dp), valueRange = 0.1f..1f, steps = 17,
-                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
-                    androidx.compose.material3.FilledTonalIconButton({ set(bright + 0.05f) }, enabled = bright < 1f) { Text("+", fontSize = 22.sp) }
-                }
-                if (bright < 1f) androidx.compose.material3.TextButton({ set(1f) }) { Text("↺ Back to normal", color = Accent) }
-            }
-        }
+        // test 312: brightness; test 315: full colour controls, all in small steps with − and +
+        item(span = { GridItemSpan(3) }) { ThemeAdjustCard() }
         item(span = { GridItemSpan(3) }) { Text("Colour themes", Modifier.padding(6.dp), fontWeight = FontWeight.SemiBold, fontSize = 17.sp) }
         item { ThemeTile("Plain", MusicSettings.theme == -1, { Box(Modifier.fillMaxSize().background(Color.Black)) }) { pick(-1) } }
         items(WavesThemes.colour.size) { i ->
@@ -297,3 +323,58 @@ private fun ThemeTile(name: String, on: Boolean, preview: @Composable () -> Unit
 }
 
 @Suppress("unused") private val unusedArr = Arrangement.Center
+
+@Composable
+private fun ThemeAdjustCard() {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    fun save() = MusicSettings.save(ctx)
+    @Composable
+    fun row(label: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, show: String, set: (Float) -> Unit) {
+        fun put(v: Float) { set((Math.round(v.coerceIn(range.start, range.endInclusive) / step) * step)); save() }
+        Text("$label: $show", Modifier.padding(top = 6.dp), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.FilledTonalIconButton({ put(value - step) }, enabled = value > range.start + step / 2) { Text("−", fontSize = 20.sp) }
+            androidx.compose.material3.Slider(value, { put(it) }, Modifier.weight(1f).padding(horizontal = 4.dp), valueRange = range,
+                colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+            androidx.compose.material3.FilledTonalIconButton({ put(value + step) }, enabled = value < range.endInclusive - step / 2) { Text("+", fontSize = 20.sp) }
+        }
+    }
+    fun pct(v: Float) = "${Math.round(v * 100)}%"
+    fun signed(v: Float) = (if (v > 0) "+" else "") + Math.round(v * 100) + "%"
+    Column(Modifier.fillMaxWidth().padding(6.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)).padding(12.dp)) {
+        Text("🎛️ Theme colours", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Tune any theme how you like, moving ones too. Tap a look to start, then fine-tune.", fontSize = 12.sp, color = dim)
+        // ready-made looks: brightness, contrast, colour, warmth, hue, shadows
+        val looks = listOf(
+            "🌑 Moody dark" to floatArrayOf(0.45f, 1.15f, 1.1f, 0f, 0f, -0.3f),
+            "🌈 Vivid" to floatArrayOf(0f, 1.15f, 1.5f, 0f, 0f, 0f),
+            "🍬 Pastel" to floatArrayOf(0f, 0.8f, 0.6f, 0f, 0f, 0.3f),
+            "🌅 Warm" to floatArrayOf(0.1f, 1f, 1.1f, 0.6f, 0f, 0f),
+            "🧊 Cool" to floatArrayOf(0.1f, 1f, 1f, -0.6f, 0f, 0f),
+            "🖤 Mono" to floatArrayOf(0.2f, 1.2f, 0f, 0f, 0f, 0f),
+            "🔮 Shift" to floatArrayOf(0f, 1f, 1.1f, 0f, 120f, 0f),
+        )
+        androidx.compose.foundation.lazy.LazyRow(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(looks.size) { i ->
+                val (name, v) = looks[i]
+                androidx.compose.material3.FilterChip(false, {
+                    MusicSettings.themeDark = v[0]; MusicSettings.themeContrast = v[1]; MusicSettings.themeSat = v[2]
+                    MusicSettings.themeWarm = v[3]; MusicSettings.themeHue = v[4]; MusicSettings.themeShadow = v[5]; save()
+                }, { Text(name) })
+            }
+        }
+        val bright = 1f - MusicSettings.themeDark
+        row("☀️ Brightness", bright, 0.1f..1f, 0.05f, pct(bright)) { MusicSettings.themeDark = (1f - it).coerceIn(0f, 0.9f) }
+        row("◐ Contrast", MusicSettings.themeContrast, 0.5f..1.5f, 0.05f, pct(MusicSettings.themeContrast)) { MusicSettings.themeContrast = it }
+        row("🎨 Colour strength", MusicSettings.themeSat, 0f..2f, 0.05f, pct(MusicSettings.themeSat)) { MusicSettings.themeSat = it }
+        row("🔥 Warmth", MusicSettings.themeWarm, -1f..1f, 0.05f, if (MusicSettings.themeWarm == 0f) "neutral" else if (MusicSettings.themeWarm > 0) "warmer ${signed(MusicSettings.themeWarm)}" else "cooler ${signed(MusicSettings.themeWarm)}") { MusicSettings.themeWarm = it }
+        row("🌈 Hue shift", MusicSettings.themeHue, -180f..180f, 5f, "${Math.round(MusicSettings.themeHue)}°") { MusicSettings.themeHue = it }
+        row("🌓 Shadows", MusicSettings.themeShadow, -1f..1f, 0.05f, if (MusicSettings.themeShadow == 0f) "as made" else if (MusicSettings.themeShadow > 0) "lifted ${signed(MusicSettings.themeShadow)}" else "deeper ${signed(MusicSettings.themeShadow)}") { MusicSettings.themeShadow = it }
+        Text("Tip: for darker colours but the same brightness, turn up Colour strength and set Shadows to deeper.", Modifier.padding(top = 4.dp), fontSize = 12.sp, color = dim)
+        androidx.compose.material3.TextButton({
+            MusicSettings.themeDark = 0f; MusicSettings.themeContrast = 1f; MusicSettings.themeSat = 1f; MusicSettings.themeWarm = 0f
+            MusicSettings.themeHue = 0f; MusicSettings.themeShadow = 0f; save()
+        }) { Text("↺ Back to normal", color = Accent) }
+    }
+}

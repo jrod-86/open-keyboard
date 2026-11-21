@@ -752,6 +752,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
             NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0)
+            StemNowBanner(song)
             when (mode) {
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.94f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")

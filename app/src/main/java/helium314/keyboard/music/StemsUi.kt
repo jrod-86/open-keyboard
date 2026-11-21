@@ -185,3 +185,26 @@ internal fun StemsPage(song: Song, ui: PlayerUi, onBack: () -> Unit) {
         })
     Spacer(Modifier.width(0.dp))
 }
+
+/** Test 315 (Jarrod): on Now Playing, while stem mode is on and this song isn't split yet, show it's being split (0 to 100%). */
+@Composable
+internal fun StemNowBanner(song: Song?) {
+    if (song == null || !Stems.modeOn.value) return
+    @Suppress("UNUSED_VARIABLE") val c = Stems.changed.value
+    if (Stems.playingStems(song.id)) return
+    val ctx = LocalContext.current
+    if (!Stems.installed(ctx)) return
+    val busy = Stems.progress.value
+    val now = Stems.working.value == song.id && busy != null
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (now) "✂️ Splitting stems… ${((busy ?: 0f) * 100).toInt()}%" else "✂️ Waiting to split stems", Modifier.weight(1f),
+                color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("plays as normal until ready", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+        }
+        if (now) LinearProgressIndicator(progress = { busy ?: 0f }, Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent,
+            trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.2f))
+        else LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent, trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.2f))
+    }
+}

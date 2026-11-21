@@ -114,7 +114,9 @@ import kotlin.math.roundToInt
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
 private val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
 /** test 298: the Popular tab goes when popularity features are turned off */
-val WavesTabs: List<String> get() = if (MusicSettings.popularOn) allTabs else allTabs - "Popular"
+val WavesTabs: List<String> get() = allTabs.filter { t ->
+    when (t) { "Popular" -> MusicSettings.popularOn && MusicSettings.popularTab; "Moods" -> MusicSettings.moodsTab; else -> true }
+}
 
 private val dimText @Composable get() = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
 
