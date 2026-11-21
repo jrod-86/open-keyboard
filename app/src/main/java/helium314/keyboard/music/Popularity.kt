@@ -16,7 +16,8 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** How popular a song is: play count from ListenBrainz, chart peaks from Wikipedia (0 = not known). */
-data class Pop(val plays: Long, val listeners: Long, val us: Int, val au: Int, val uk: Int, val found: Boolean, val at: Long, val year: Int = 0) {
+data class Pop(val plays: Long, val listeners: Long, val us: Int, val au: Int, val uk: Int, val found: Boolean, val at: Long, val year: Int = 0,
+    /** test 299: genre tags from MusicBrainz, comma separated, most votes first */ val genres: String = "") {
     /** Test 296 (Jarrod): the line under the song on Now Playing, e.g. "Reached #10 in the US and #3 in Australia (2010) · 12.3M plays". */
     fun story(): String? {
         val spots = listOfNotNull(
@@ -58,7 +59,7 @@ object Popularity {
             j.keys().forEach { k ->
                 val o = j.getJSONObject(k)
                 m[k] = Pop(o.optLong("p"), o.optLong("l"), o.optInt("us"), o.optInt("au"), o.optInt("uk"), o.optBoolean("f"),
-                    if (o.has("y")) o.optLong("t") else 0L /* saved by test 295, before the year: look again */, o.optInt("y"))
+                    if (o.has("y")) o.optLong("t") else 0L /* saved by test 295, before the year: look again */, o.optInt("y"), o.optString("g"))
             }
         }
         return m.also { cache = it }
@@ -68,7 +69,7 @@ object Popularity {
         val m = cache ?: return
         val j = JSONObject()
         synchronized(m) {
-            m.forEach { (k, p) -> j.put(k, JSONObject().put("p", p.plays).put("l", p.listeners).put("us", p.us).put("au", p.au).put("uk", p.uk).put("f", p.found).put("t", p.at).put("y", p.year)) }
+            m.forEach { (k, p) -> j.put(k, JSONObject().put("p", p.plays).put("l", p.listeners).put("us", p.us).put("au", p.au).put("uk", p.uk).put("f", p.found).put("t", p.at).put("y", p.year).put("g", p.genres)) }
         }
         runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText(j.toString()) }
     }
@@ -111,7 +112,7 @@ object Popularity {
             val best = ids.mapNotNull { counts[it] }.maxByOrNull { it.first }
             val pk = peaks[k]?.await()
             val pop = Pop(best?.first ?: 0, best?.second ?: 0, pk?.get(0) ?: 0, pk?.get(1) ?: 0, pk?.get(2) ?: 0,
-                found = best != null || (pk?.take(3)?.any { it > 0 } == true), at = System.currentTimeMillis(), year = pk?.getOrNull(3) ?: 0)
+                found = best != null || (pk?.take(3)?.any { it > 0 } == true), at = System.currentTimeMillis(), year = pk?.getOrNull(3) ?: 0, genres = tagsFound.remove(k) ?: "")
             results[k] = pop
             map[k] = pop
             save(ctx)
@@ -137,7 +138,10 @@ object Popularity {
     private fun norm(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "")
 
     /** null = MusicBrainz couldn't be reached, empty = not found. */
+    private val tagsFound = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     private suspend fun recordingIds(s: Song): List<String>? {
+        val votes = HashMap<String, Int>()
         val title = SongFixer.cleanTitle(s.title).ifBlank { s.title }
         val artist = AlbumRules.mainArtist(s.artist).takeIf { it.isNotBlank() && s.artist != "Unknown artist" } ?: ""
         val body = SongFixer.get("https://musicbrainz.org/ws/2/recording?fmt=json&limit=25&query=" +
@@ -157,8 +161,10 @@ object Popularity {
             val dis = r.optString("disambiguation").lowercase()
             if ("live" in dis || "remix" in dis || "demo" in dis) continue
             out += r.optString("id")
+            r.optJSONArray("tags")?.let { t -> for (x in 0 until t.length()) t.optJSONObject(x)?.let { o -> votes.merge(o.optString("name").lowercase(), maxOf(1, o.optInt("count")), Int::plus) } }
             if (out.size >= 10) break
         }
+        if (votes.isNotEmpty()) tagsFound[key(s)] = votes.entries.sortedByDescending { it.value }.take(6).joinToString(",") { it.key }
         return out
     }
 

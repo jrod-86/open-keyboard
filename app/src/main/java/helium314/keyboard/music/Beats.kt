@@ -29,7 +29,10 @@ import kotlin.math.sqrt
  * Made once per song by reading the whole file (a couple of seconds), then kept, so effects line up exactly
  * with what you hear (no lag), whatever the speaker or Bluetooth delay.
  */
-class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray, val lufs: Float = Float.NaN) {
+class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray, val lufs: Float = Float.NaN,
+    /** test 299 (Moods): share of treble (above ~2.5 kHz), share of bass (below ~150 Hz), and zero crossings per second.
+     *  NaN in beat maps made before test 299. */
+    val bright: Float = Float.NaN, val bassShare: Float = Float.NaN, val zcr: Float = Float.NaN) {
     private fun at(arr: FloatArray, ms: Long): Float {
         if (arr.isEmpty()) return 0f
         val f = ms.toFloat() / STEP_MS
@@ -67,7 +70,8 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
             DataInputStream(f.inputStream().buffered()).use { s ->
                 val n = s.readInt(); val lv = FloatArray(n) { s.readFloat() }; val bs = FloatArray(n) { s.readFloat() }
                 val b = s.readInt(); val beats = LongArray(b) { s.readLong() }
-                BeatMap(lv, bs, beats, s.readFloat())
+                val lufs = s.readFloat()
+                if (s.available() >= 12) BeatMap(lv, bs, beats, lufs, s.readFloat(), s.readFloat(), s.readFloat()) else BeatMap(lv, bs, beats, lufs)
             }
         }.getOrNull()
 
@@ -77,6 +81,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                 s.writeInt(m.level.size); m.level.forEach { s.writeFloat(it) }; m.bass.forEach { s.writeFloat(it) }
                 s.writeInt(m.beats.size); m.beats.forEach { s.writeLong(it) }
                 s.writeFloat(m.lufs)
+                s.writeFloat(m.bright); s.writeFloat(m.bassShare); s.writeFloat(m.zcr)
             }
         }
 
@@ -84,9 +89,9 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
         private val locks = HashMap<Long, Mutex>()
 
         /** Works out the song's beats and loudness once (the player and the screen may both ask at the same time). */
-        suspend fun analyze(ctx: Context, song: Song): BeatMap? {
+        suspend fun analyze(ctx: Context, song: Song, needFeel: Boolean = false): BeatMap? {
             val lock = synchronized(locks) { locks.getOrPut(song.id) { Mutex() } }
-            return try { lock.withLock { cached(ctx, song.id) ?: decode(ctx, song) } } finally { synchronized(locks) { if (!lock.isLocked) locks.remove(song.id) } }
+            return try { lock.withLock { cached(ctx, song.id)?.takeIf { !needFeel || !it.bright.isNaN() } ?: decode(ctx, song) } } finally { synchronized(locks) { if (!lock.isLocked) locks.remove(song.id) } }
         }
 
         private suspend fun decode(ctx: Context, song: Song): BeatMap? = withContext(Dispatchers.Default) {
@@ -108,6 +113,10 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                 var sliceLen = rate * STEP_MS / 1000
                 var sumSq = 0.0; var bassSq = 0.0; var count = 0
                 var lp1 = 0f; var lp2 = 0f
+                // test 299: treble and zero crossings for Moods (how bright or mellow a song sounds)
+                var lt1 = 0f; var lt2 = 0f; var lastV = 0f
+                var allSq = 0.0; var allBass = 0.0; var allTreble = 0.0; var crossings = 0L; var frames = 0L
+                var alphaT = 1f - exp(-2f * Math.PI.toFloat() * 2500f / rate)
                 var alpha = 1f - exp(-2f * Math.PI.toFloat() * 150f / rate) // low-pass around 150 Hz: kick drum and bass
                 // loudness the way radio and streaming services measure it (EBU R128 / ITU-R BS.1770), per 100 ms slice
                 var kw = KWeight(rate, channels)
@@ -132,6 +141,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                         rate = f.getInteger(MediaFormat.KEY_SAMPLE_RATE); channels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                         sliceLen = rate * STEP_MS / 1000
                         alpha = 1f - exp(-2f * Math.PI.toFloat() * 150f / rate)
+                        alphaT = 1f - exp(-2f * Math.PI.toFloat() * 2500f / rate)
                         kw = KWeight(rate, channels); kSlice = rate / 10
                     } else if (o >= 0) {
                         if (info.size > 0) {
@@ -149,6 +159,11 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                                 if (++kCount >= kSlice) { loud += kSum / kCount; kSum = 0.0; kCount = 0 }
                                 lp1 += alpha * (v - lp1); lp2 += alpha * (lp1 - lp2)
                                 sumSq += v * v; bassSq += lp2 * lp2; count++
+                                lt1 += alphaT * (v - lt1); lt2 += alphaT * (lt1 - lt2)
+                                val hi = v - lt2
+                                allSq += v * v; allBass += lp2 * lp2; allTreble += hi * hi; frames++
+                                if ((v >= 0f) != (lastV >= 0f)) crossings++
+                                lastV = v
                                 if (count >= sliceLen) {
                                     levels += sqrt(sumSq / count).toFloat(); basses += sqrt(bassSq / count).toFloat()
                                     sumSq = 0.0; bassSq = 0.0; count = 0
@@ -159,7 +174,9 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outDone = true
                     }
                 }
-                val map = build(levels.toFloatArray(), basses.toFloatArray(), integrated(loud))
+                val total = allSq.coerceAtLeast(1e-9)
+                val map = build(levels.toFloatArray(), basses.toFloatArray(), integrated(loud),
+                    (allTreble / total).toFloat(), (allBass / total).toFloat(), if (frames > 0) crossings * rate.toFloat() / frames else Float.NaN)
                 save(ctx, song.id, map)
                 map
             } catch (e: Exception) {
@@ -182,7 +199,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
             return lufs(gated.ifEmpty { abs }.average()).toFloat()
         }
 
-        private fun build(level: FloatArray, bass: FloatArray, lufs: Float): BeatMap {
+        private fun build(level: FloatArray, bass: FloatArray, lufs: Float, bright: Float = Float.NaN, bassShare: Float = Float.NaN, zcr: Float = Float.NaN): BeatMap {
             fun norm(a: FloatArray): FloatArray {
                 if (a.isEmpty()) return a
                 val top = a.sorted()[(a.size * 0.98).toInt().coerceAtMost(a.size - 1)].coerceAtLeast(1e-4f)
@@ -204,7 +221,7 @@ class BeatMap(val level: FloatArray, val bass: FloatArray, val beats: LongArray,
                 val mean = s / n
                 if (flux[i] > mean * 1.6f + 0.02f && i - last >= minGap) { beats += i.toLong() * STEP_MS; last = i }
             }
-            return BeatMap(lv, bs, beats.toLongArray(), lufs)
+            return BeatMap(lv, bs, beats.toLongArray(), lufs, bright, bassShare, zcr)
         }
     }
 }

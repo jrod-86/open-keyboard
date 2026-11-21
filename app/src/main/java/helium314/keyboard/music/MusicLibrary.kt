@@ -34,6 +34,8 @@ data class Song(
     val artFile: String = "",
     /** true when some of this song's info comes from "Fix song info" */
     val fixed: Boolean = false,
+    /** the genre written in the music file (test 299, Moods), "" if none */
+    val genre: String = "",
 ) {
     val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
     val artUri: Uri get() = if (artFile.isNotEmpty()) Uri.fromFile(java.io.File(artFile))
@@ -107,7 +109,7 @@ class Library(val songs: List<Song>) {
                 MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.ALBUM_ID, "album_artist",
                 MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.TRACK, MediaStore.Audio.Media.YEAR,
                 MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA,
-            )
+            ) + (if (android.os.Build.VERSION.SDK_INT >= 30) arrayOf(MediaStore.Audio.Media.GENRE) else emptyArray())
             runCatching {
                 ctx.contentResolver.query(
                     MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cols,
@@ -128,6 +130,7 @@ class Library(val songs: List<Song>) {
                             year = c.getInt(8),
                             dateAdded = c.getLong(9),
                             path = c.getString(10) ?: "",
+                            genre = if (c.columnCount > 11) c.getString(11)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "" else "",
                         )
                     }
                 }

@@ -128,6 +128,18 @@ class LevelApplier(private val ctx: Context, private val player: ExoPlayer) {
     private var enhancer: LoudnessEnhancer? = null
     private var session = 0
     var tags: Leveler.Tags? = null
+    /** the volume the leveler wants for this song, before song blending (test 299) fades it */
+    private var wanted = 1f
+    /** test 299: song blending turns this down at the end of a song and up at the start of the next */
+    var fade = 1f
+        set(v) { field = v.coerceIn(0f, 1f); player.volume = wanted * field }
+
+    /** The player volume the leveler would use for [song] (for the blend's second player). */
+    fun volumeFor(song: Song?): Float {
+        if (Leveler.mode.value == Leveler.OFF || song == null) return 1f
+        val db = Leveler.gainFor(Leveler.loudness(ctx, song, null, Leveler.mode.value == Leveler.ALBUM))
+        return if (db < 0) 10f.pow(db / 20f) else 1f
+    }
 
     fun apply() {
         val mode = Leveler.mode.value
@@ -155,7 +167,8 @@ class LevelApplier(private val ctx: Context, private val player: ExoPlayer) {
     }
 
     private fun set(db: Float) {
-        player.volume = if (db < 0) 10f.pow(db / 20f) else 1f
+        wanted = if (db < 0) 10f.pow(db / 20f) else 1f
+        player.volume = wanted * fade
         val boost = if (db > 0) (db * 100).toInt() else 0
         runCatching {
             val sid = player.audioSessionId

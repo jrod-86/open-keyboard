@@ -44,6 +44,7 @@ class MusicService : MediaSessionService() {
     private var session: MediaSession? = null
     private var leveler: LevelApplier? = null
     private var floating: FloatingPlayer? = null
+    private var blender: Crossfader? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
     private val saveTick = object : Runnable {
@@ -114,6 +115,7 @@ class MusicService : MediaSessionService() {
         restore(player)
         MusicSettings.load(this)
         floating = FloatingPlayer(this, player).also { it.start() }
+        blender = Crossfader(this, player) { leveler }.also { it.start() }
         handler.postDelayed(saveTick, 15_000)
         handler.post(sleepTick)
     }
@@ -131,6 +133,7 @@ class MusicService : MediaSessionService() {
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
         floating?.stop(); floating = null
+        blender?.release(); blender = null
         leveler?.release(); leveler = null
         session?.run { player.release(); release() }
         session = null

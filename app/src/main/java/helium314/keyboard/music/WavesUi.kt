@@ -112,7 +112,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-private val allTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Albums", "Artists", "Folders") // test 297: Popular
+private val allTabs = listOf("Favourites", "Playlists", "Tracks", "Popular", "Moods", "Albums", "Artists", "Folders") // test 297: Popular
 /** test 298: the Popular tab goes when popularity features are turned off */
 val WavesTabs: List<String> get() = if (MusicSettings.popularOn) allTabs else allTabs - "Popular"
 
@@ -178,6 +178,7 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
                 "Playlists" -> PlaylistsTab(lib, ui, open)
                 "Tracks" -> TracksTab(lib, ui, open)
                 "Popular" -> PopularTab(lib, ui, open)
+                "Moods" -> MoodsTab(lib, ui, open)
                 "Albums" -> AlbumsTab(lib, open)
                 "Artists" -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
@@ -1018,6 +1019,7 @@ internal object TabScroll {
     val playlists = LazyListState()
     val tracks = LazyListState()
     val popular = LazyListState()
+    val moods = LazyListState()
     val artists = LazyListState()
     val folders = LazyListState()
     val albums = LazyGridState()

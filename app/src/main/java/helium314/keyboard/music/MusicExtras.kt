@@ -115,6 +115,9 @@ object MusicSettings {
     var floatCover by mutableIntStateOf(1)
     /** test 298 (Jarrod): all the popularity things (Popular tab, Sort by popularity, chart line on Now Playing) on or off */
     var popularOn by mutableStateOf(true)
+    /** test 299 (Jarrod): songs blend into each other like a DJ mix, off by default; [blendSec] = how long the overlap is */
+    var blendOn by mutableStateOf(false)
+    var blendSec by mutableFloatStateOf(6f)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -126,6 +129,7 @@ object MusicSettings {
         floatOn = p.getBoolean("float_on", false); floatStyle = p.getInt("float_style", 1); floatTheme = p.getInt("float_theme", -3)
         floatSize = p.getFloat("float_size", 1f); floatCover = p.getInt("float_cover", 1)
         popularOn = p.getBoolean("pop_on", true)
+        blendOn = p.getBoolean("blend_on", false); blendSec = p.getFloat("blend_sec", 6f)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
@@ -134,7 +138,7 @@ object MusicSettings {
             .putFloat("look_mini", miniSize).putBoolean("look_blur", blurBackground).putInt("look_theme", theme)
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
-            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).apply()
+            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec).apply()
     }
 }
 
@@ -264,6 +268,7 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding()) {
         item { Header("Settings", onBack) }
         item { VolumeSettings() }
+        item { BlendSettings() }
         item {
             val hz by Tuning.hz.collectAsState()
             Section("Tuning")
@@ -1040,4 +1045,29 @@ private fun PopularitySettings() {
         text = { Text("Removes every play count and chart spot that was looked up, so the Popular tab starts again from nothing. Your songs, playlists and playlist order stay as they are.") },
         confirmButton = { TextButton({ if (PopScan.running.value) PopScan.pause(ctx); Popularity.clear(ctx); confirm = false; removed = true }) { Text("Delete", color = Accent) } },
         dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } })
+}
+
+/** Test 299 (Jarrod): "Blend songs" on/off, and how long the overlap is. */
+@Composable
+private fun BlendSettings() {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    Column {
+        Section("Song blending")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Blend songs together", fontSize = 17.sp)
+                Text("The end of each song fades into the start of the next, like a DJ mix, with no gap.", fontSize = 13.sp, color = dim)
+            }
+            Switch(MusicSettings.blendOn, { MusicSettings.blendOn = it; MusicSettings.save(ctx) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+        if (MusicSettings.blendOn) {
+            Text("Blend length: ${MusicSettings.blendSec.toInt()} seconds", Modifier.padding(start = 16.dp, top = 4.dp), fontWeight = FontWeight.SemiBold)
+            androidx.compose.material3.Slider(MusicSettings.blendSec, { MusicSettings.blendSec = it }, Modifier.padding(horizontal = 16.dp),
+                valueRange = 2f..12f, steps = 9, onValueChangeFinished = { MusicSettings.save(ctx) },
+                colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
+            Text("Albums meant to play without gaps and the last song of a queue aren't blended. Repeat one song turns it off.",
+                Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
+        }
+    }
 }

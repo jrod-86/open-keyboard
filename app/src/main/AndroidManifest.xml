@@ -207,6 +207,10 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+        <service android:name="helium314.keyboard.music.MoodScanService"
+            android:process=":music"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
         <service android:name="helium314.keyboard.music.PopScanService"
             android:process=":music"
             android:foregroundServiceType="dataSync"
