@@ -174,12 +174,15 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
         if (i < 0) return false
         // keep the list's place by position, not by the top row's song, or the drag gets dropped (see test 279)
         fun keepPlace() = state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
+        // test 290 (Jarrod: "goes up a little and drops it"): when the dragged row is the top row on screen, keeping the place by
+        // position pushed it off the top of the screen, which ended the drag. Then the list keeps its place by that row instead.
+        fun firstIsMe() = info.firstOrNull()?.key == k
         if (dragOffset > 0 && i < order.size - 1) {
             val next = info.find { it.key == order[i + 1].key }
-            if (next != null && dragOffset > next.size / 2f) { keepPlace(); order.add(i + 1, order.removeAt(i)); dragOffset -= next.size; moved = true; return true }
+            if (next != null && dragOffset > next.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i + 1, order.removeAt(i)); if (!mine) dragOffset -= next.size; moved = true; return true }
         } else if (dragOffset < 0 && i > 0) {
             val prev = info.find { it.key == order[i - 1].key }
-            if (prev != null && -dragOffset > prev.size / 2f) { keepPlace(); order.add(i - 1, order.removeAt(i)); dragOffset += prev.size; moved = true; return true }
+            if (prev != null && -dragOffset > prev.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i - 1, order.removeAt(i)); if (!mine) dragOffset += prev.size; moved = true; return true }
         }
         return false
     }
@@ -199,7 +202,7 @@ internal fun PlaylistPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> 
             last = now
             val me = state.layoutInfo.visibleItemsInfo.find { it.key == dragKey } ?: continue
             val y = me.offset + dragOffset
-            val zone = 150f
+            val zone = maxOf(150f, (state.layoutInfo.viewportEndOffset - state.layoutInfo.viewportStartOffset) * 0.15f)
             val top = state.layoutInfo.viewportStartOffset + zone - y
             val bottom = y + me.size - (state.layoutInfo.viewportEndOffset - zone)
             val depth = when { top > 0 -> -(top / zone).coerceAtMost(1.5f); bottom > 0 -> (bottom / zone).coerceAtMost(1.5f); else -> 0f }
