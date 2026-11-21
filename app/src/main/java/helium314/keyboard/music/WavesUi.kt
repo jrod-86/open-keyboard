@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.music
 
+import androidx.compose.ui.draw.drawWithContent
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -364,75 +369,97 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     }
     PlaylistSelect.total = order.size; PlaylistSelect.allIds = order.map { it.id }
     val state = TabScroll.playlists
+    /*
+     * Test 293 (Jarrod: sometimes the drag still drops): the same rebuild as inside a playlist (test 292). The page around the
+     * list handles the drag, the rows only move when you let go, a copy follows your finger and a line shows where it lands.
+     */
     var dragId by remember { mutableStateOf<Long?>(null) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    var moved by remember { mutableStateOf(false) }
+    var fingerY by remember { mutableFloatStateOf(0f) }
+    var grabY by remember { mutableFloatStateOf(0f) }
+    var target by remember { mutableIntStateOf(-1) } // insert before this index of order (order.size = at the end)
+    var listH by remember { mutableIntStateOf(1) }
     var releasedAt by remember { mutableLongStateOf(0L) }
     val head = 3 // items above the playlists: smart tiles, buttons, sort bar
 
-    fun swapOnce(): Boolean {
-        val id = dragId ?: return false
-        val info = state.layoutInfo.visibleItemsInfo
-        val i = order.indexOfFirst { it.id == id }
-        if (i < 0) return false
-        // test 279 (Jarrod: "it just stops"): the list keeps its place by the top row's playlist, so moving the dragged
-        // playlist above the top row made the list jump and threw away the drag. Keep the place by position instead.
-        fun keepPlace() = state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
-        // test 290 (Jarrod: "goes up a little and drops it"): when the dragged row is the top row on screen, keeping the place by
-        // position pushed it off the top of the screen, which ended the drag. Then the list keeps its place by that row instead.
-        fun firstIsMe() = info.firstOrNull()?.key == id
-        // swap with the neighbour once the dragged row passes half of it
-        if (dragOffset > 0 && i < order.size - 1) {
-            val next = info.find { it.key == order[i + 1].id }
-            if (next != null && dragOffset > next.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i + 1, order.removeAt(i)); if (!mine) dragOffset -= next.size; moved = true; return true }
-        } else if (dragOffset < 0 && i > 0) {
-            val prev = info.find { it.key == order[i - 1].id }
-            if (prev != null && -dragOffset > prev.size / 2f) { val mine = firstIsMe(); if (!mine) keepPlace(); order.add(i - 1, order.removeAt(i)); if (!mine) dragOffset += prev.size; moved = true; return true }
+    fun findTarget() {
+        val shown = state.layoutInfo.visibleItemsInfo.filter { it.key is Long }
+        if (shown.isEmpty()) return
+        val hit = shown.firstOrNull { fingerY < it.offset + it.size / 2f }
+        target = if (hit != null) order.indexOfFirst { it.id == hit.key } else order.indexOfFirst { it.id == shown.last().key } + 1
+    }
+    fun drop() {
+        val id = dragId ?: return
+        val from = order.indexOfFirst { it.id == id }
+        var to = target
+        if (from >= 0 && to >= 0) {
+            if (to > from) to -= 1
+            if (to != from) {
+                order.add(to, order.removeAt(from))
+                Playlists.reorder(ctx, order.map { it.id })
+                if (Sorts.playlistSort.intValue != 0) { Sorts.playlistSort.intValue = 0; Sorts.save(ctx) }
+            }
         }
-        return false
+        dragId = null; target = -1
     }
-    fun swapIfNeeded() { repeat(30) { if (!swapOnce()) return } }
-    fun dragBy(d: Float) {
-        if (dragId == null) return
-        dragOffset += d
-        swapIfNeeded()
-    }
-    // Test 277 (Jarrod: "it just stops"): hold a playlist near the top or bottom edge and the list keeps scrolling by
-    // itself, faster the closer you are to the edge and the longer you hold it there; the playlist moves along with it.
+    // held near the top or bottom: the list scrolls by itself, faster the closer and the longer
     LaunchedEffect(dragId) {
         if (dragId == null) return@LaunchedEffect
-        var heldMs = 0f
-        var last = 0L
+        var heldMs = 0f; var last = 0L
         while (dragId != null) {
             val now = androidx.compose.runtime.withFrameNanos { it }
             val dt = if (last == 0L) 16f else ((now - last) / 1e6f).coerceIn(1f, 50f)
             last = now
-            val me = state.layoutInfo.visibleItemsInfo.find { it.key == dragId } ?: continue
-            val y = me.offset + dragOffset
-            val zone = maxOf(150f, (state.layoutInfo.viewportEndOffset - state.layoutInfo.viewportStartOffset) * 0.15f)
-            val top = state.layoutInfo.viewportStartOffset + zone - y
-            val bottom = y + me.size - (state.layoutInfo.viewportEndOffset - zone)
-            val depth = when { top > 0 -> -(top / zone).coerceAtMost(1.5f); bottom > 0 -> (bottom / zone).coerceAtMost(1.5f); else -> 0f }
-            if (depth == 0f) { heldMs = 0f; continue }
+            val zone = maxOf(150f, listH * 0.15f)
+            val depth = when {
+                fingerY < zone -> -((zone - fingerY) / zone).coerceAtMost(1.5f)
+                fingerY > listH - zone -> ((fingerY - (listH - zone)) / zone).coerceAtMost(1.5f)
+                else -> 0f
+            }
+            if (depth == 0f) { heldMs = 0f; findTarget(); continue }
             heldMs += dt
-            val speed = (0.25f + 1.6f * depth * depth) * (1f + (heldMs / 800f).coerceAtMost(2.5f)) // px per ms
-            // test 291 (Jarrod: still stopped): moving a row asks the list to hold its place, and Android cancels any scroll
-            // that is running at that moment, which ended this whole loop. Now a cancelled step just counts as no scroll.
-            val used = try { state.scrollBy((if (depth < 0) -speed else speed) * dt) } catch (e: kotlinx.coroutines.CancellationException) { 0f }
-            if (used == 0f) continue
-            dragOffset += used // the row stays under your finger while the list slides past
-            swapIfNeeded()
+            val speed = (0.3f + 1.8f * depth * depth) * (1f + (heldMs / 700f).coerceAtMost(3f))
+            try { state.scrollBy((if (depth < 0) -speed else speed) * dt) } catch (e: kotlinx.coroutines.CancellationException) { }
+            findTarget()
         }
-    }
-    fun endDrag() {
-        if (moved) { Playlists.reorder(ctx, order.map { it.id }); if (Sorts.playlistSort.intValue != 0) { Sorts.playlistSort.intValue = 0; Sorts.save(ctx) } }
-        dragId = null; dragOffset = 0f; moved = false
-        releasedAt = android.os.SystemClock.uptimeMillis()
     }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f)) {
-            LazyColumn(Modifier.weight(1f), state = state) {
+            Box(Modifier.weight(1f).onSizeChanged { listH = it.height }.pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    // hold a playlist (without moving) to select it and pick it up; anything else is a normal tap, scroll or swipe
+                    val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                            if (!c.pressed || c.isConsumed) return@withTimeoutOrNull true
+                            if ((c.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull true
+                        }
+                        @Suppress("UNREACHABLE_CODE") true
+                    }
+                    if (early != null) return@awaitEachGesture
+                    val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key is Long && down.position.y >= it.offset && down.position.y < it.offset + it.size }
+                        ?: return@awaitEachGesture
+                    val id = item.key as Long
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    if (!PlaylistSelect.active) PlaylistSelect.active = true
+                    if (id !in PlaylistSelect.ids) PlaylistSelect.ids.add(id)
+                    fingerY = down.position.y; grabY = down.position.y - item.offset
+                    dragId = id; findTarget()
+                    var moved = false
+                    while (true) {
+                        val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                        c.consume() // the list, the tabs and the rows don't see it while you drag
+                        if (!c.pressed) break
+                        if (kotlin.math.abs(c.position.y - down.position.y) > viewConfiguration.touchSlop) moved = true
+                        fingerY = c.position.y
+                        findTarget()
+                    }
+                    if (moved) drop() else { dragId = null; target = -1 }
+                    releasedAt = android.os.SystemClock.uptimeMillis()
+                }
+            }) {
+            LazyColumn(Modifier.fillMaxSize(), state = state) {
                 item {
                     LazyRow(contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         item { SmartTile("Recently added", added.size, null) { open(Page.Smart("added")) } }
@@ -450,22 +477,18 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 items(order, key = { it.id }) { p ->
                     val dragging = dragId == p.id
                     val picked = p.id in PlaylistSelect.ids
+                    val idx = order.indexOf(p)
+                    val lineTop = dragId != null && target == idx
+                    val lineBottom = dragId != null && target == order.size && idx == order.size - 1
                     Row(Modifier.fillMaxWidth()
-                        .zIndex(if (dragging) 1f else 0f)
-                        .graphicsLayer { if (dragging) { translationY = dragOffset; scaleX = 1.03f; scaleY = 1.03f; shadowElevation = 16f } }
-                        .background(if (dragging) MaterialTheme.colorScheme.surfaceContainerHigh else if (picked) Accent.copy(alpha = 0.12f) else Color.Transparent)
-                        .pointerInput(p.id) {
-                            // hold: select it and show the options; keep holding and move: drag it up or down
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                    if (!PlaylistSelect.active) { PlaylistSelect.active = true }
-                                    if (p.id !in PlaylistSelect.ids) PlaylistSelect.ids.add(p.id)
-                                    dragId = p.id; dragOffset = 0f; moved = false
-                                },
-                                onDragEnd = { endDrag() }, onDragCancel = { endDrag() },
-                            ) { change, d -> change.consume(); dragBy(d.y) }
+                        .graphicsLayer { alpha = if (dragging) 0.3f else 1f }
+                        .drawWithContent {
+                            drawContent()
+                            val h = 3.dp.toPx()
+                            if (lineTop) drawRect(Accent, size = androidx.compose.ui.geometry.Size(size.width, h))
+                            if (lineBottom) drawRect(Accent, androidx.compose.ui.geometry.Offset(0f, size.height - h), androidx.compose.ui.geometry.Size(size.width, h))
                         }
+                        .background(if (picked) Accent.copy(alpha = 0.12f) else Color.Transparent)
                         .clickable {
                             // letting go after a long press is not a tap
                             if (dragId != null || android.os.SystemClock.uptimeMillis() - releasedAt < 400) return@clickable
@@ -480,6 +503,20 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         if (PlaylistSelect.active) Text("  ≡", fontSize = 22.sp, color = dimText)
                     }
                 }
+            }
+            // the playlist you're dragging, following your finger
+            val dragged = dragId?.let { d -> order.firstOrNull { it.id == d } }
+            if (dragged != null) Row(Modifier.fillMaxWidth()
+                .graphicsLayer { translationY = fingerY - grabY; scaleX = 1.03f; scaleY = 1.03f; shadowElevation = 20f }
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SelectCircle(true); Spacer(Modifier.width(12.dp))
+                Cover(dragged.songs.firstNotNullOfOrNull { lib.byId[it] }, 160, Modifier.size(52.dp), corner = 10)
+                Spacer(Modifier.width(14.dp))
+                Text(dragged.name, Modifier.weight(1f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${dragged.songs.size} tracks", fontSize = 13.sp, color = dimText)
+                Text("  ≡", fontSize = 22.sp, color = Accent)
+            }
             }
             if (order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
         }
