@@ -386,10 +386,21 @@ private fun MusicApp(ui: PlayerUi) {
         SongActions.afterDelete = { reload() }
         onDispose { SongActions.askDelete = null; SongActions.afterDelete = null }
     }
+    // test 307: "Not music, hide it" asks Android before marking the file
+    val markWriter = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        NotMusic.writeAnswered(ctx, it.resultCode == android.app.Activity.RESULT_OK)
+    }
+    DisposableEffect(Unit) {
+        NotMusic.askWrite = { sender -> markWriter.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build()) }
+        NotMusic.afterHide = { reload() }
+        onDispose { NotMusic.askWrite = null; NotMusic.afterHide = null }
+    }
     LaunchedEffect(Unit) {
         Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); RecentSearches.load(ctx)
         withContext(Dispatchers.IO) { PlayStats.load(ctx) }
         lib = Library.load(ctx, fresh = true)
+        // files marked "not music" (test 307), looked at once each
+        lib?.let { l -> if (NotMusic.check(ctx, l.songs) > 0) lib = Library.load(ctx, fresh = true) }
     }
     // keep the seek bar moving
     LaunchedEffect(ui.controller) { while (true) { ui.controller?.let { ui.position = it.currentPosition; ui.positionAt = android.os.SystemClock.elapsedRealtime() }; delay(250) } }
@@ -469,6 +480,7 @@ private fun MusicApp(ui: PlayerUi) {
         }
         PlaylistPickerDialog()
         TrackDetailsDialog()
+        NotMusicDialog(ui)
     }
 }
 
@@ -579,6 +591,7 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
             DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
             DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = song })
             DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(song.id)) })
+            DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = song })
             DropdownMenuItem({ Text("Delete") }, { menu = false; confirmDelete = true })
         }
     }
@@ -849,6 +862,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
                 DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
+                DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
             }
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
             DropdownMenuItem({ Text("Design studio") }, { menu = false; open(Page.Studio) })

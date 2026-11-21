@@ -137,7 +137,8 @@ class Library(val songs: List<Song>) {
             }
             // songs you said aren't music (test 255) stay out of the library
             val hidden = HiddenSongs.all(ctx)
-            if (hidden.isNotEmpty()) out.removeAll { it.id in hidden }
+            val hiddenPaths = HiddenSongs.paths(ctx).values.toHashSet()
+            if (hidden.isNotEmpty() || hiddenPaths.isNotEmpty()) out.removeAll { it.id in hidden || it.path in hiddenPaths }
             val fixes = SongFixer.all(ctx)
             if (fixes.isNotEmpty()) for (i in out.indices) if (out[i].id in fixes) out[i] = SongFixer.apply(ctx, out[i])
             Library(out.sortedBy { it.title.lowercase() }).also { cached = it }
@@ -187,8 +188,25 @@ object HiddenSongs {
         val o = org.json.JSONObject(); map.forEach { (k, v) -> o.put(k.toString(), v) }
         file(ctx).apply { parentFile?.mkdirs() }.writeText(o.toString())
     }
-    fun hide(ctx: Context, song: Song) = write(ctx, all(ctx) + (song.id to "${song.title} · ${song.artist}"))
-    fun show(ctx: Context, id: Long) = write(ctx, all(ctx) - id)
+    // test 307: the file path too, so the song stays hidden if Android gives it a new id
+    private fun pathsFile(ctx: Context) = java.io.File(ctx.filesDir, "music/hidden_paths.json")
+    @Synchronized fun paths(ctx: Context): Map<Long, String> = runCatching {
+        val o = org.json.JSONObject(pathsFile(ctx).readText())
+        o.keys().asSequence().associate { it.toLong() to o.getString(it) }
+    }.getOrDefault(emptyMap())
+    @Synchronized private fun writePaths(ctx: Context, map: Map<Long, String>) {
+        val o = org.json.JSONObject(); map.forEach { (k, v) -> o.put(k.toString(), v) }
+        pathsFile(ctx).apply { parentFile?.mkdirs() }.writeText(o.toString())
+    }
+    @Synchronized fun hide(ctx: Context, song: Song) {
+        write(ctx, all(ctx) + (song.id to "${song.title} · ${song.artist}"))
+        if (song.path.isNotEmpty()) { writePaths(ctx, paths(ctx) + (song.id to song.path)); NotMusic.unallow(ctx, song.path) }
+    }
+    @Synchronized fun show(ctx: Context, id: Long) {
+        write(ctx, all(ctx) - id)
+        val p = paths(ctx)[id]
+        if (p != null) { writePaths(ctx, paths(ctx) - id); NotMusic.allow(ctx, p) }
+    }
 }
 
 object AlbumRules {

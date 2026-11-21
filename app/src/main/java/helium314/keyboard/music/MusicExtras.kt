@@ -958,7 +958,7 @@ private fun HiddenSongsRow(onLibraryChanged: () -> Unit) {
     if (open) AlertDialog(onDismissRequest = { open = false },
         title = { Text("Hidden songs") },
         text = {
-            if (hidden.isEmpty()) Text("Nothing hidden. In Fix song info, tap \"Not music, hide\" on a recording to hide it.")
+            if (hidden.isEmpty()) Text("Nothing hidden. Playing something that isn't music? Now Playing ⋮ > Not music, hide it.")
             else LazyColumn(Modifier.height(360.dp)) {
                 items(hidden.entries.toList(), key = { it.key }) { (id, name) ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

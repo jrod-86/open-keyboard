@@ -134,7 +134,10 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 val total = MoodScan.total.intValue.takeIf { it > 0 } ?: lib.uniqueSongs.size
                 if (running) {
                     val done = MoodScan.done.intValue
-                    Text("Listening to your songs: $done of $total", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(if (MoodScan.aiOn.value) "AI listener: ${MoodScan.heard.intValue} of $total songs" else "Listening to your songs: $done of $total",
+                        fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    // the first listen is kept; with the AI listener each song gets a second, deeper listen
+                    if (MoodScan.aiOn.value) Text("First listen done for ${MoodScan.measured.intValue} of $total (kept, not redone)", fontSize = 12.sp, color = dim)
                     LinearProgressIndicator(progress = { done.toFloat() / maxOf(total, 1) }, Modifier.fillMaxWidth().padding(vertical = 8.dp), color = Accent)
                     Text(MoodScan.status.value.ifBlank { "About ${maxOf(1, (total - done) * 3 / 120)} min left. Moods work as soon as 20 songs are ready." }, fontSize = 12.sp, color = dim)
                     OutlinedButton({ MoodScan.pause(ctx) }, Modifier.padding(top = 8.dp)) { Text("Pause", color = Accent) }

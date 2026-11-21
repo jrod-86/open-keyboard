@@ -34,6 +34,10 @@ object MoodScan {
     val running = mutableStateOf(false)
     val done = mutableIntStateOf(0)
     val total = mutableIntStateOf(0)
+    // test 307 (Jarrod: Resume looked like it started again): what's already kept, shown separately
+    val measured = mutableIntStateOf(0)
+    val heard = mutableIntStateOf(0)
+    val aiOn = mutableStateOf(false)
     val status = mutableStateOf("")
     val version = mutableIntStateOf(0)
 
@@ -101,6 +105,9 @@ class MoodScanService : Service() {
             if (todo.isEmpty()) break
             MoodScan.total.intValue = songs.size
             MoodScan.done.intValue = songs.size - todo.size
+            MoodScan.aiOn.value = ai
+            MoodScan.measured.intValue = songs.count { it.id in feels }
+            MoodScan.heard.intValue = songs.count { it.id in heard }
             for ((n, s) in todo.withIndex()) {
                 if (!scope.isActive) break
                 while (scope.isActive && MoodScan.chargingOnly(ctx) && !MoodScan.charging(ctx)) {
@@ -109,8 +116,8 @@ class MoodScanService : Service() {
                     delay(15_000)
                 }
                 MoodScan.status.value = ""
-                if (s.id !in Moods.feels(ctx)) runCatching { Moods.measure(ctx, s) }
-                if (ai && s.id !in Clap.scores(ctx)) runCatching { Clap.listen(ctx, s) }
+                if (s.id !in Moods.feels(ctx)) { runCatching { Moods.measure(ctx, s) }; MoodScan.measured.intValue++ }
+                if (ai && s.id !in Clap.scores(ctx)) { runCatching { Clap.listen(ctx, s) }; MoodScan.heard.intValue++ }
                 MoodScan.done.intValue++
                 if (n % 10 == 9) MoodScan.version.intValue++
                 note(if (ai) "Listening to your songs with the AI listener" else "Listening to your songs for Moods", MoodScan.done.intValue, MoodScan.total.intValue)
