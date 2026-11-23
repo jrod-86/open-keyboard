@@ -108,8 +108,14 @@ class MusicService : MediaLibraryService() {
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) { save(); if (player.playbackState != Player.STATE_BUFFERING) Announcer.hush() } else count()
+                if (!isPlaying) {
+                    android.util.Log.w("OpenWaves", "player paused/stopped: playWhenReady=${player.playWhenReady} state=${player.playbackState} suppress=${player.playbackSuppressionReason} item=${player.currentMediaItem?.mediaMetadata?.title}")
+                    save(); if (player.playbackState != Player.STATE_BUFFERING) Announcer.hush()
+                } else count()
                 PlayerWidget.update(this@MusicService)
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.w("OpenWaves", "player error: ${error.errorCodeName} ${error.message}", error)
             }
         })
         val open = PendingIntent.getActivity(this, 0,

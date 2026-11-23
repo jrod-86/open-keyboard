@@ -89,7 +89,7 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
                 if (!onNext && now - handoffAt > 500) return cancel() // you skipped somewhere else meanwhile
                 if (rampFrom == 0L) {
                     if (onNext && main.isPlaying && main.playbackState == Player.STATE_READY) rampFrom = now
-                    else if (now - handoffAt > 4000) rampFrom = now // took too long: just finish
+                    else if (now - handoffAt > 1500) { leveler()?.fade = 1f; rampFrom = now } // never sit muted
                     return
                 }
                 val k = ((now - rampFrom) / 250f).coerceIn(0f, 1f)

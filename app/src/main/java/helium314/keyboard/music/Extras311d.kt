@@ -280,6 +280,8 @@ object Announcer {
     @Volatile private var track: AudioTrack? = null
     // test 316: the first song after turning it on gets a DJ line too
     private var songsSince = 1000
+    /** test 324: song id we already started announcing so every==1 doesn't immediately re-generate it 1 s later */
+    @Volatile private var spokenFor: Long = -1
     /** a song the line couldn't be made for: not tried again (test 316: it kept retrying, the phone got hot) */
     @Volatile private var failedFor: Long = -1
     /** how long before the end the DJ starts talking (over the fade into the next song) */
@@ -324,13 +326,14 @@ object Announcer {
         // 2. ready and near the end: talk now
         if (r != null && r.forId == next.id) {
             if (left <= TALK_BEFORE_END_MS && speaking?.isActive != true) {
-                ready = null; songsSince = 0
+                ready = null; songsSince = 0; spokenFor = next.id
                 android.util.Log.w("OpenWaves", "announcer: talking into ${next.title}")
                 say(r.audio)
             }
             return
         }
-        // 1. strictly one prep job at a time; never overlap with active stem splitting (prevents OOM & lag)
+        // 1. strictly one prep job at a time; never re-generate a song we already announced; never overlap with stem splitting
+        if (spokenFor == next.id) return
         if (makingJob?.isActive == true) {
             // if the user skipped to a different song, cancel the stale prep
             if (making != next.id) { makingJob?.cancel(); makingJob = null; making = -1 }
@@ -374,8 +377,8 @@ object Announcer {
             next.genre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
         ).joinToString("; ")
         val who = STYLES.getOrElse(style(ctx)) { STYLES[0] }.second
-        val system = "You are $who on Open Waves, the listener's own music station. Reply with only what you say out loud: one or two short sentences, " +
-            "at most 35 words. No emojis, no lists, no stage directions. Only use the facts given; never invent facts about the song or artist."
+        val system = "You are $who on Open Waves, the listener's own music station. Reply with only what you say out loud: one short punchy sentence, " +
+            "at most 18 words. No emojis, no URLs, no lists, no stage directions. Only use the facts given; never invent facts about the song or artist."
         val prompt = buildString {
             if (cur != null) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Up next: \"${next.title}\" by ${next.artist}")
@@ -399,6 +402,7 @@ object Announcer {
 
     /** Called by the music service when a new song starts. */
     fun songStarted(ctx: Context, id: Long?) {
+        if (id == spokenFor) spokenFor = -1
         if (!on(ctx)) return
         songsSince++
         // skipped before the DJ could talk: that line is old now
