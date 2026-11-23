@@ -65,6 +65,22 @@ object HomeShortcuts {
         return bmp
     }
 
+    /** Re-binds every pinned home screen shortcut (Chat, TTS, Local Image, Sticker maker, Scan text, Converter…) after APK updates & reboots. */
+    @JvmStatic
+    fun refreshAll(ctx: Context) = runCatching {
+        val sm = ctx.getSystemService(ShortcutManager::class.java) ?: return@runCatching
+        val updated = sm.pinnedShortcuts.mapNotNull { sc ->
+            if (!sc.id.startsWith("tile_")) return@mapNotNull null
+            val targetId = targets.keys.firstOrNull { "tile_" + it.replace(' ', '_') == sc.id } ?: return@mapNotNull null
+            val open = Intent(ctx, ShortcutActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra(EXTRA, targetId)
+            ShortcutInfo.Builder(ctx, sc.id)
+                .setShortLabel(sc.shortLabel ?: targetId)
+                .setIntent(open)
+                .build()
+        }
+        if (updated.isNotEmpty()) sm.updateShortcuts(updated)
+    }
+
     const val EXTRA = "open_tile"
 }
 

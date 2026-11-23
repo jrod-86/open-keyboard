@@ -57,9 +57,11 @@ public final class SystemBroadcastReceiver extends BroadcastReceiver {
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intentAction)) {
             Log.i(TAG, "Package has been replaced: " + context.getPackageName());
             toggleAppIcon(context);
+            HomeShortcuts.refreshAll(context);
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(intentAction)) {
             Log.i(TAG, "Boot has been completed");
             toggleAppIcon(context);
+            HomeShortcuts.refreshAll(context);
         } else if (Intent.ACTION_LOCALE_CHANGED.equals(intentAction)) {
             Log.i(TAG, "System locale changed");
             KeyboardLayoutSet.Companion.onSystemLocaleChanged();

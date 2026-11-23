@@ -66,6 +66,10 @@ import kotlinx.coroutines.launch
 
 // ---------------- home screen player widget ----------------
 class PlayerWidget : android.appwidget.AppWidgetProvider() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        super.onReceive(ctx, intent)
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) update(ctx)
+    }
     override fun onUpdate(ctx: Context, awm: AppWidgetManager, ids: IntArray) { update(ctx) }
     override fun onAppWidgetOptionsChanged(ctx: Context, awm: AppWidgetManager, id: Int, newOptions: Bundle) { update(ctx) }
 
