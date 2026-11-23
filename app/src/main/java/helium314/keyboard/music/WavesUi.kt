@@ -156,7 +156,7 @@ internal fun TabSettingsDialog(tab: String, onClose: () -> Unit) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(tabBlurbs[tab] ?: "", fontSize = 13.sp, color = dim)
             val shown = tab !in MusicSettings.hiddenTabs
-            val others = allTabs.count { it != tab && it !in MusicSettings.hiddenTabs }
+            val others = WavesTabs.count { it != tab }
             SwitchRow("Show this tab", if (shown && others == 0) "It's the only tab left, so it stays." else "Off hides it. You can bring it back in Settings > Tabs.", shown) {
                 if (!it && others == 0) return@SwitchRow
                 MusicSettings.hiddenTabs = if (it) MusicSettings.hiddenTabs - tab else MusicSettings.hiddenTabs + tab; MusicSettings.save(ctx)
@@ -191,7 +191,7 @@ internal fun TabsSettings() {
         Text("Pick which tabs show. Tap ⚙ for a tab's own settings (you can also long-press a tab's name).", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
         allTabs.forEach { t ->
             val shown = t !in MusicSettings.hiddenTabs
-            val others = allTabs.count { it != t && it !in MusicSettings.hiddenTabs }
+            val others = WavesTabs.count { it != t }
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(t + if (MusicSettings.startTab == t) "  · opens here" else "", fontSize = 17.sp)

@@ -10,6 +10,7 @@ import android.media.MediaScannerConnection
 import android.os.Build
 import android.provider.MediaStore
 import android.widget.Toast
+import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -248,6 +249,9 @@ object Announcer {
     fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai", true)
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
+        failedFor = -1
+        ready = null
+        if (key == "ann_on" && v == true) songsSince = 1000
         if (key == "ann_on" && v == false) { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
     }
 
@@ -276,15 +280,16 @@ object Announcer {
         helium314.keyboard.tts.ZonosTts.VOICES + runCatching { helium314.keyboard.tts.VoiceClones.list(ctx) }.getOrDefault(emptyList())
     private fun voice(ctx: Context) = voices(ctx).firstOrNull { it.id == voiceId(ctx) } ?: helium314.keyboard.tts.ZonosTts.VOICES[0]
     fun ready(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
-    /** The whole line as sound (44.1 kHz). */
-    private fun speech(ctx: Context, text: String): FloatArray {
+    private val ttsLock = kotlinx.coroutines.sync.Mutex()
+    /** The whole line as sound (44.1 kHz). Serialised so background prep and "Hear a sample" never overlap on ZonosTts. */
+    private suspend fun speech(ctx: Context, text: String): FloatArray = ttsLock.withLock {
         val parts = ArrayList<FloatArray>()
         // test 316: the voice engine is only running while it makes the line, then it gives its memory back
         try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(ctx), null, { !on(ctx) }) { parts += it } }
         finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
-        return out
+        out
     }
 
     /**
