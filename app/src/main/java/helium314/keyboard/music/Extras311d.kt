@@ -250,12 +250,13 @@ object Announcer {
     }
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
-    /** test 316: let the writing model write the lines (more fun, more battery), or use simple ready-made lines */
-    fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai", true)
+    /** test 321: opt-in (off by default) — built-in DJ lines are instant and avoid waking the 1.5 GB writing model */
+    fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai2", false)
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
         failedFor = -1
         ready = null
+        makingJob?.cancel(); makingJob = null; making = -1
         if (key == "ann_on" && v is Boolean) {
             enabled.value = v
             if (v) songsSince = 1000
@@ -274,6 +275,7 @@ object Announcer {
     private class Ready(val forId: Long, val audio: FloatArray)
     @Volatile private var ready: Ready? = null
     @Volatile private var making: Long = -1
+    @Volatile private var makingJob: Job? = null
     @Volatile private var speaking: Job? = null
     @Volatile private var track: AudioTrack? = null
     // test 316: the first song after turning it on gets a DJ line too
@@ -289,10 +291,10 @@ object Announcer {
     fun ready(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
     private val ttsLock = kotlinx.coroutines.sync.Mutex()
     /** The whole line as sound (44.1 kHz). Serialised so background prep and "Hear a sample" never overlap on ZonosTts. */
-    private suspend fun speech(ctx: Context, text: String): FloatArray = ttsLock.withLock {
+    private suspend fun speech(ctx: Context, text: String, cancel: () -> Boolean = { !on(ctx) }): FloatArray = ttsLock.withLock {
         val parts = ArrayList<FloatArray>()
         // test 316: the voice engine is only running while it makes the line, then it gives its memory back
-        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(), null, { !on(ctx) }) { parts += it } }
+        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(), null, cancel) { parts += it } }
         finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
@@ -302,9 +304,8 @@ object Announcer {
     }
 
     /**
-     * Called every second by the music service. Test 317 (Jarrod): prepares right after a song starts
-     * (after a 3 s skip-grace window) with no late cutoff, so skipping ahead near the end still gets
-     * the announcement. Music smoothly fades down while Savannah talks, then fades back up.
+     * Called every second by the music service. Test 321: strictly one prep job at a time (never piles up
+     * concurrent Zonos/Qwen runs that cause lag and OOM kills), and waits if Stems is actively splitting.
      */
     fun tick(ctx: Context, p: Player) {
         if (!on(ctx) || !p.isPlaying || p.duration <= 0) return
@@ -323,24 +324,39 @@ object Announcer {
             }
             return
         }
-        // 1. make the line for the next song (once), right after the song starts (3 s grace so rapid skipping doesn't waste CPU)
+        // 1. strictly one prep job at a time; never overlap with active stem splitting (prevents OOM & lag)
+        if (makingJob?.isActive == true) {
+            // if the user skipped to a different song, cancel the stale prep
+            if (making != next.id) { makingJob?.cancel(); makingJob = null; making = -1 }
+            return
+        }
+        if (Stems.progress.value != null) return
         if (making == next.id || failedFor == next.id || !ready(ctx)) return
-        if (p.currentPosition < 3_000L && left > 20_000L) return
+        if (p.currentPosition < 4_000L && left > 20_000L) return
         val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
         making = next.id
+        val targetId = next.id
         val app = ctx.applicationContext
-        scope.launch {
+        makingJob = scope.launch {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             val t0 = System.currentTimeMillis()
-            runCatching {
+            try {
                 val line = line(app, cur, next)
+                if (making != targetId) return@launch
                 android.util.Log.w("OpenWaves", "announcer: line ready in ${System.currentTimeMillis() - t0} ms: $line")
-                val audio = speech(app, line)
+                val audio = speech(app, line) { !on(app) || making != targetId }
+                if (making != targetId) return@launch
                 if (audio.isEmpty()) throw IllegalStateException("no sound")
-                ready = Ready(next.id, audio)
+                ready = Ready(targetId, audio)
                 android.util.Log.w("OpenWaves", "announcer: voice ready in ${System.currentTimeMillis() - t0} ms (${audio.size / 441} cs)")
-            }.onFailure { failedFor = next.id; android.util.Log.w("OpenWaves", "announcer couldn't make a line", it) }
-            making = -1
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                failedFor = targetId
+                android.util.Log.w("OpenWaves", "announcer couldn't make a line", e)
+            } finally {
+                if (making == targetId) making = -1
+            }
         }
     }
 
@@ -527,9 +543,9 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("AI writes what the DJ says", fontSize = 15.sp)
-                    Text("Off: short ready-made lines. Lighter on the battery and the phone stays cooler.", fontSize = 12.sp, color = dim)
+                    Text("Off by default (instant, smooth, cool). Turn on to use the local writing model for custom banter.", fontSize = 12.sp, color = dim)
                 }
-                Switch(ai, { ai = it; Announcer.set(ctx, "ann_ai", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+                Switch(ai, { ai = it; Announcer.set(ctx, "ann_ai2", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
             }
             Text("Style", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
