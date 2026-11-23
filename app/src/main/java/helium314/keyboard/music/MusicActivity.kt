@@ -838,10 +838,10 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
         }
         else IconButton(onClose) { Icon(MusicIcons.sDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
         Spacer(Modifier.weight(1f))
-        // test 317 (Jarrod): show Stem icon only while Stem mode is active; disappears when off
+        // test 319 (Jarrod): show Stem indicator only while Stem mode is active, with the same Accent highlight as DJ
         if (stemOn) {
             IconButton({ song?.let { open(Page.Stems(it.id)) } }) {
-                Text("🎛️", fontSize = 20.sp)
+                Text("STEM", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
         IconButton({

@@ -194,7 +194,7 @@ internal fun TabsSettings() {
             val others = WavesTabs.count { it != t }
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(t + if (MusicSettings.startTab == t) "  · opens here" else "", fontSize = 17.sp)
+                    Text(t, fontSize = 17.sp)
                     if (t == "Popular" && !MusicSettings.popularOn) Text("Popularity features are off", fontSize = 12.sp, color = dim)
                 }
                 IconButton({ open = t }) { Icon(MusicIcons.settings, "$t settings", Modifier.size(22.dp)) }

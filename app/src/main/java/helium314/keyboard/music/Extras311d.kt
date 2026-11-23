@@ -296,8 +296,8 @@ object Announcer {
         finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
-        // test 317: nudge Savannah just slightly louder than the ducked music, softly limited
-        for (k in out.indices) out[k] = kotlin.math.tanh((out[k] * 1.15f).toDouble()).toFloat()
+        // test 319: nudge Savannah slightly louder over the 10% ducked music bed, softly limited
+        for (k in out.indices) out[k] = kotlin.math.tanh((out[k] * 1.25f).toDouble()).toFloat()
         out
     }
 
@@ -406,8 +406,8 @@ object Announcer {
                 .setTransferMode(AudioTrack.MODE_STREAM).build() }.getOrNull() ?: return@launch
             track = t
             try {
-                // test 317: smooth fade-out under Savannah's voice
-                fadeDuck(0.22f, 800)
+                // test 319 (Jarrod): smooth fade-out down to 10% so Savannah is crystal clear over the music
+                fadeDuck(0.10f, 700)
                 t.play()
                 var i = 0
                 val chunk = rate / 10
@@ -462,7 +462,12 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var sample by remember { mutableStateOf<String?>(null) }
     var making by remember { mutableStateOf(false) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-    val kokoro = remember { Announcer.ready(ctx) }
+    val dlScope = androidx.compose.runtime.rememberCoroutineScope()
+    var zonosReady by remember { mutableStateOf(Announcer.ready(ctx)) }
+    var zonosDl by remember { mutableStateOf<Float?>(null) }
+    var zonosErr by remember { mutableStateOf<String?>(null) }
+    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.active(ctx) != null) }
+    var writerRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     @Composable fun chip(label: String, sel: Boolean, click: () -> Unit) =
         FilterChip(sel, click, { Text(label) }, Modifier.padding(end = 6.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.3f)))
     Column {
@@ -470,11 +475,48 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("📻 DJ between songs", fontSize = 16.sp)
-                Text("Your writing model writes a short line about the next song and the Zonos voice says it while the music dips. All on your phone.",
+                Text("Your writing model writes a short line about the next song and Savannah says it while the music ducks underneath. All on your phone.",
                     fontSize = 12.sp, color = dim)
-                if (!kokoro) Text("Needs the Zonos voices: download them in the keyboard's TTS tile (✨ Zonos) first.", fontSize = 12.sp, color = Accent)
             }
             Switch(on, { on = it; Announcer.set(ctx, "ann_on", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+        // test 319 (Jarrod): direct download buttons right here when Zonos voice or writing model isn't downloaded yet
+        if (!zonosReady && helium314.keyboard.tts.ZonosTts.supported(ctx)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("Needs the Savannah DJ voice (~1.1 GB, one-time download).", fontSize = 12.sp, color = Accent)
+                if (zonosDl != null) {
+                    androidx.compose.material3.LinearProgressIndicator(progress = { zonosDl ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent)
+                    Text("Downloading Savannah voice… ${((zonosDl ?: 0f) * 100).toInt()}%", fontSize = 12.sp, color = dim)
+                } else {
+                    zonosErr?.let { Text(it, fontSize = 12.sp, color = Accent) }
+                    OutlinedButton({
+                        zonosDl = 0f; zonosErr = null
+                        dlScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching {
+                                helium314.keyboard.tts.ZonosTts.download(ctx, { false }) { p -> zonosDl = p }
+                            }.onSuccess {
+                                withContext(kotlinx.coroutines.Dispatchers.Main) { zonosReady = Announcer.ready(ctx); zonosDl = null }
+                            }.onFailure { e ->
+                                withContext(kotlinx.coroutines.Dispatchers.Main) { zonosErr = "Download failed: ${e.message}"; zonosDl = null }
+                            }
+                        }
+                    }, Modifier.padding(top = 4.dp)) { Text("Download DJ voice (Savannah)", color = Accent) }
+                }
+            }
+        }
+        if (!writerReady) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("Optional: download the local AI writing model (${helium314.keyboard.latin.WritingTools.QUICK.sizeText}) so Savannah writes custom lines for each song (shared with Chat & Writing help).",
+                    fontSize = 12.sp, color = dim)
+                if (writerRunning) {
+                    Text("Downloading writing model in the background… check your notifications.", fontSize = 12.sp, color = Accent, modifier = Modifier.padding(top = 4.dp))
+                } else {
+                    OutlinedButton({
+                        helium314.keyboard.latin.WritingTools.startDownload(ctx, helium314.keyboard.latin.WritingTools.QUICK)
+                        writerRunning = true
+                    }, Modifier.padding(top = 4.dp)) { Text("Download AI writing model", color = Accent) }
+                }
+            }
         }
         if (on) {
             Text("How often", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
