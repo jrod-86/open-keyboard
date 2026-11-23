@@ -134,45 +134,53 @@ object Clap {
     fun genreNames(ctx: Context) = text(ctx).genres.keys.toList()
 
     // ---- running the model ----
+    // test 320: guard native OrtSession open/run/close so onDestroy/close never destroys the C++ mutex while a worker is inside run()
+    private val sessionLock = Any()
     private var env: OrtEnvironment? = null
     private var session: OrtSession? = null
     private var mel: ClapMel? = null
 
-    fun close() { runCatching { session?.close() }; session = null }
+    fun close() = synchronized(sessionLock) { runCatching { session?.close() }; session = null }
 
-    private fun open(ctx: Context): OrtSession {
-        session?.let { return it }
+    private fun openLocked(ctx: Context): Pair<OrtEnvironment, OrtSession> {
         val e = env ?: OrtEnvironment.getEnvironment().also { env = it }
-        val opts = OrtSession.SessionOptions().apply { setIntraOpNumThreads(4) }
-        return e.createSession(model(ctx).path, opts).also { session = it }
+        val s = session ?: run {
+            val opts = OrtSession.SessionOptions().apply { setIntraOpNumThreads(4) }
+            e.createSession(model(ctx).path, opts).also { session = it }
+        }
+        return e to s
     }
 
-    private fun melOf(ctx: Context): ClapMel = mel ?: run {
-        val b = ctx.assets.open("music/clap_mel.bin").readBytes()
-        val fb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
-        ClapMel(FloatArray(fb.remaining()).also { fb.get(it) })
-    }.also { mel = it }
+    private fun melOf(ctx: Context): ClapMel = synchronized(sessionLock) {
+        mel ?: run {
+            val b = ctx.assets.open("music/clap_mel.bin").readBytes()
+            val fb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            ClapMel(FloatArray(fb.remaining()).also { fb.get(it) })
+        }.also { mel = it }
+    }
 
     /** Listens to the song (three 10 s parts) and keeps its scores. False if the file couldn't be read. */
     suspend fun listen(ctx: Context, song: Song): Boolean = withContext(Dispatchers.Default) {
         val t = text(ctx)
         val dur = song.durationMs
         val starts = if (dur <= 14_000) listOf(0L) else listOf(0.3, 0.55, 0.8).map { ((dur - 10_000) * it).toLong() }
-        val sess = try { open(ctx) } catch (e: Exception) {
+        try { synchronized(sessionLock) { openLocked(ctx) } } catch (e: Exception) {
             // the model couldn't start on this phone: say so once, and carry on without it
             error.value = "The AI listener couldn't start: ${e.message?.take(120)}"
             broken = true
             return@withContext false
         }
-        val env = env!!
         val sum = FloatArray(512)
         var n = 0
         for (s in starts) {
             coroutineContext.ensureActive()
             val wave = clip(ctx, song, s, 10_000) ?: continue
             val f = melOf(ctx).features(wave)
-            val e = OnnxTensor.createTensor(env, FloatBuffer.wrap(f), longArrayOf(1, 1, ClapMel.FRAMES.toLong(), ClapMel.MELS.toLong())).use { inp ->
-                sess.run(mapOf(sess.inputNames.first() to inp)).use { out -> (out[0].value as Array<FloatArray>)[0] }
+            val e = synchronized(sessionLock) {
+                val (ortEnv, sess) = openLocked(ctx)
+                OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(f), longArrayOf(1, 1, ClapMel.FRAMES.toLong(), ClapMel.MELS.toLong())).use { inp ->
+                    sess.run(mapOf(sess.inputNames.first() to inp)).use { out -> (out[0].value as Array<FloatArray>)[0] }
+                }
             }
             val norm = sqrt(e.fold(0f) { a, v -> a + v * v }).coerceAtLeast(1e-6f)
             for (i in sum.indices) sum[i] += e[i] / norm

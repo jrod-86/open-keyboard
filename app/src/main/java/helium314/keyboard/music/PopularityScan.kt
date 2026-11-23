@@ -127,10 +127,20 @@ class PopScanService : Service() {
     }
 
     private fun stop() {
+        inForeground = false
         PopScan.running.value = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
     }
+
+    // test 320: Android 15+ enforces a 6h/24h limit on dataSync foreground services — pause cleanly instead of crashing
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        job?.cancel()
+        PopScan.status.value = "Paused — Android's daily background limit reached. Tap Resume later."
+        stop()
+    }
+
+    private var inForeground = false
 
     private fun update() = startForegroundNow(PopScan.status.value.ifBlank { "Looking up song popularity" }, PopScan.done.intValue, PopScan.total.intValue)
 
@@ -149,7 +159,20 @@ class PopScanService : Service() {
             .setContentIntent(open)
             .addAction(0, "Pause", pause)
             .build()
-        if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(ID, n)
+        if (inForeground) {
+            runCatching { nm.notify(ID, n) }
+        } else {
+            val ok = runCatching {
+                if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                else startForeground(ID, n)
+            }.isSuccess
+            if (ok) inForeground = true
+            else {
+                job?.cancel()
+                PopScan.status.value = "Paused — Android's daily background limit reached. Tap Resume later."
+                stop()
+            }
+        }
     }
 
     override fun onDestroy() {

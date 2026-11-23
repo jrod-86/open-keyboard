@@ -161,14 +161,25 @@ class MoodScanService : Service() {
     }
 
     private fun stop() {
+        inForeground = false
         MoodScan.running.value = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
     }
 
+    // test 320: Android 15+ enforces a 6h/24h limit on dataSync foreground services — pause cleanly instead of crashing
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        job?.cancel()
+        Clap.flush(this)
+        MoodScan.status.value = "Paused — Android's daily background limit reached. Tap Resume later."
+        stop()
+    }
+
+    private var inForeground = false
+
     private fun note(text: String, done: Int, total: Int, force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && total > 0 && now - lastNote < 1500) return
+        if (!force && inForeground && total > 0 && now - lastNote < 1500) return
         lastNote = now
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null)
@@ -184,7 +195,21 @@ class MoodScanService : Service() {
             .setContentIntent(open)
             .addAction(0, "Pause", pause)
             .build()
-        if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(ID, n)
+        if (inForeground) {
+            runCatching { nm.notify(ID, n) }
+        } else {
+            val ok = runCatching {
+                if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                else startForeground(ID, n)
+            }.isSuccess
+            if (ok) inForeground = true
+            else {
+                job?.cancel()
+                Clap.flush(this)
+                MoodScan.status.value = "Paused — Android's daily background limit reached. Tap Resume later."
+                stop()
+            }
+        }
     }
 
     override fun onDestroy() {
