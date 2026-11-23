@@ -327,13 +327,15 @@ object Announcer {
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
         val left = p.duration - p.currentPosition
         val r = ready
-        // 2. ready and near the end: start at exact 50% of clip duration (+ fade-out) before song end so half plays on outro, half on intro
+        // 2. ready and near the end: start at exact 50% of clip duration (+ fade-out + crossfade offset) before song end
+        // When Crossfade is on (e.g. 6 s), the new song starts blending in blendSec before p.duration, so shift earlier to land true 50/50
         if (r != null && r.forId == next.id) {
             val clipMs = (r.audio.size * 1000L) / helium314.keyboard.tts.ZonosTts.RATE
-            val startBeforeEndMs = (clipMs / 2L + FADE_OUT_MS).coerceIn(4_000L, 15_000L)
+            val blendOffset = if (MusicSettings.blendOn) (MusicSettings.blendSec * 750L).toLong() else 0L
+            val startBeforeEndMs = (clipMs / 2L + FADE_OUT_MS + blendOffset).coerceIn(4_000L, 22_000L)
             if (left <= startBeforeEndMs && speaking?.isActive != true) {
                 ready = null; songsSince = 0; spokenFor = next.id
-                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, 50/50 trigger=${startBeforeEndMs}ms)")
+                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, blendOff=${blendOffset}ms, 50/50 trigger=${startBeforeEndMs}ms)")
                 say(r.audio)
             }
             return
