@@ -116,7 +116,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-internal val allTabs = listOf("Popular", "Moods", "Discover", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 317: Discover // test 300: Jarrod's order // test 297: Popular
+internal val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
 /** test 298: the Popular tab goes when popularity features are turned off. Test 316 (Jarrod): any tab can be hidden; at least one always stays. */
 val WavesTabs: List<String> get() = allTabs.filter { t ->
     t !in MusicSettings.hiddenTabs && (t != "Popular" || MusicSettings.popularOn)
@@ -131,7 +131,6 @@ object TabOpts {
 }
 
 private val tabBlurbs = mapOf("Popular" to "Your songs ranked by how popular they are in the charts.", "Moods" to "Mixes for how you feel, made from your songs.",
-    "Discover" to "Fresh & emerging releases by genre, with YouTube preview and direct artist support.",
     "Favourites" to "Songs you hearted, and your most played.", "Playlists" to "Your playlists and smart playlists.", "Tracks" to "Every song.",
     "Albums" to "Your albums.", "Artists" to "Your artists.", "Folders" to "Songs by the folder they're in.")
 
@@ -274,7 +273,6 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
                 "Tracks" -> TracksTab(lib, ui, open)
                 "Popular" -> PopularTab(lib, ui, open)
                 "Moods" -> MoodsTab(lib, ui, open)
-                "Discover" -> DiscoverTab()
                 "Albums" -> AlbumsTab(lib, open)
                 "Artists" -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
@@ -951,16 +949,44 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
     // writing best, so every size now uses it (name on top, artist underneath) and grows smoothly
     val big = true
     val tk = 1f + (k - 1f) * 0.4f
-    @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onClick: () -> Unit) {
+    val miniScope = rememberCoroutineScope()
+    @Composable fun B(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Float, onHoldStep: (() -> Unit)? = null, onClick: () -> Unit) {
         val bk = if (big) minOf(k, 1.65f) else k
-        Box(Modifier.size((36 * bk).dp).clip(CircleShape).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        val holdRef = androidx.compose.runtime.rememberUpdatedState(onHoldStep)
+        val clickRef = androidx.compose.runtime.rememberUpdatedState(onClick)
+        Box(Modifier.size((36 * bk).dp).clip(CircleShape)
+            .pointerInput(onHoldStep != null) {
+                detectTapGestures(onPress = {
+                    if (holdRef.value == null) {
+                        if (tryAwaitRelease()) clickRef.value()
+                    } else {
+                        var scrubbed = false
+                        val job = miniScope.launch {
+                            kotlinx.coroutines.delay(380)
+                            scrubbed = true
+                            while (true) {
+                                holdRef.value?.invoke()
+                                kotlinx.coroutines.delay(180)
+                            }
+                        }
+                        val released = tryAwaitRelease()
+                        job.cancel()
+                        if (released && !scrubbed) clickRef.value()
+                    }
+                })
+            }, contentAlignment = Alignment.Center) {
             Icon(icon, label, Modifier.size((size * bk).dp), tint = Color.White)
         }
     }
     @Composable fun Buttons() {
-        B(MusicIcons.sPrevious, "Previous", 24f) { ui.previous() }
+        // test 318 (Jarrod): tap = skip track, hold = gentle scrub on the mini player too
+        B(MusicIcons.sPrevious, "Previous", 24f, onHoldStep = {
+            ui.seek((ui.now() - 1_500L).coerceAtLeast(0L))
+        }) { ui.previous() }
         B(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", 28f) { ui.toggle() }
-        B(MusicIcons.sNext, "Next", 24f) { ui.next() }
+        B(MusicIcons.sNext, "Next", 24f, onHoldStep = {
+            ui.seek((ui.now() + 1_500L).coerceAtMost(ui.duration.coerceAtLeast(1L)))
+        }) { ui.next() }
         B(MusicIcons.sQueue, "Queue", 24f) { onQueue() }
     }
     // Design studio (test 264): the mini player can have its own theme, and its cover can move to the beat

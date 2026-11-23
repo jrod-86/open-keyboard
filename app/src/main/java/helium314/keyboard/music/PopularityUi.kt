@@ -160,7 +160,8 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ranked = view?.ranked
     var filter by remember { mutableStateOf("All") }
     val list = ranked.orEmpty()
-    val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1950 }.distinct().sorted() }
+    val hasPre70 = remember(list) { list.any { it.year in 1..1969 } }
+    val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1970 }.distinct().sorted() }
     val shown = remember(list, filter) {
         when (filter) {
             "Chart hits" -> list.filter { it.best > 0 }
@@ -168,6 +169,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             "Top 20s" -> list.filter { it.best in 1..20 }
             "Top 20–50" -> list.filter { it.best in 20..50 }
             "Hidden gems" -> list.filter { it.pop.plays > 0 }.sortedBy { it.pop.plays }
+            "Before 1970s" -> list.filter { it.year in 1..1969 }
             else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
         }
     }
@@ -212,7 +214,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 4.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(popFilters + decades.map { "${it}s" }) { f ->
+                    items(popFilters + (if (hasPre70) listOf("Before 1970s") else emptyList()) + decades.map { "${it}s" }) { f ->
                         androidx.compose.material3.FilterChip(f == filter, { filter = f }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
                             colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
                     }

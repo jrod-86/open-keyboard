@@ -840,31 +840,30 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
         Spacer(Modifier.weight(1f))
         // test 317 (Jarrod): show Stem icon only while Stem mode is active; disappears when off
         if (stemOn) {
-            Box(Modifier.padding(end = 6.dp).clip(RoundedCornerShape(10.dp))
-                .background(Accent.copy(alpha = 0.28f))
-                .clickable { song?.let { open(Page.Stems(it.id)) } }
-                .padding(horizontal = 8.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
-                Text("🎛️", fontSize = 15.sp)
+            IconButton({ song?.let { open(Page.Stems(it.id)) } }) {
+                Text("🎛️", fontSize = 20.sp)
             }
         }
         IconButton({
             runCatching { ctx.startActivity(Intent("android.settings.CAST_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
         }) { Icon(MusicIcons.sSmartView, "Smart View", tint = Color.White, modifier = Modifier.size(27.dp)) }
-        // test 317 (Jarrod): replace unused Volume button with permanent DJ toggle (Savannah)
-        Box(Modifier.padding(horizontal = 4.dp).clip(RoundedCornerShape(10.dp))
-            .background(if (djOn) Accent else Color.White.copy(alpha = 0.14f))
-            .clickable {
-                val next = !djOn
-                if (next && !Announcer.ready(ctx)) {
-                    onHint("Download Zonos in TTS tile first")
-                } else {
-                    Announcer.set(ctx, "ann_on", next)
-                    onHint(if (next) "DJ on (Savannah)" else "DJ off")
-                }
+        // test 318 (Jarrod): clean borderless DJ icon matching the rest of the top bar (no box around it)
+        IconButton({
+            val next = !djOn
+            if (next && !Announcer.ready(ctx)) {
+                onHint("Download Zonos in TTS tile first")
+            } else {
+                Announcer.set(ctx, "ann_on", next)
+                onHint(if (next) "DJ on (Savannah)" else "DJ off")
             }
-            .padding(horizontal = 10.dp, vertical = 5.dp), contentAlignment = Alignment.Center) {
-            Text("DJ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }) {
+            Text(
+                "DJ",
+                color = if (djOn) Accent else Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
         MoreMenu(song, ui, open)
