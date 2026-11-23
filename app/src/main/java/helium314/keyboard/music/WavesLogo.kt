@@ -51,9 +51,12 @@ internal fun WavesLogo(playing: Boolean, height: Dp) {
     var t by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(playing || amount > 0f) {
         if (!(playing || amount > 0f)) return@LaunchedEffect
-        val start = withFrameNanos { it }
+        val start = System.nanoTime()
         val t0 = t
-        while (true) withFrameNanos { t = t0 + (it - start) / 1e9f }
+        while (true) {
+            t = t0 + (System.nanoTime() - start) / 1e9f
+            kotlinx.coroutines.delay(33)
+        }
     }
     Box(Modifier.height(height).aspectRatio(384f / 232f)) {
         Image(painterResource(helium314.keyboard.latin.R.drawable.open_waves_mark_base), "Open Waves", Modifier.fillMaxSize())

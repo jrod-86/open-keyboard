@@ -2,26 +2,51 @@
 
 - **Last updated:** 2026-11-23 by Gemini (Antigravity)
 - **Active branch:** `claude/project-thread-1y9nzr` ([PR #12](https://github.com/jrod-86/open-keyboard/pull/12))
-- **Latest published APK:** `OpenKeyboard-test316.apk` on branch `apk` (next build number: **test 317**)
-- **Note on local PC build env:** Jarrod's Windows PC does not currently have Java / Android SDK installed, so APK builds run in GitHub Actions / Claude's build environment (or once JDK + Android SDK are installed locally).
+- **Latest published APK:** `OpenKeyboard-test316.apk` on branch `apk` (next APK build: **test 317**)
+- **Local PC build env:** Windows PC does not have JDK / Android SDK installed; use GitHub Actions (`Build debug APK` workflow) or Claude's cloud build env to compile APKs.
 
-## Just Finished (23 Nov)
-1. Relocated Jarrod's local `o-board-master-index` into Git at `docs/master-index/` and updated all 7 index files from test 118/180 right up to **test 316**.
-2. Added `AGENTS.md`, `CLAUDE.md`, and this `HANDOFF.md` for seamless Claude ↔ Gemini handoffs.
-3. Audited Open Waves test 316 code and fixed **3 bugs** (ready to ship in **test 317**):
-   - **`WavesUi.kt`:** Fixed "hide last tab" guard counting `"Popular"` as visible even when Popularity features are turned off (`WavesTabs.count { it != tab }`).
-   - **`Extras311d.kt` (`Announcer`):** Reset `failedFor` and cached `ready` line whenever announcer settings change (and reset `songsSince` when re-enabling), plus serialised `ZonosTts.speak`/`stop` with a `Mutex` so background prep and "Hear a sample" never race.
-   - **`StemsUi.kt`:** Fixed "Split into stems" starting the heavy AI split *before* the battery warning dialog was confirmed (tapping Cancel now actually cancels it).
+## Confirmed Working on S24 (23 Nov)
+- ✅ Custom volume level (−24 to −8 LUFS)
+- ✅ Hide any tab feature
+- ✅ Measure All
 
-## Needs S24 Phone Testing (Open Waves tests 311–316)
-- [ ] **Custom volume level (test 316):** Settings → Volume → 6th box **Custom** (−24 to −8 LUFS slider + `−`/`+` half-steps).
-- [ ] **Measure all (test 316):** Shows `"X of Y songs measured"`, runs loudness-only scan, tells you when all songs are done.
-- [ ] **Tabs & per-tab settings (test 316):** Settings → Tabs hide/show any tab (last visible tab stays locked), long-press tab name or tap ⚙ at end of tab bar, set "Open the app on this tab", toggle A–Z bar / Most played / Moods options.
-- [ ] **Stem mode (tests 313–316):** Battery warning pops up before splitting/enabling (with "Don't warn me again"); Cancel does not start splitting; live Vocals/Drums/Bass/Other sliders, quick picks, Back to normal, Export, progress bar on Now Playing.
-- [ ] **DJ announcer (tests 311, 315–316):** Needs Zonos downloaded in TTS tile first; writes line 25 s+ early, ducks music ~9 s before end, unloads Zonos after each line; check phone warmth and "AI writes what the DJ says" toggle.
-- [ ] **Test 311–312 extras:** 10-band EQ + presets + per-device profiles, Radio from this song, star ratings, smart playlists, playback speed slider, Year in music, ListenBrainz scrobbling, home player widget, Android Auto / Car mode, tag & lyrics editors, Sing mode, back-to-Now-Playing navigation.
+## Just Finished (23 Nov — Ready for Test 317)
+1. **DJ Announcer overhaul (`Extras311d.kt`, `MusicActivity.kt`):**
+   - Smooth **fade-out (800 ms → 22%) → Savannah speaks (1.15× soft-limited) → fade-in (1000 ms → 100%)** into the next song.
+   - Replaced unused top **Volume** button on Now Playing with permanent **DJ** toggle pill (always visible, lit when on).
+   - **Savannah only** (removed other DJ voice options).
+   - Prepares immediately after a 3 s grace window with no late cutoff, so skipping ahead near the end still triggers the announcement.
+   - Serialised `ZonosTts` with a `Mutex` and reset `failedFor`/`ready` on settings change.
+2. **Phone heat reduction (`MusicExtras.kt`, `WavesLogo.kt`):**
+   - Capped `BeatClock` and `WavesLogo` animations from 120 fps `withFrameNanos` down to ~30 fps (`delay(33)`), cutting GPU/CPU frame work ~75%.
+3. **Car mode fix (`Extras311c.kt`):** Responsive Previous / Play / Next button sizing so right-hand Next is never squished on 360 dp screens.
+4. **Stem mode indicator & battery warning fix (`MusicActivity.kt`, `StemsUi.kt`):**
+   - Shows `🎛️` indicator in Now Playing top bar only when Stem mode is ON (tap to open Stems; disappears when off).
+   - Tapping Cancel on the battery warning no longer leaves a stem split running.
+5. **Moods mix length fix (`MoodsUi.kt`):** Fixed `15 / 30 / 60 / All` chips (removed `-1` overwrite bug + raised mix pool from 50 to 500).
+6. **Now Playing & Mini Player polish (`MusicActivity.kt`, `WavesUi.kt`):**
+   - **Press & hold Previous / Next** to smoothly scrub backward / forward (tap still skips track).
+   - **Wavy animated progress line** (`WavyProgressLine`) on both Now Playing and the in-app Mini Player (flattens when paused).
+   - **Scrolling title (`RollText`) + animated artist (`ShineText`)** on Now Playing (matching Mini Player).
+7. **Popular tab filters (`PopularityUi.kt`):** Changed `Top 10s` → **`Top 20s`**, added **`Top 20–50`**.
+8. **Discover tab + Support Artist (`Discover.kt`, `WavesUi.kt`, `MusicActivity.kt`):**
+   - New **Discover** tab: ListenBrainz Fresh Releases + MusicBrainz genre feeds (`Fresh`, `Hip-Hop`, `Rock`, `Electronic`, `Indie`, `Pop`, `R&B`, `Jazz`, `Metal`, `Country`, `Lo-fi`), **▶ YouTube** preview, and **☕ Support** button.
+   - **☕ Support artist** in Now Playing ⋮ menu and Discover cards — looks up verified Bandcamp / Ko-fi / Patreon / official links via MusicBrainz (with Bandcamp search fallback).
+9. **CI & Docs:** Fixed `build-test-auto.yml` task name (`:app:testDebugUnitTest`), relocated master index to `docs/master-index/` (updated through test 316), added `AGENTS.md` + `CLAUDE.md`.
+
+## Needs S24 Phone Testing (Test 317)
+- [ ] DJ fade-out / Savannah voice level / fade-in + top **DJ** button + skip-ahead announcement
+- [ ] Phone warmth check during normal playback & DJ
+- [ ] Car mode symmetric buttons
+- [ ] Stem mode `🎛️` top-bar icon (shows when on, hides when off) + Cancel on battery warning
+- [ ] Moods `15 / 30 / 60 / All` buttons actually change the list
+- [ ] Hold Previous / Next to gently scrub; tap to skip
+- [ ] Wavy animated seek bar on Now Playing + Mini Player
+- [ ] Now Playing scrolling title + animated artist
+- [ ] Popular `Top 20s` and `Top 20–50` filters
+- [ ] New **Discover** tab + **☕ Support artist** links
 
 ## Next Up
-1. Build and publish **test 317** APK (includes the 3 test 316 bug fixes above) — either via CI / Claude or after installing JDK + Android SDK locally.
-2. Address any issues found during Jarrod's S24 test pass of tests 311–317.
-3. Merge [PR #12](https://github.com/jrod-86/open-keyboard/pull/12) into `main` and clean up superseded older PRs (#1, #2, #4–#9).
+1. Publish **test 317** APK to `apk` branch once GitHub Actions `Build debug APK` succeeds.
+2. Optional future feature: Organic Weekly Top-100 Voting (Last Year + All-Time) on Cloudflare Workers + D1 (\$0/mo free tier) — awaiting Jarrod's go-ahead.
+3. Merge [PR #12](https://github.com/jrod-86/open-keyboard/pull/12) into `main` once S24 pass is green.

@@ -414,7 +414,7 @@ private fun MusicApp(ui: PlayerUi) {
     }
     LaunchedEffect(Unit) {
         Favourites.load(ctx); MusicSettings.load(ctx); Playlists.load(ctx); Sorts.load(ctx); TabOpts.load(ctx); RecentSearches.load(ctx)
-        SmartLists.load(ctx); Playback.load(ctx); Eq.load(ctx)
+        SmartLists.load(ctx); Playback.load(ctx); Eq.load(ctx); Announcer.load(ctx)
         withContext(Dispatchers.IO) { PlayStats.load(ctx) }
         lib = Library.load(ctx, fresh = true)
         // files marked "not music" (test 307), looked at once each
@@ -517,7 +517,7 @@ private fun MusicApp(ui: PlayerUi) {
         NotMusicDialog(ui)
         TagEditDialog()
         LyricsEditDialog(ui)
-        RateDialog(); SmartListDialog(); SpeedDialog()
+        RateDialog(); SmartListDialog(); SpeedDialog(); SupportArtistDialogHost()
     }
 }
 
@@ -751,7 +751,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         else Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to tint)))
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
-            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0)
+            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it })
             StemNowBanner(song)
             when (mode) {
                 0 -> {
@@ -773,12 +773,15 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
                                     rotationZ = m.rotation; translationY = m.lift * liftPx
                                 }.clickable { mode = 1 }, corner = 22)
                             }
-                            Text(song?.title ?: "", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 20.dp))
-                            Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                                    .onGloballyPositioned { artistBottom = it.boundsInRoot().bottom.toInt() }
-                                    .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } })
+                            Box(Modifier.fillMaxWidth().padding(top = 20.dp), contentAlignment = Alignment.Center) {
+                                RollText(song?.title ?: "", Color.White, 23f)
+                            }
+                            Box(Modifier.fillMaxWidth().padding(top = 4.dp)
+                                .onGloballyPositioned { artistBottom = it.boundsInRoot().bottom.toInt() }
+                                .clickable { song?.let { open(Page.ArtistPage(it.albumArtist.ifBlank { it.artist })) } },
+                                contentAlignment = Alignment.Center) {
+                                ShineText(song?.artist ?: "", Color.White.copy(alpha = 0.9f), 16f)
+                            }
                             // test 296 (Jarrod): what "Sort by popularity" found about this song, e.g. its best chart spot and year
                             val story = remember(song?.id, MusicSettings.popularOn) { song?.takeIf { MusicSettings.popularOn }?.let { Popularity.known(ctx, it)?.story() } }
                             if (story != null) Text(story, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 2,
@@ -822,10 +825,12 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
     }
 }
 
-/** Samsung's top row: close on the left; Smart View, volume, equaliser and more on the right. */
+/** Top row: close on the left; Stem indicator (when on), Smart View, DJ toggle, equaliser and more on the right. */
 @Composable
-private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false) {
+private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false, onHint: (String) -> Unit = {}) {
     val ctx = LocalContext.current
+    val djOn = Announcer.enabled.value
+    val stemOn = Stems.modeOn.value
     Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
         // test 308 (Jarrod): lyrics and Up next need a way back that doesn't rely on the phone's back gesture
         if (back) Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { onClose() }.padding(horizontal = 6.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -833,14 +838,34 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
         }
         else IconButton(onClose) { Icon(MusicIcons.sDown, "Close", tint = Color.White, modifier = Modifier.size(30.dp)) }
         Spacer(Modifier.weight(1f))
+        // test 317 (Jarrod): show Stem icon only while Stem mode is active; disappears when off
+        if (stemOn) {
+            Box(Modifier.padding(end = 6.dp).clip(RoundedCornerShape(10.dp))
+                .background(Accent.copy(alpha = 0.28f))
+                .clickable { song?.let { open(Page.Stems(it.id)) } }
+                .padding(horizontal = 8.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+                Text("🎛️", fontSize = 15.sp)
+            }
+        }
         IconButton({
             runCatching { ctx.startActivity(Intent("android.settings.CAST_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
         }) { Icon(MusicIcons.sSmartView, "Smart View", tint = Color.White, modifier = Modifier.size(27.dp)) }
-        IconButton({
-            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
-        }) { Icon(MusicIcons.sVolume, "Volume", tint = Color.White, modifier = Modifier.size(27.dp)) }
+        // test 317 (Jarrod): replace unused Volume button with permanent DJ toggle (Savannah)
+        Box(Modifier.padding(horizontal = 4.dp).clip(RoundedCornerShape(10.dp))
+            .background(if (djOn) Accent else Color.White.copy(alpha = 0.14f))
+            .clickable {
+                val next = !djOn
+                if (next && !Announcer.ready(ctx)) {
+                    onHint("Download Zonos in TTS tile first")
+                } else {
+                    Announcer.set(ctx, "ann_on", next)
+                    onHint(if (next) "DJ on (Savannah)" else "DJ off")
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 5.dp), contentAlignment = Alignment.Center) {
+            Text("DJ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
         MoreMenu(song, ui, open)
     }
@@ -916,6 +941,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Metadata / artwork") }, { menu = false; open(Page.FixOne(s.id)) })
                 DropdownMenuItem({ Text("Album") }, { menu = false; open(Page.AlbumPage(s.albumId)) })
                 DropdownMenuItem({ Text("Artist") }, { menu = false; open(Page.ArtistPage(s.albumArtist.ifBlank { s.artist })) })
+                DropdownMenuItem({ Text("☕ Support artist") }, { menu = false; SupportArtist.asking.value = s.albumArtist.ifBlank { s.artist } })
                 DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(s.id)) })
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
                 DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
@@ -958,12 +984,86 @@ internal fun DeleteDialog(songs: List<Song>, onDone: () -> Unit) {
         dismissButton = { TextButton(onDone) { Text("Cancel") } })
 }
 
+/** Test 317 (Jarrod): animated wavy seek line (like Android's media notification player), flattens smoothly when paused. */
+@Composable
+internal fun WavyProgressLine(
+    frac: Float,
+    playing: Boolean,
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+    trackColor: Color = Color.White.copy(alpha = 0.25f),
+    strokeDp: Float = 3.5f,
+    ampDp: Float = 3.2f,
+) {
+    val amp by animateFloatAsState(if (playing) ampDp else 0f, tween(350), label = "waveAmp")
+    var phase by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(playing) {
+        if (!playing) return@LaunchedEffect
+        val t0 = System.nanoTime()
+        val p0 = phase
+        while (true) {
+            phase = p0 + ((System.nanoTime() - t0) / 1e9f) * 5.2f
+            delay(33)
+        }
+    }
+    androidx.compose.foundation.Canvas(modifier) {
+        val w = size.width
+        val cy = size.height / 2f
+        val stroke = strokeDp.dp.toPx()
+        val splitX = (w * frac.coerceIn(0f, 1f))
+        // unplayed straight track
+        if (splitX < w) {
+            drawLine(
+                color = trackColor,
+                start = androidx.compose.ui.geometry.Offset(splitX, cy),
+                end = androidx.compose.ui.geometry.Offset(w, cy),
+                strokeWidth = stroke,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+        }
+        // played wavy track
+        if (splitX > 1f) {
+            val a = amp.dp.toPx()
+            if (a < 0.2f) {
+                drawLine(
+                    color = color,
+                    start = androidx.compose.ui.geometry.Offset(0f, cy),
+                    end = androidx.compose.ui.geometry.Offset(splitX, cy),
+                    strokeWidth = stroke,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                )
+            } else {
+                val path = androidx.compose.ui.graphics.Path()
+                val wavelength = 24.dp.toPx()
+                val step = 3.dp.toPx().coerceAtLeast(2f)
+                var x = 0f
+                var first = true
+                while (x <= splitX) {
+                    val edgeFade = minOf(1f, x / 8.dp.toPx(), (splitX - x) / 8.dp.toPx()).coerceAtLeast(0f)
+                    val y = cy + kotlin.math.sin((x / wavelength) * (2.0 * Math.PI) - phase).toFloat() * a * edgeFade
+                    if (first) { path.moveTo(x, y); first = false } else path.lineTo(x, y)
+                    x += step
+                }
+                path.lineTo(splitX, cy)
+                drawPath(
+                    path = path,
+                    color = color,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = stroke,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SeekBar(ui: PlayerUi) {
     var dragFrac by remember { mutableStateOf<Float?>(null) }
     val dur = ui.duration.coerceAtLeast(1)
     val frac = dragFrac ?: (ui.position.toFloat() / dur).coerceIn(0f, 1f)
-    val h by animateDpAsState(if (dragFrac != null) 6.dp else 4.dp, label = "seek")
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp)
             .pointerInput(dur) {
@@ -975,8 +1075,13 @@ private fun SeekBar(ui: PlayerUi) {
             }
             .pointerInput(dur) { detectTapGestures { o -> ui.seek(((o.x / size.width).coerceIn(0f, 1f) * dur).toLong()) } },
             contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(h).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)))
-            Box(Modifier.fillMaxWidth(frac).height(h).clip(CircleShape).background(Color.White))
+            WavyProgressLine(
+                frac = frac,
+                playing = ui.playing && dragFrac == null,
+                modifier = Modifier.fillMaxWidth().height(16.dp),
+                strokeDp = if (dragFrac != null) 5f else 3.5f,
+                ampDp = 3.2f,
+            )
             val thumb = if (dragFrac != null) 22.dp else 18.dp
             Box(Modifier.offset(x = (maxWidth - thumb) * frac).size(thumb).clip(CircleShape).background(Color.White))
         }
@@ -998,9 +1103,20 @@ private fun Controls(ui: PlayerUi, onHint: (String) -> Unit) {
         Press(MusicIcons.sShuffle, "Shuffle", (28 * k).toInt(), if (ui.shuffle) Accent else Color.White) {
             val on = !ui.shuffle; c?.shuffleModeEnabled = on; onHint(if (on) "Shuffle on" else "Shuffle off")
         }
-        Press(MusicIcons.sPrevious, "Previous", (34 * k).toInt()) { ui.previous() }
+        // test 317 (Jarrod): tap = previous song, press & hold = smooth gentle rewind
+        Press(MusicIcons.sPrevious, "Previous", (34 * k).toInt(),
+            onHoldStep = {
+                val p = (ui.now() - 1_500L).coerceAtLeast(0L)
+                ui.seek(p)
+            }) { ui.previous() }
         Press(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play or pause", (42 * k).toInt()) { ui.toggle() }
-        Press(MusicIcons.sNext, "Next", (34 * k).toInt()) { ui.next() }
+        // test 317 (Jarrod): tap = next song, press & hold = smooth gentle fast-forward
+        Press(MusicIcons.sNext, "Next", (34 * k).toInt(),
+            onHoldStep = {
+                val d = ui.duration.coerceAtLeast(1L)
+                val p = (ui.now() + 1_500L).coerceAtMost(d)
+                ui.seek(p)
+            }) { ui.next() }
         Press(if (ui.repeat == Player.REPEAT_MODE_ONE) MusicIcons.sRepeatOne else MusicIcons.sRepeat, "Repeat", (28 * k).toInt(),
             if (ui.repeat != Player.REPEAT_MODE_OFF) Accent else Color.White) {
             val next = when (ui.repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
@@ -1012,11 +1128,37 @@ private fun Controls(ui: PlayerUi, onHint: (String) -> Unit) {
 }
 
 @Composable
-private fun Press(icon: ImageVector, label: String, size: Int, tint: Color = Color.White, onClick: () -> Unit) {
+private fun Press(icon: ImageVector, label: String, size: Int, tint: Color = Color.White, onHoldStep: (() -> Unit)? = null, onClick: () -> Unit) {
     var down by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (down) 0.82f else 1f, label = "press")
+    val scope = rememberCoroutineScope()
+    val holdRef = androidx.compose.runtime.rememberUpdatedState(onHoldStep)
+    val clickRef = androidx.compose.runtime.rememberUpdatedState(onClick)
     Box(Modifier.size((size * 1.35f).dp).scale(s).clip(CircleShape).background(if (down) Color.White.copy(alpha = 0.15f) else Color.Transparent)
-        .pointerInput(Unit) { detectTapGestures(onPress = { down = true; tryAwaitRelease(); down = false }, onTap = { onClick() }) },
+        .pointerInput(onHoldStep != null) {
+            detectTapGestures(onPress = {
+                down = true
+                if (holdRef.value == null) {
+                    val released = tryAwaitRelease()
+                    down = false
+                    if (released) clickRef.value()
+                } else {
+                    var scrubbed = false
+                    val job = scope.launch {
+                        delay(380)
+                        scrubbed = true
+                        while (true) {
+                            holdRef.value?.invoke()
+                            delay(180)
+                        }
+                    }
+                    val released = tryAwaitRelease()
+                    job.cancel()
+                    down = false
+                    if (released && !scrubbed) clickRef.value()
+                }
+            })
+        },
         contentAlignment = Alignment.Center) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(size.dp))
     }

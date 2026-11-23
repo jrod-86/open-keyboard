@@ -171,8 +171,12 @@ class BeatClock { var ms by mutableLongStateOf(0L) }
 @Composable
 fun rememberBeatClock(ui: PlayerUi, running: Boolean): BeatClock {
     val clock = remember { BeatClock() }
+    // test 317: cap beat animations at ~30 fps instead of 120 fps withFrameNanos to keep the phone cool
     LaunchedEffect(running) {
-        while (running) { withFrameNanos { clock.ms = ui.now() } }
+        while (running) {
+            clock.ms = ui.now()
+            kotlinx.coroutines.delay(33)
+        }
     }
     return clock
 }

@@ -75,7 +75,8 @@ private object MoodState {
     var popularFirst by mutableStateOf(false)
     var feeling by mutableStateOf("")
     // test 312: how long the mix is and how it's sorted
-    var length by mutableStateOf(-1)
+    var loaded = false
+    var length by mutableStateOf(30)
     var sort by mutableStateOf("flow")
     var last: MoodView? = null
 }
@@ -109,7 +110,7 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ready = placed.size >= 20
 
     fun play(ask: Moods.Ask, title: String) {
-        val songs = Moods.mix(ctx, placed, ask)
+        val songs = Moods.mix(ctx, placed, ask, size = 500)
         if (songs.isEmpty()) { Toast.makeText(ctx, "No songs fit that yet", Toast.LENGTH_SHORT).show(); return }
         MoodState.mix = songs; MoodState.title = title; MoodState.moodId = ask.mood?.id; saved = ""
         ui.play(moodShown(ctx, songs), 0)
@@ -295,7 +296,8 @@ private val MOOD_SORTS = listOf("flow" to "Best flow", "popular" to "Popular", "
 
 /** The mix as it's shown and played: sorted, then cut to the length you picked. */
 private fun moodShown(ctx: android.content.Context, full: List<Song>): List<Song> {
-    if (MoodState.length == -1 && MoodState.sort == "flow") {
+    if (!MoodState.loaded) {
+        MoodState.loaded = true
         val p = ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         MoodState.length = p.getInt("mood_len", 30); MoodState.sort = p.getString("mood_sort", "flow")!!
     }

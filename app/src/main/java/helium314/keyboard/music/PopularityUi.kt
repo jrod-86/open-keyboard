@@ -116,7 +116,7 @@ private class PopView(val lib: Library, val version: Int, val ranked: List<Ranke
 
 private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?)
 
-private val popFilters = listOf("All", "Chart hits", "#1s", "Top 10s", "Hidden gems")
+private val popFilters = listOf("All", "Chart hits", "#1s", "Top 20s", "Top 20–50", "Hidden gems")
 
 /**
  * Test 297 (Jarrod): the Popular tab. Your whole library, most played in the world first. The lookup runs in the
@@ -165,7 +165,8 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         when (filter) {
             "Chart hits" -> list.filter { it.best > 0 }
             "#1s" -> list.filter { it.best == 1 }
-            "Top 10s" -> list.filter { it.best in 1..10 }
+            "Top 20s" -> list.filter { it.best in 1..20 }
+            "Top 20–50" -> list.filter { it.best in 20..50 }
             "Hidden gems" -> list.filter { it.pop.plays > 0 }.sortedBy { it.pop.plays }
             else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
         }

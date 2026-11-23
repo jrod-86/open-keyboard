@@ -241,9 +241,14 @@ internal fun LyricsEditDialog(ui: PlayerUi) {
  */
 object Announcer {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
-    fun on(ctx: Context) = prefs(ctx).getBoolean("ann_on", false)
+    val enabled = androidx.compose.runtime.mutableStateOf(false)
+    fun load(ctx: Context) { enabled.value = prefs(ctx).getBoolean("ann_on", false) }
+    fun on(ctx: Context): Boolean {
+        val v = prefs(ctx).getBoolean("ann_on", false)
+        if (enabled.value != v) enabled.value = v
+        return v
+    }
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
-    fun voiceId(ctx: Context) = prefs(ctx).getString("ann_voice2", "savannah")!!
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
     /** test 316: let the writing model write the lines (more fun, more battery), or use simple ready-made lines */
     fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai", true)
@@ -251,8 +256,11 @@ object Announcer {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
         failedFor = -1
         ready = null
-        if (key == "ann_on" && v == true) songsSince = 1000
-        if (key == "ann_on" && v == false) { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
+        if (key == "ann_on" && v is Boolean) {
+            enabled.value = v
+            if (v) songsSince = 1000
+            else { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
+        }
     }
 
     val STYLES = listOf(
@@ -275,27 +283,28 @@ object Announcer {
     /** how long before the end the DJ starts talking (over the fade into the next song) */
     private const val TALK_BEFORE_END_MS = 9_000L
 
-    // test 315 (Jarrod): Zonos voices only (and your own made voices), Savannah by default
-    fun voices(ctx: Context): List<helium314.keyboard.tts.ZonosTts.Voice> =
-        helium314.keyboard.tts.ZonosTts.VOICES + runCatching { helium314.keyboard.tts.VoiceClones.list(ctx) }.getOrDefault(emptyList())
-    private fun voice(ctx: Context) = voices(ctx).firstOrNull { it.id == voiceId(ctx) } ?: helium314.keyboard.tts.ZonosTts.VOICES[0]
+    // test 317 (Jarrod): Savannah only — she sounds like a proper radio DJ
+    private fun voice() = helium314.keyboard.tts.ZonosTts.VOICES.firstOrNull { it.id == "savannah" }
+        ?: helium314.keyboard.tts.ZonosTts.VOICES[0]
     fun ready(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
     private val ttsLock = kotlinx.coroutines.sync.Mutex()
     /** The whole line as sound (44.1 kHz). Serialised so background prep and "Hear a sample" never overlap on ZonosTts. */
     private suspend fun speech(ctx: Context, text: String): FloatArray = ttsLock.withLock {
         val parts = ArrayList<FloatArray>()
         // test 316: the voice engine is only running while it makes the line, then it gives its memory back
-        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(ctx), null, { !on(ctx) }) { parts += it } }
+        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(), null, { !on(ctx) }) { parts += it } }
         finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
+        // test 317: nudge Savannah just slightly louder than the ducked music, softly limited
+        for (k in out.indices) out[k] = kotlin.math.tanh((out[k] * 1.15f).toDouble()).toFloat()
         out
     }
 
     /**
-     * Called every second by the music service. Test 316 (Jarrod): the line for the next song is made early (as soon as
-     * this song is playing, slowly, in the background), and the DJ talks over the last seconds of this song and the
-     * fade into the next one, with the music dipped.
+     * Called every second by the music service. Test 317 (Jarrod): prepares right after a song starts
+     * (after a 3 s skip-grace window) with no late cutoff, so skipping ahead near the end still gets
+     * the announcement. Music smoothly fades down while Savannah talks, then fades back up.
      */
     fun tick(ctx: Context, p: Player) {
         if (!on(ctx) || !p.isPlaying || p.duration <= 0) return
@@ -314,9 +323,9 @@ object Announcer {
             }
             return
         }
-        // 1. make the line for the next song (once), at low priority so the music and the phone stay smooth
+        // 1. make the line for the next song (once), right after the song starts (3 s grace so rapid skipping doesn't waste CPU)
         if (making == next.id || failedFor == next.id || !ready(ctx)) return
-        if (left < 25_000) return // too late for this one
+        if (p.currentPosition < 3_000L && left > 20_000L) return
         val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
         making = next.id
         val app = ctx.applicationContext
@@ -374,7 +383,18 @@ object Announcer {
         ready?.let { if (it.forId == id && speaking?.isActive != true) ready = null }
     }
 
-    /** Plays it now (also the settings' "Hear a sample"). The music dips under the voice. */
+    /** Smoothly ramps Eq.duck from its current value to [target] over [ms] ms. */
+    private suspend fun fadeDuck(target: Float, ms: Long) {
+        val start = Eq.duck
+        val steps = (ms / 40L).toInt().coerceAtLeast(1)
+        for (s in 1..steps) {
+            Eq.duck = start + (target - start) * (s.toFloat() / steps)
+            kotlinx.coroutines.delay(40)
+        }
+        Eq.duck = target
+    }
+
+    /** Plays it now (also the settings' "Hear a sample"). Smoothly fades the music down under Savannah, then fades back up. */
     fun say(audio: FloatArray) {
         hush()
         speaking = scope.launch(Dispatchers.IO) {
@@ -386,8 +406,8 @@ object Announcer {
                 .setTransferMode(AudioTrack.MODE_STREAM).build() }.getOrNull() ?: return@launch
             track = t
             try {
-                Eq.duck = 0.28f
-                kotlinx.coroutines.delay(350)
+                // test 317: smooth fade-out under Savannah's voice
+                fadeDuck(0.22f, 800)
                 t.play()
                 var i = 0
                 val chunk = rate / 10
@@ -399,6 +419,8 @@ object Announcer {
                 // let the last bit play out
                 val end = System.currentTimeMillis() + 1500
                 while (track === t && t.playbackHeadPosition < audio.size && System.currentTimeMillis() < end) kotlinx.coroutines.delay(50)
+                // test 317: smooth fade-in into the next song
+                if (track === t) fadeDuck(1f, 1000)
             } catch (_: Exception) {
             } finally {
                 Eq.duck = 1f
@@ -436,7 +458,6 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     val ctx = LocalContext.current
     var on by remember { mutableStateOf(Announcer.on(ctx)) }
     var every by remember { mutableIntStateOf(Announcer.every(ctx)) }
-    var voice by remember { mutableStateOf(Announcer.voiceId(ctx)) }
     var style by remember { mutableIntStateOf(Announcer.style(ctx)) }
     var sample by remember { mutableStateOf<String?>(null) }
     var making by remember { mutableStateOf(false) }
@@ -472,10 +493,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 Announcer.STYLES.forEachIndexed { i, (label, _) -> chip(label, style == i) { style = i; Announcer.set(ctx, "ann_style", i) } }
             }
-            Text("Voice", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
-            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
-                for (v in remember { Announcer.voices(ctx) }) chip(v.name, voice == v.id) { voice = v.id; Announcer.set(ctx, "ann_voice2", v.id) }
-            }
+            Text("Voice: Savannah (Zonos)", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 12.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton({
                     making = true; sample = null

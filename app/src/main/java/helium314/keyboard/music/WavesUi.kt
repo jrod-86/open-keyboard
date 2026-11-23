@@ -116,7 +116,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-internal val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 300: Jarrod's order // test 297: Popular
+internal val allTabs = listOf("Popular", "Moods", "Discover", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 317: Discover // test 300: Jarrod's order // test 297: Popular
 /** test 298: the Popular tab goes when popularity features are turned off. Test 316 (Jarrod): any tab can be hidden; at least one always stays. */
 val WavesTabs: List<String> get() = allTabs.filter { t ->
     t !in MusicSettings.hiddenTabs && (t != "Popular" || MusicSettings.popularOn)
@@ -131,6 +131,7 @@ object TabOpts {
 }
 
 private val tabBlurbs = mapOf("Popular" to "Your songs ranked by how popular they are in the charts.", "Moods" to "Mixes for how you feel, made from your songs.",
+    "Discover" to "Fresh & emerging releases by genre, with YouTube preview and direct artist support.",
     "Favourites" to "Songs you hearted, and your most played.", "Playlists" to "Your playlists and smart playlists.", "Tracks" to "Every song.",
     "Albums" to "Your albums.", "Artists" to "Your artists.", "Folders" to "Songs by the folder they're in.")
 
@@ -273,6 +274,7 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
                 "Tracks" -> TracksTab(lib, ui, open)
                 "Popular" -> PopularTab(lib, ui, open)
                 "Moods" -> MoodsTab(lib, ui, open)
+                "Discover" -> DiscoverTab()
                 "Albums" -> AlbumsTab(lib, open)
                 "Artists" -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
@@ -1000,6 +1002,17 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f * tk)
             }
+            // test 317 (Jarrod): wavy animated progress line on the mini player too
+            val frac = (ui.position.toFloat() / ui.duration.coerceAtLeast(1L)).coerceIn(0f, 1f)
+            WavyProgressLine(
+                frac = frac,
+                playing = ui.playing,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(8.dp),
+                color = Accent,
+                trackColor = Color.White.copy(alpha = 0.2f),
+                strokeDp = 2.4f,
+                ampDp = 2.0f,
+            )
         }
     } else Row(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {
         MiniCover(200)

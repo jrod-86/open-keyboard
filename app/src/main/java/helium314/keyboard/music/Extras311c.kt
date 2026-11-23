@@ -236,14 +236,19 @@ internal fun CarModePage(ui: PlayerUi, lib: Library, onBack: () -> Unit) {
         Text(song?.title ?: "Nothing playing", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         Text(song?.artist ?: "", color = Color.White.copy(alpha = 0.7f), fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            @Composable fun big(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: Int, bg: Color, onClick: () -> Unit) =
-                Box(Modifier.size(size.dp).clip(CircleShape).background(bg).clickable { onClick() }, contentAlignment = Alignment.Center) {
-                    Icon(icon, label, tint = Color.White, modifier = Modifier.size((size * 0.5).dp))
-                }
-            big(MusicIcons.sPrevious, "Previous", 110, Color.White.copy(alpha = 0.12f)) { ui.previous() }
-            big(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play", 150, Accent) { ui.toggle() }
-            big(MusicIcons.sNext, "Next", 110, Color.White.copy(alpha = 0.12f)) { ui.next() }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // test 317 (Jarrod): scale buttons to fit screen width so right-hand Next is never squished
+            val side = minOf(maxWidth * 0.27f, 104.dp)
+            val center = minOf(maxWidth * 0.36f, 138.dp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                @Composable fun big(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, size: androidx.compose.ui.unit.Dp, bg: Color, onClick: () -> Unit) =
+                    Box(Modifier.size(size).clip(CircleShape).background(bg).clickable { onClick() }, contentAlignment = Alignment.Center) {
+                        Icon(icon, label, tint = Color.White, modifier = Modifier.size(size * 0.5f))
+                    }
+                big(MusicIcons.sPrevious, "Previous", side, Color.White.copy(alpha = 0.12f)) { ui.previous() }
+                big(if (ui.playing) MusicIcons.sPause else MusicIcons.sPlay, "Play", center, Accent) { ui.toggle() }
+                big(MusicIcons.sNext, "Next", side, Color.White.copy(alpha = 0.12f)) { ui.next() }
+            }
         }
         Spacer(Modifier.height(18.dp))
         Text("Swipe left or right anywhere to skip", color = Color.White.copy(alpha = 0.4f), fontSize = 15.sp)
