@@ -466,7 +466,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var zonosReady by remember { mutableStateOf(Announcer.ready(ctx)) }
     var zonosDl by remember { mutableStateOf<Float?>(null) }
     var zonosErr by remember { mutableStateOf<String?>(null) }
-    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.active(ctx) != null) }
+    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.modelReady(ctx) || helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     var writerRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     @Composable fun chip(label: String, sel: Boolean, click: () -> Unit) =
         FilterChip(sel, click, { Text(label) }, Modifier.padding(end = 6.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.3f)))
