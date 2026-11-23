@@ -298,8 +298,14 @@ object Announcer {
         finally { helium314.keyboard.tts.ZonosTts.stop() }
         val out = FloatArray(parts.sumOf { it.size }); var i = 0
         for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
-        // test 319: nudge Savannah slightly louder over the 10% ducked music bed, softly limited
-        for (k in out.indices) out[k] = kotlin.math.tanh((out[k] * 1.25f).toDouble()).toFloat()
+        // test 323 (Jarrod): broadcast-style speech loudness (~20% louder than the music before it, like FM radio)
+        // Normalise active speech RMS to ~0.28 (~ -11 dBFS, ~20% above -14 LUFS music) with smooth soft-limiting so it never clips
+        var sumSq = 0.0; var active = 0
+        for (v in out) { if (kotlin.math.abs(v) > 0.01f) { sumSq += v * v; active++ } }
+        val rms = if (active > 0) kotlin.math.sqrt(sumSq / active).toFloat() else 0.1f
+        val gain = (0.28f / rms.coerceAtLeast(0.03f)).coerceIn(1.2f, 4.5f)
+        val norm = kotlin.math.tanh(1.15).toFloat()
+        for (k in out.indices) out[k] = (kotlin.math.tanh((out[k] * gain * 1.15f).toDouble()).toFloat() / norm).coerceIn(-0.98f, 0.98f)
         out
     }
 
