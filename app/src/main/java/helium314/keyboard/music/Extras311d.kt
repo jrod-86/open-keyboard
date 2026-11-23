@@ -265,10 +265,10 @@ object Announcer {
     }
 
     val STYLES = listOf(
-        "Friendly" to "a warm, friendly radio DJ",
-        "Hyped" to "an excited, high-energy radio DJ",
-        "Late night" to "a calm, smooth late-night radio DJ",
-        "Funny" to "a cheeky, funny radio DJ who makes one light joke",
+        "Friendly" to "a warm, friendly daytime radio DJ (casual, welcoming, like 'Hope you're enjoying the music!')",
+        "Hyped" to "an excited, high-energy party radio DJ (punchy, upbeat, like 'Turn it up, here comes a banger!')",
+        "Late night" to "a smooth, calm late-night radio DJ (relaxed, laid-back, like 'Settle in and unwind with this one...')",
+        "Funny" to "a cheeky, witty radio DJ who cracks one quick light-hearted joke about the music or radio",
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -391,13 +391,55 @@ object Announcer {
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.takeIf { it.length in 8..400 }
         if (written != null) return written
-        val r = java.util.Random()
-        val intro = listOf("Up next", "Coming up", "Here's", "Next on Open Waves", "Turn it up for")[r.nextInt(5)]
-        val year = if (next.year > 0) listOf(" from ${next.year}", "").random() else ""
-        return buildString {
-            if (cur != null) append(listOf("That was ${cur.title} by ${cur.artist}. ", "You just heard ${cur.artist}. ", "")[r.nextInt(3)])
-            append("$intro, ${next.title} by ${next.artist}$year.")
+        // test 325 (Jarrod): distinct, brief real-radio DJ lines for each of the 4 styles
+        return builtInLine(style(ctx), cur, next)
+    }
+
+    private var lastPick = -1
+    private fun builtInLine(styleIdx: Int, cur: Song?, next: Song): String {
+        val t = next.title
+        val a = next.artist
+        val yr = if (next.year > 0) " from ${next.year}" else ""
+        val prev = cur?.artist?.takeIf { it.isNotBlank() && it != "Unknown artist" }
+        val pool = when (styleIdx) {
+            1 -> listOf( // Hyped
+                "Turn it up! Dropping $t by $a$yr right now!",
+                "Hands up, Open Waves — here comes $t by $a!",
+                "No slowing down! Crank the volume for $t by $a$yr!",
+                if (prev != null) "From $prev straight into a banger — $t by $a!" else "Let's keep the energy flying! Next up, $t by $a!",
+                "Big tune incoming! Get ready for $t by $a$yr!",
+                "Hope you're ready for this one — $t by $a, let's go!",
+            )
+            2 -> listOf( // Late night
+                "Easy listening on Open Waves. Drifting into $t by $a$yr.",
+                "Settle in and unwind. Up next, $t by $a.",
+                "Keeping the night smooth for you. Here's $t by $a$yr.",
+                "Late night vibes rolling on with $t by $a.",
+                if (prev != null) "Letting $prev fade out gently. Next up, $t by $a." else "Take a breather and enjoy this one — $t by $a.",
+                "Just good music, no rush. Here's $t by $a$yr.",
+            )
+            3 -> listOf( // Funny
+                "Zero ads, zero traffic reports, just $t by $a. You're welcome.",
+                "Your streaming algorithm could never pick this well. Up next, $t by $a$yr.",
+                "Scientifically proven to improve your mood — probably. Here's $t by $a.",
+                "If you don't sing along to $t by $a, I'm judging you.",
+                "No, I'm not taking requests, I'm already playing $t by $a$yr.",
+                if (prev != null) "$prev was great, don't get me wrong, but wait till you hear $t by $a." else "Best radio station on your phone. Here's $t by $a.",
+            )
+            else -> listOf( // Friendly
+                "Hope you're enjoying the music! Coming up next, $t by $a$yr.",
+                "Good to have you tuned in to Open Waves. Here's $t by $a.",
+                "Hope your day's going great! Rolling into $t by $a$yr.",
+                if (prev != null) "Loving the vibe — that was $prev, and next up is $t by $a." else "Nothing beats your own playlist. Up next, $t by $a.",
+                "Thanks for hanging out on Open Waves. Here's a good one, $t by $a$yr.",
+                "Keeping the good tunes coming with $t by $a.",
+            )
         }
+        val r = java.util.Random()
+        var idx = r.nextInt(pool.size)
+        if (idx == lastPick && pool.size > 1) idx = (idx + 1) % pool.size
+        lastPick = idx
+        return pool[idx]
     }
 
     /** Called by the music service when a new song starts. */
