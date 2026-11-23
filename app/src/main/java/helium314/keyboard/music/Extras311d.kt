@@ -288,8 +288,8 @@ object Announcer {
     @Volatile private var spokenFor: Long = -1
     /** a song the line couldn't be made for: not tried again (test 316: it kept retrying, the phone got hot) */
     @Volatile private var failedFor: Long = -1
-    /** how long before the end the DJ starts talking (over the fade into the next song) */
-    private const val TALK_BEFORE_END_MS = 9_000L
+    /** fade-out ramp duration before Savannah begins speaking */
+    private const val FADE_OUT_MS = 700L
 
     // test 317 (Jarrod): Savannah only — she sounds like a proper radio DJ
     private fun voice() = helium314.keyboard.tts.ZonosTts.VOICES.firstOrNull { it.id == "savannah" }
@@ -327,11 +327,13 @@ object Announcer {
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
         val left = p.duration - p.currentPosition
         val r = ready
-        // 2. ready and near the end: talk now
+        // 2. ready and near the end: start at exact 50% of clip duration (+ fade-out) before song end so half plays on outro, half on intro
         if (r != null && r.forId == next.id) {
-            if (left <= TALK_BEFORE_END_MS && speaking?.isActive != true) {
+            val clipMs = (r.audio.size * 1000L) / helium314.keyboard.tts.ZonosTts.RATE
+            val startBeforeEndMs = (clipMs / 2L + FADE_OUT_MS).coerceIn(4_000L, 15_000L)
+            if (left <= startBeforeEndMs && speaking?.isActive != true) {
                 ready = null; songsSince = 0; spokenFor = next.id
-                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title}")
+                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, 50/50 trigger=${startBeforeEndMs}ms)")
                 say(r.audio)
             }
             return
@@ -382,15 +384,23 @@ object Announcer {
             Popularity.known(ctx, next)?.story(),
             cleanGenre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
         ).joinToString("; ")
-        val who = STYLES.getOrElse(style(ctx)) { STYLES[0] }.second
-        val system = "You are $who on Open Waves. Reply with ONLY one short spoken radio intro (10 to 18 words). " +
-            "You MUST say the exact next song title and artist name. No emojis, no URLs, no websites, no links, no stage directions. " +
-            "Never invent facts. Example: \"Hope you're loving the vibes! Coming up next, Dreams by Fleetwood Mac.\""
+        val styleIdx = style(ctx)
+        val who = STYLES.getOrElse(styleIdx) { STYLES[0] }.second
+        val example = when (styleIdx) {
+            1 -> "Oh yeah, Open Waves, we are not slowing down for a second today! Hope you've got the volume cranked up because this next track is an absolute classic. Get ready to turn it up for Thunderstruck by AC/DC!"
+            2 -> "Hope your night is treating you right out there on Open Waves. Take a deep breath, kick back, and let the late-night vibe carry you along. Drifting smoothly into our next track, here's Dreams by Fleetwood Mac."
+            3 -> "Zero commercials, zero traffic updates, and zero weird algorithm guesses — just your own great taste right here on Open Waves. If you don't sing along to this next one, I'm definitely judging you. Coming up, Africa by Toto!"
+            else -> "Hope you're having an awesome day and enjoying the tunes here on Open Waves! Nothing beats your own playlist rolling smoothly from one great track to the next. Coming up right now, here's Dreams by Fleetwood Mac."
+        }
+        val system = "You are $who on Open Waves. Reply with ONLY what you say out loud: 2 to 3 natural, lively sentences (35 to 48 words total, about 15 to 20 seconds spoken). " +
+            "Sound like a real radio DJ — open with brief banter matching your style (don't just read the song name!), mention the song that just finished if given, then smoothly introduce the exact next song title and artist. " +
+            "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
+            "Example: \"$example\""
         val prompt = buildString {
             if (cur != null) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Next song: \"${next.title}\" by ${next.artist}")
             if (facts.isNotEmpty()) append(" ($facts)")
-            append(". Introduce the next song now.")
+            append(". Say a lively 15 to 20 second radio DJ link into the next song.")
         }
         val modelId = when (mode) {
             1 -> helium314.keyboard.latin.WritingTools.QUICK.id
@@ -401,12 +411,12 @@ object Announcer {
         val artistWord = next.artist.split(Regex("[^A-Za-z0-9]+")).firstOrNull { it.length >= 3 }?.lowercase()
         val written = runCatching {
             if (modelId == null) null
-            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 60, modelId = modelId) }
+            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 130, modelId = modelId) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.takeIf { out ->
                 val low = out.lowercase()
-                out.length in 10..260 &&
+                out.length in 10..420 &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
