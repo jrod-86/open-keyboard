@@ -353,7 +353,7 @@ object Moods {
                     "You pick music for someone's mood. Reply with ONLY one line of JSON, nothing else: " +
                         "{\"mood\":\"<one of: ${all.joinToString(", ") { it.id }}>\",\"lift\":<number from -1 (calmer) to 1 (livelier)>," +
                         "\"genre\":\"<one of: ${groups.joinToString(", ")}, or empty>\",\"title\":\"<2 to 4 word title for the mix>\"}",
-                    "How I feel: $text", 80)
+                    "How I feel: $text", 80, quickOnly = true)
             }
         }.getOrNull() ?: return words
         return runCatching {

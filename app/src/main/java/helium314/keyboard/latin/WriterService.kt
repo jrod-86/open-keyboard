@@ -48,7 +48,7 @@ class WriterService : Service() {
                             val prompt = d.getString("prompt").orEmpty()
                             val max = d.getInt("max", 256)
                             val out = if (d.getBoolean("ifIdle")) WritingTools.askIfIdle(this@WriterService, system, prompt, max)
-                            else WritingTools.generate(this@WriterService, system, prompt, max) { sofar ->
+                            else WritingTools.generate(this@WriterService, system, prompt, max, quickOnly = d.getBoolean("quickOnly")) { sofar ->
                                 val now = System.currentTimeMillis()
                                 if (d.getBoolean("pieces") && now - lastSent > 100) {
                                     lastSent = now
@@ -165,7 +165,7 @@ object WriterClient {
      * Asks the writing model in Chat's process. Returns null when there's no model (or, with [ifIdle], when it's busy
      * right now). Throws if it fails. [onPiece] (on the main thread) gets the text so far while it's written.
      */
-    suspend fun ask(ctx: Context, system: String, prompt: String, maxTokens: Int, ifIdle: Boolean = false, onPiece: ((String) -> Unit)? = null): String? {
+    suspend fun ask(ctx: Context, system: String, prompt: String, maxTokens: Int, ifIdle: Boolean = false, quickOnly: Boolean = false, onPiece: ((String) -> Unit)? = null): String? {
         main.removeCallbacks(unbindLater)
         val to = connect(ctx) ?: throw IllegalStateException("the writing helper didn't start")
         val id = nextId.incrementAndGet()
@@ -175,7 +175,7 @@ object WriterClient {
             to.send(Message.obtain(null, WriterService.ASK, id, 0).apply {
                 data = Bundle().apply {
                     putString("system", system); putString("prompt", prompt); putInt("max", maxTokens)
-                    putBoolean("ifIdle", ifIdle); putBoolean("pieces", onPiece != null)
+                    putBoolean("ifIdle", ifIdle); putBoolean("quickOnly", quickOnly); putBoolean("pieces", onPiece != null)
                 }
                 replyTo = replies
             })

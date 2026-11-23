@@ -184,15 +184,16 @@ object WritingTools {
      * Runs one request on the writing model and returns the reply, streaming pieces to [onPiece].
      * Waits if writing help is busy. Returns null if no model is downloaded or the download is damaged.
      */
-    suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, onPiece: (String) -> Unit = {}): String? {
+    suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, quickOnly: Boolean = false, onPiece: (String) -> Unit = {}): String? {
         // test 222: at most 3 minutes, so a "writing…" sign can never hang around
-        if (remote) return if (active(ctx) == null) null else withTimeoutOrNull(180_000) { WriterClient.ask(ctx, system, prompt, maxTokens, onPiece = onPiece) }
+        val wanted = if (quickOnly) QUICK.takeIf { isReady(ctx, it) } else active(ctx)
+        if (remote) return if (wanted == null) null else withTimeoutOrNull(180_000) { WriterClient.ask(ctx, system, prompt, maxTokens, quickOnly = quickOnly, onPiece = onPiece) }
         unloadJob?.cancel()
         try {
             return lock.withLock {
-                val m = active(ctx) ?: return@withLock null
+                val m = (if (quickOnly) QUICK.takeIf { isReady(ctx, it) } else active(ctx)) ?: return@withLock null
                 if (!verified(modelFile(ctx, m), m)) { toast(ctx, "The ${m.label} model download was damaged. Please download it again."); return@withLock null }
-                val engine = engine(ctx)
+                val engine = engine(ctx, if (quickOnly) QUICK else null)
                 engine.startFresh()
                 engine.setSystemPrompt(system)
                 val out = StringBuilder()

@@ -377,7 +377,7 @@ object Announcer {
             append(". Say the link into the next song.")
         }
         val written = runCatching {
-            if (!aiLines(ctx)) null else withTimeoutOrNull(60_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 70) }
+            if (!aiLines(ctx)) null else withTimeoutOrNull(30_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 70, quickOnly = true) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.takeIf { it.length in 8..400 }
@@ -482,7 +482,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var zonosReady by remember { mutableStateOf(Announcer.ready(ctx)) }
     var zonosDl by remember { mutableStateOf<Float?>(null) }
     var zonosErr by remember { mutableStateOf<String?>(null) }
-    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.modelReady(ctx) || helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
+    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     var writerRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     @Composable fun chip(label: String, sel: Boolean, click: () -> Unit) =
         FilterChip(sel, click, { Text(label) }, Modifier.padding(end = 6.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.3f)))
