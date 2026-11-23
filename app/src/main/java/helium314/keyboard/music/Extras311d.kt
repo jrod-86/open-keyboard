@@ -250,8 +250,12 @@ object Announcer {
     }
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
-    /** test 321: opt-in (off by default) — built-in DJ lines are instant and avoid waking the 1.5 GB writing model */
-    fun aiLines(ctx: Context) = prefs(ctx).getBoolean("ann_ai2", false)
+    /** test 327 (Jarrod): 0 = Instant (built-in radio lines), 1 = Quick AI (1.1 GB), 2 = Better AI (2.5 GB) */
+    fun aiMode(ctx: Context): Int {
+        val p = prefs(ctx)
+        return if (p.contains("ann_ai_mode")) p.getInt("ann_ai_mode", 0).coerceIn(0, 2)
+        else if (p.getBoolean("ann_ai2", false)) 1 else 0
+    }
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
         failedFor = -1
@@ -369,27 +373,43 @@ object Announcer {
         }
     }
 
-    /** What the DJ says. The model writes it; if it isn't there (or is slow), a simple line instead. */
+    /** What the DJ says. Uses Instant built-in lines, Quick AI (1.1 GB), or Better AI (2.5 GB) with accuracy checks. */
     suspend fun line(ctx: Context, cur: Song?, next: Song): String {
+        val mode = aiMode(ctx)
+        val cleanGenre = next.genre.split(',', '/', ';').map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.take(2).joinToString(", ")
         val facts = listOfNotNull(
             next.year.takeIf { it > 0 }?.let { "from $it" },
             Popularity.known(ctx, next)?.story(),
-            next.genre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
+            cleanGenre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
         ).joinToString("; ")
         val who = STYLES.getOrElse(style(ctx)) { STYLES[0] }.second
-        val system = "You are $who on Open Waves, the listener's own music station. Reply with only what you say out loud: one short punchy sentence, " +
-            "at most 18 words. No emojis, no URLs, no lists, no stage directions. Only use the facts given; never invent facts about the song or artist."
+        val system = "You are $who on Open Waves. Reply with ONLY one short spoken radio intro (10 to 18 words). " +
+            "You MUST say the exact next song title and artist name. No emojis, no URLs, no websites, no links, no stage directions. " +
+            "Never invent facts. Example: \"Hope you're loving the vibes! Coming up next, Dreams by Fleetwood Mac.\""
         val prompt = buildString {
             if (cur != null) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
-            append("Up next: \"${next.title}\" by ${next.artist}")
+            append("Next song: \"${next.title}\" by ${next.artist}")
             if (facts.isNotEmpty()) append(" ($facts)")
-            append(". Say the link into the next song.")
+            append(". Introduce the next song now.")
         }
+        val modelId = when (mode) {
+            1 -> helium314.keyboard.latin.WritingTools.QUICK.id
+            2 -> helium314.keyboard.latin.WritingTools.BETTER.id
+            else -> null
+        }
+        val titleWord = next.title.split(Regex("[^A-Za-z0-9]+")).firstOrNull { it.length >= 3 }?.lowercase()
+        val artistWord = next.artist.split(Regex("[^A-Za-z0-9]+")).firstOrNull { it.length >= 3 }?.lowercase()
         val written = runCatching {
-            if (!aiLines(ctx)) null else withTimeoutOrNull(30_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 70, quickOnly = true) }
+            if (modelId == null) null
+            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 60, modelId = modelId) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
-            ?.takeIf { it.length in 8..400 }
+            ?.takeIf { out ->
+                val low = out.lowercase()
+                out.length in 10..260 &&
+                    "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
+                    ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
+            }
         if (written != null) return written
         // test 325 (Jarrod): distinct, brief real-radio DJ lines for each of the 4 styles
         return builtInLine(style(ctx), cur, next)
@@ -534,8 +554,11 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var zonosReady by remember { mutableStateOf(Announcer.ready(ctx)) }
     var zonosDl by remember { mutableStateOf<Float?>(null) }
     var zonosErr by remember { mutableStateOf<String?>(null) }
-    var writerReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
-    var writerRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
+    var aiMode by remember { mutableIntStateOf(Announcer.aiMode(ctx)) }
+    var quickReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
+    var betterReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.BETTER)) }
+    var quickRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
+    var betterRunning by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.downloadRunning(ctx, helium314.keyboard.latin.WritingTools.BETTER)) }
     @Composable fun chip(label: String, sel: Boolean, click: () -> Unit) =
         FilterChip(sel, click, { Text(label) }, Modifier.padding(end = 6.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.3f)))
     Column {
@@ -572,32 +595,38 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 }
             }
         }
-        if (!writerReady) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Text("Optional: download the local AI writing model (${helium314.keyboard.latin.WritingTools.QUICK.sizeText}) so Savannah writes custom lines for each song (shared with Chat & Writing help).",
-                    fontSize = 12.sp, color = dim)
-                if (writerRunning) {
-                    Text("Downloading writing model in the background… check your notifications.", fontSize = 12.sp, color = Accent, modifier = Modifier.padding(top = 4.dp))
-                } else {
-                    OutlinedButton({
-                        helium314.keyboard.latin.WritingTools.startDownload(ctx, helium314.keyboard.latin.WritingTools.QUICK)
-                        writerRunning = true
-                    }, Modifier.padding(top = 4.dp)) { Text("Download AI writing model", color = Accent) }
-                }
-            }
-        }
         if (on) {
             Text("How often", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 for ((n, label) in listOf(1 to "Every song", 2 to "Every 2nd", 3 to "Every 3rd", 5 to "Every 5th")) chip(label, every == n) { every = n; Announcer.set(ctx, "ann_every", n) }
             }
-            var ai by remember { mutableStateOf(Announcer.aiLines(ctx)) }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("AI writes what the DJ says", fontSize = 15.sp)
-                    Text("Off by default (instant, smooth, cool). Turn on to use the local writing model for custom banter.", fontSize = 12.sp, color = dim)
+            Text("DJ writer", Modifier.padding(start = 16.dp, top = 6.dp), fontSize = 13.sp, color = dim)
+            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
+                chip("Instant", aiMode == 0) { aiMode = 0; Announcer.set(ctx, "ann_ai_mode", 0) }
+                chip("Quick AI (1.1 GB)", aiMode == 1) { aiMode = 1; Announcer.set(ctx, "ann_ai_mode", 1) }
+                chip("Better AI (2.5 GB)", aiMode == 2) { aiMode = 2; Announcer.set(ctx, "ann_ai_mode", 2) }
+            }
+            Text(when (aiMode) {
+                1 -> "Fast, light AI banter with accuracy checks (falls back to built-in lines if needed)."
+                2 -> "Smartest, warmest AI banter — best on phones with 8 GB+ RAM."
+                else -> "Built-in real-radio lines: instant, 0 MB extra RAM, coolest on battery."
+            }, Modifier.padding(horizontal = 16.dp, vertical = 2.dp), fontSize = 12.sp, color = dim)
+            if (aiMode == 1 && !quickReady) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    if (quickRunning) Text("Downloading Quick AI (1.1 GB)… check your notifications.", fontSize = 12.sp, color = Accent)
+                    else OutlinedButton({
+                        helium314.keyboard.latin.WritingTools.startDownload(ctx, helium314.keyboard.latin.WritingTools.QUICK)
+                        quickRunning = true
+                    }) { Text("Download Quick AI (1.1 GB)", color = Accent) }
                 }
-                Switch(ai, { ai = it; Announcer.set(ctx, "ann_ai2", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            } else if (aiMode == 2 && !betterReady) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    if (betterRunning) Text("Downloading Better AI (2.5 GB)… check your notifications.", fontSize = 12.sp, color = Accent)
+                    else OutlinedButton({
+                        helium314.keyboard.latin.WritingTools.startDownload(ctx, helium314.keyboard.latin.WritingTools.BETTER)
+                        betterRunning = true
+                    }) { Text("Download Better AI (2.5 GB)", color = Accent) }
+                }
             }
             Text("Style", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
