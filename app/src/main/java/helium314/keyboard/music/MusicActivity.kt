@@ -304,8 +304,15 @@ object OpenWavesIcon {
     }
 }
 
-/** The badge-free home screen icon: tap it to open Open Waves. */
+/** The badge-free home screen icon: tap it to open Open Waves. Re-binds automatically after APK updates and reboots. */
 class OpenWavesIconWidget : android.appwidget.AppWidgetProvider() {
+    override fun onReceive(ctx: Context, intent: android.content.Intent) {
+        super.onReceive(ctx, intent)
+        if (intent.action == android.content.Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == android.content.Intent.ACTION_BOOT_COMPLETED) {
+            refreshAll(ctx)
+        }
+    }
+
     override fun onUpdate(ctx: Context, awm: android.appwidget.AppWidgetManager, ids: IntArray) {
         val open = android.app.PendingIntent.getActivity(ctx, 7,
             android.content.Intent(ctx, MusicActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -313,6 +320,14 @@ class OpenWavesIconWidget : android.appwidget.AppWidgetProvider() {
         val views = android.widget.RemoteViews(ctx.packageName, helium314.keyboard.latin.R.layout.open_waves_icon_widget)
         views.setOnClickPendingIntent(helium314.keyboard.latin.R.id.ow_icon_root, open)
         awm.updateAppWidget(ids, views)
+    }
+
+    companion object {
+        fun refreshAll(ctx: Context) = runCatching {
+            val awm = android.appwidget.AppWidgetManager.getInstance(ctx)
+            val ids = awm.getAppWidgetIds(android.content.ComponentName(ctx, OpenWavesIconWidget::class.java))
+            if (ids.isNotEmpty()) OpenWavesIconWidget().onUpdate(ctx, awm, ids)
+        }
     }
 }
 
