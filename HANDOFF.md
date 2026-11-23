@@ -2,7 +2,7 @@
 
 - **Last updated:** 2026-11-23 by Gemini (Antigravity)
 - **Active branch:** `claude/project-thread-1y9nzr` ([PR #12](https://github.com/jrod-86/open-keyboard/pull/12))
-- **Latest published APK:** `OpenKeyboard-test316.apk` on branch `apk` (next APK build: **test 317**)
+- **Latest published APK:** `OpenKeyboard-test317.apk` on branch `apk` (next APK build: **test 318**)
 - **Local PC build env:** Windows PC does not have JDK / Android SDK installed; use GitHub Actions (`Build debug APK` workflow) or Claude's cloud build env to compile APKs.
 
 ## Confirmed Working on S24 (23 Nov)
