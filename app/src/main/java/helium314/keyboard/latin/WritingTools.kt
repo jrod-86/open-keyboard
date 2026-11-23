@@ -184,7 +184,10 @@ object WritingTools {
      * Runs one request on the writing model and returns the reply, streaming pieces to [onPiece].
      * Waits if writing help is busy. Returns null if no model is downloaded or the download is damaged.
      */
-    suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, quickOnly: Boolean = false, onPiece: (String) -> Unit = {}): String? {
+    suspend fun generate(ctx: Context, system: String, prompt: String, maxTokens: Int, onPiece: (String) -> Unit = {}): String? =
+        generateFor(ctx, system, prompt, maxTokens, quickOnly = false, onPiece = onPiece)
+
+    suspend fun generateFor(ctx: Context, system: String, prompt: String, maxTokens: Int, quickOnly: Boolean = false, onPiece: (String) -> Unit = {}): String? {
         // test 222: at most 3 minutes, so a "writing…" sign can never hang around
         val wanted = if (quickOnly) QUICK.takeIf { isReady(ctx, it) } else active(ctx)
         if (remote) return if (wanted == null) null else withTimeoutOrNull(180_000) { WriterClient.ask(ctx, system, prompt, maxTokens, quickOnly = quickOnly, onPiece = onPiece) }

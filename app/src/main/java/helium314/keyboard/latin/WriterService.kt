@@ -48,7 +48,7 @@ class WriterService : Service() {
                             val prompt = d.getString("prompt").orEmpty()
                             val max = d.getInt("max", 256)
                             val out = if (d.getBoolean("ifIdle")) WritingTools.askIfIdle(this@WriterService, system, prompt, max)
-                            else WritingTools.generate(this@WriterService, system, prompt, max, quickOnly = d.getBoolean("quickOnly")) { sofar ->
+                            else WritingTools.generateFor(this@WriterService, system, prompt, max, quickOnly = d.getBoolean("quickOnly")) { sofar ->
                                 val now = System.currentTimeMillis()
                                 if (d.getBoolean("pieces") && now - lastSent > 100) {
                                     lastSent = now
