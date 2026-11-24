@@ -9,6 +9,7 @@
     android:gravity="center"
     android:padding="4dp">
     <ImageView
+        android:id="@+id/ow_icon_img"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"

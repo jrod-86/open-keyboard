@@ -156,6 +156,7 @@ class MusicActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MusicSettings.load(this)
+        OpenWavesIconWidget.refreshAll(this)
         setContent {
             val themed = MusicSettings.theme != -1
             val dark = isSystemInDarkTheme() || themed
@@ -310,23 +311,38 @@ class OpenWavesIconWidget : android.appwidget.AppWidgetProvider() {
         super.onReceive(ctx, intent)
         if (intent.action == android.content.Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == android.content.Intent.ACTION_BOOT_COMPLETED) {
             refreshAll(ctx)
+            // Android's AppWidgetService often resets RemoteViews to initialLayout shortly after MY_PACKAGE_REPLACED;
+            // re-bind again at +2 s and +5 s so our click PendingIntent always wins the race.
+            val app = ctx.applicationContext
+            val pending = goAsync()
+            android.os.Handler(android.os.Looper.getMainLooper()).apply {
+                postDelayed({ refreshAll(app) }, 2_000L)
+                postDelayed({ refreshAll(app); runCatching { pending.finish() } }, 5_000L)
+            }
         }
     }
 
     override fun onUpdate(ctx: Context, awm: android.appwidget.AppWidgetManager, ids: IntArray) {
         val open = android.app.PendingIntent.getActivity(ctx, 7,
-            android.content.Intent(ctx, MusicActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.content.Intent(ctx, MusicActivity::class.java)
+                .setAction(android.content.Intent.ACTION_MAIN)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP),
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
         val views = android.widget.RemoteViews(ctx.packageName, helium314.keyboard.latin.R.layout.open_waves_icon_widget)
         views.setOnClickPendingIntent(helium314.keyboard.latin.R.id.ow_icon_root, open)
+        views.setOnClickPendingIntent(helium314.keyboard.latin.R.id.ow_icon_img, open)
         awm.updateAppWidget(ids, views)
     }
 
     companion object {
-        fun refreshAll(ctx: Context) = runCatching {
-            val awm = android.appwidget.AppWidgetManager.getInstance(ctx)
-            val ids = awm.getAppWidgetIds(android.content.ComponentName(ctx, OpenWavesIconWidget::class.java))
-            if (ids.isNotEmpty()) OpenWavesIconWidget().onUpdate(ctx, awm, ids)
+        @JvmStatic
+        fun refreshAll(ctx: Context) {
+            runCatching {
+                val app = ctx.applicationContext
+                val awm = android.appwidget.AppWidgetManager.getInstance(app)
+                val ids = awm.getAppWidgetIds(android.content.ComponentName(app, OpenWavesIconWidget::class.java))
+                if (ids.isNotEmpty()) OpenWavesIconWidget().onUpdate(app, awm, ids)
+            }
         }
     }
 }

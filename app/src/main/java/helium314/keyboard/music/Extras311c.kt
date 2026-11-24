@@ -68,7 +68,15 @@ import kotlinx.coroutines.launch
 class PlayerWidget : android.appwidget.AppWidgetProvider() {
     override fun onReceive(ctx: Context, intent: Intent) {
         super.onReceive(ctx, intent)
-        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) update(ctx)
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            update(ctx)
+            val app = ctx.applicationContext
+            val pending = goAsync()
+            android.os.Handler(android.os.Looper.getMainLooper()).apply {
+                postDelayed({ update(app) }, 2_000L)
+                postDelayed({ update(app); runCatching { pending.finish() } }, 5_000L)
+            }
+        }
     }
     override fun onUpdate(ctx: Context, awm: AppWidgetManager, ids: IntArray) { update(ctx) }
     override fun onAppWidgetOptionsChanged(ctx: Context, awm: AppWidgetManager, id: Int, newOptions: Bundle) { update(ctx) }

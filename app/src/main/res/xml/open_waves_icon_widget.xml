@@ -5,7 +5,7 @@
     android:targetCellWidth="1"
     android:targetCellHeight="1"
     android:resizeMode="none"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/open_waves_icon_widget"
     android:previewImage="@drawable/open_waves_widget_icon"
     android:description="@string/ok_tile_music"
