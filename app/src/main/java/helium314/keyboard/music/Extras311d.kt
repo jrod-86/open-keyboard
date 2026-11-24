@@ -553,7 +553,8 @@ object Announcer {
         }
         val system = "You are $who. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
             "${extraRule as String} $stationRule " +
-            "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out — NEVER say it is currently charting, back in the charts, or a 'new hit'). " +
+            "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out). " +
+            "NEVER call any song 'latest', 'brand new', 'new hit', 'new single', 'just released', 'currently charting', or 'back in the charts'. " +
             "Never invent another song or artist that wasn't given to you. " +
             "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
             "Example: \"${example as String}\""
@@ -597,7 +598,13 @@ object Announcer {
                 val hallucinatedSecondSong = (lenIdx == 0 && byCount > 1) ||
                     (lenIdx > 0 && cur == null && byCount > 1) ||
                     (lenIdx > 0 && byCount > 2)
-                out.length in 18..(maxChars as Int) && words >= 7 && !hallucinatedSecondSong &&
+                val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                val fakeNew = (next.year <= 0 || next.year < thisYear) && listOf(
+                    "latest hit", "latest single", "latest track", "latest release", "latest song",
+                    "brand new", "new hit", "new single", "just released", "just dropped",
+                    "back in the charts", "currently charting", "climbing the charts", "topping the charts"
+                ).any { it in low }
+                out.length in 18..(maxChars as Int) && words >= 7 && !hallucinatedSecondSong && !fakeNew &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
