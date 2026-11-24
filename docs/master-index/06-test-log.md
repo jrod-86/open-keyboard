@@ -131,3 +131,5 @@
 | 346 | 2026-11-25 | Instant DJ polish: never repeats the release year twice, doubled intro endings to 12 per style, varied sentence order & station-ID placement so the cadence stays natural, and fixed comma/capitalization on station-ID sentences | Waiting |
 
 | 347 | 2026-11-25 | Clear per-mode battery consumption labels (`🔋 Low / Medium / High battery`) under the DJ writer picker (`Instant` / `Quick AI` / `Better AI`) in Settings → DJ | Waiting |
+
+| 348 | 2026-11-25 | Tightened `Heavy` mood in `Moods.kt` so soft/pop/britpop rock (like Coldplay) is excluded while genuine Metal, Punk, Hard Rock, and high-energy heavy tracks stay in; also fixed fallback padding (`ranked.take(12)`) so small moods never pull in 500 loose matches | Waiting |

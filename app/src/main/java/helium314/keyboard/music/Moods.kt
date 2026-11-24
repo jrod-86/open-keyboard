@@ -308,16 +308,34 @@ object Moods {
         }
         // test 305 (Jarrod: random songs that don't fit): genre rules are firm now, the AI listener's worst fits are left out,
         // and the mix is only as long as there are songs that really fit (it used to fill up to 50 with poor ones)
+        val heavyTags = setOf("metal", "hard rock", "heavy", "punk", "grunge", "hardcore", "thrash", "nu metal", "industrial", "screamo", "post-grunge", "stoner")
+        val softRockTags = setOf("soft rock", "pop rock", "britpop", "indie pop", "folk rock", "acoustic", "ballad", "easy listening", "dream pop")
         val allowed = pool.filter { p ->
-            p.song.id !in out &&
-                (ask.genre.isNotEmpty() || p.group.isEmpty() || (p.group !in mood.avoids && (mood.only.isEmpty() || p.group in mood.only))) &&
-                (p.ai?.get(mood.id)?.let { it >= 0.35f } ?: true)
+            val okBase = p.song.id !in out &&
+                (ask.genre.isNotEmpty() || p.group.isEmpty() || (p.group !in mood.avoids && (mood.only.isEmpty() || p.group in mood.only)))
+            if (!okBase) return@filter false
+            val aiScore = p.ai?.get(mood.id)
+            if (mood.id == "heavy") {
+                val isMetalOrPunk = p.group in setOf("Metal", "Punk") || heavyTags.any { it in p.tags }
+                val isSoftRock = softRockTags.any { it in p.tags }
+                if (isSoftRock && !isMetalOrPunk) return@filter false
+                if (!isMetalOrPunk) {
+                    // Plain "Rock" or untagged songs must sound genuinely heavy to the AI listener & have high energy
+                    if (aiScore != null) { if (aiScore < 0.65f || p.energy < 0.72f) return@filter false }
+                    else if (p.energy < 0.85f) return@filter false
+                } else if (aiScore != null && aiScore < 0.45f) {
+                    return@filter false
+                }
+                true
+            } else {
+                aiScore?.let { it >= 0.35f } ?: true
+            }
         }
         val ranked = allowed.map { it to score(it) }.sortedBy { it.second }
         val good = ranked.filter { it.second <= 0.32f }
-        // test 343 (Jarrod): shuffle the matching pool with a fresh random seed every tap so each mix (e.g. 15/30/60) is genuinely different
+        // test 343/348 (Jarrod): shuffle the matching pool with a fresh random seed every tap, without padding with poor fits
         val rng = java.util.Random(seed)
-        val candidates = (if (good.size >= 12) good else ranked.take(maxOf(12, size))).map { it.first }.shuffled(rng)
+        val candidates = (if (good.size >= 12) good else ranked.take(12)).map { it.first }.shuffled(rng)
         val picked = candidates.take(size)
         if (ask.popularFirst) {
             val plays = picked.associate { it.song.id to (Popularity.known(ctx, it.song)?.plays ?: 0L) }
