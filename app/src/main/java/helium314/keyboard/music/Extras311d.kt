@@ -396,6 +396,7 @@ object Announcer {
     private val rng = java.util.Random()
     private val recentPicks = ArrayDeque<Int>()
     private val recentAngles = ArrayDeque<Int>()
+    private val recentLines = ArrayDeque<String>()
     private var sinceStationId = 2
 
     private fun pickFresh(size: Int, history: ArrayDeque<Int>): Int {
@@ -513,17 +514,30 @@ object Announcer {
             )
         }
 
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val timeOfDay = when (hour) {
+            in 5..11 -> "morning"
+            in 12..16 -> "afternoon"
+            in 17..20 -> "evening"
+            else -> "late night"
+        }
         val angles = listOf(
-            "Start with a fresh, casual radio check-in (avoid saying 'Hey, folks').",
-            "Bridge smoothly from the song that just finished into the next track.",
-            "Build a little anticipation before naming the artist and title.",
-            "Keep it effortless and conversational, like a relaxed mid-show link.",
-            "Give a quick nod to the listener's playlist taste before dropping the track.",
-            "Start straight with the vibe or energy of the moment, then introduce the song.",
-            "Tease the artist first, then land on the song title.",
-            "Sound like you're smiling on the mic and genuinely excited for this track.",
-            "Keep the phrasing crisp and punchy with a natural radio rhythm.",
-            "Give a warm, human one-liner before cueing up the next song.",
+            "Open with a quick $timeOfDay radio check-in (e.g. driving, working, or cruising through the $timeOfDay).",
+            "Playfully contrast the style or mood of the previous track with the next one.",
+            "Give a short, genuine reaction to the song that just wrapped up before introducing the next.",
+            "Tease the next artist's signature sound or vibe first, then land on the song title.",
+            "Drop a quick, dry one-liner or playful dare (like trying not to tap the steering wheel) before cueing the track.",
+            "Start with a crisp rhetorical question to the listener, then roll into the song.",
+            "Keep it ultra-casual and conversational, like chatting live from the studio booth.",
+            "Give a nostalgic throwback nod to the release era/year (if given) before introducing the song.",
+            "Build a smooth, rhythmic bridge straight from the previous title into the next title.",
+            "Give a quick shout-out to how well this playlist is flowing right now.",
+            "Start straight with the energy, beat, or hook of the upcoming song — punchy, no preamble.",
+            "Share a brief, witty observation about the song's title or theme before naming the artist.",
+            "Use a classic FM-radio segue feel — warm, confident, and effortless.",
+            "Pretend you just spotted this track coming up on the deck and got genuinely stoked for it.",
+            "Keep the opener super unexpected and fresh — start mid-thought or with a fun exclamation.",
+            "Give a light, understated nod to the listener's taste before letting the next track take over.",
         )
         val angle = angles[pickFresh(angles.size, recentAngles)]
 
@@ -554,13 +568,18 @@ object Announcer {
                 )
             }
         }
-        val system = "You are $who. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
+        val avoidRecent = if (recentLines.isEmpty()) "" else
+            " Recent lines you ALREADY said (DO NOT reuse their opening, structure, jokes, or phrasing): " +
+            recentLines.joinToString(" | ") { "\"${it.take(85)}\"" } + "."
+        // Only show a verbatim example to Quick AI (1.5B); Better AI (4B) copies verbatim examples word-for-word!
+        val exampleHint = if (mode == 2) "" else " Example: \"${example as String}\""
+        val system = "You are $who. Current local time is $timeOfDay. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
             "${extraRule as String} $stationRule " +
+            "Be original every single time — avoid clichés like 'switch gears', 'dive into', 'pure vibes', 'no commercials', 'no ads', or 'no weather report'.$avoidRecent " +
             "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out). " +
             "NEVER call any song 'latest', 'brand new', 'new hit', 'new single', 'just released', 'currently charting', or 'back in the charts'. " +
             "Never invent another song or artist that wasn't given to you. " +
-            "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
-            "Example: \"${example as String}\""
+            "No markdown asterisks, no emojis, no URLs, no websites, no links, no stage directions. Never invent facts.$exampleHint"
         val prompt = buildString {
             if (cur != null && lenIdx > 0) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Next song: \"${next.title}\" by ${next.artist}")
@@ -578,7 +597,7 @@ object Announcer {
             if (modelId == null) null
             else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok as Int, modelId = modelId) }
         }.getOrNull()
-            ?.replace(Regex("(?s)<think>.*?</think>"), "")?.trim()
+            ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace("*", "")?.trim()
             ?.let { raw ->
                 // Strip wrapping quotes ONLY if the entire response is quoted (never strip the opening quote of a song title!)
                 if (raw.length >= 2 && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith('“') && raw.endsWith('”'))))
@@ -611,7 +630,11 @@ object Announcer {
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
-        if (written != null) return written
+        if (written != null) {
+            recentLines.addLast(written)
+            while (recentLines.size > 4) recentLines.removeFirst()
+            return written
+        }
         // test 333 (Jarrod): large varied radio DJ pools matched to Short/Medium/Long with occasional station ID
         return builtInLine(styleIdx, lenIdx, cur, next, mentionStation)
     }
