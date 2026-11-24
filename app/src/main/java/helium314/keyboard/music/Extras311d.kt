@@ -429,14 +429,32 @@ object Announcer {
         else
             "Do NOT say 'Open Waves' this time."
 
-        val shortExamples = listOf(
-            "Up next, Dreams by Fleetwood Mac.",
-            "Here comes Thunderstruck by AC/DC!",
-            "Rolling straight into Africa by Toto.",
-            "Coming up now, Billie Jean by Michael Jackson.",
-            "Next on the deck, Hotel California by Eagles.",
-            "This one's Dreams by Fleetwood Mac.",
-        )
+        val shortExamples = when (styleIdx) {
+            1 -> listOf(
+                "Keep the energy loud — up next, Thunderstruck by AC/DC!",
+                "Turn this one right up, here comes Africa by Toto!",
+                "No slowing down now, dropping Billie Jean by Michael Jackson!",
+                "Big tune incoming — get ready for Dreams by Fleetwood Mac!",
+            )
+            2 -> listOf(
+                "Easy does it tonight — drifting into Dreams by Fleetwood Mac.",
+                "Kick back and unwind with Hotel California by Eagles.",
+                "Keeping the night smooth, coming up is Africa by Toto.",
+                "Take a breather and enjoy this one, Dreams by Fleetwood Mac.",
+            )
+            3 -> listOf(
+                "Zero commercials, just great taste — up next, Africa by Toto!",
+                "If you don't sing along, I'm judging you — here's Dreams by Fleetwood Mac!",
+                "No skip button allowed on this one, here comes Thunderstruck by AC/DC!",
+                "Scientifically proven to lift your mood — Billie Jean by Michael Jackson!",
+            )
+            else -> listOf(
+                "Hope your day's going great — up next, Dreams by Fleetwood Mac.",
+                "Loving this playlist flow! Rolling straight into Africa by Toto.",
+                "Here's a classic you can't skip, Hotel California by Eagles.",
+                "Keeping the good tunes moving with Billie Jean by Michael Jackson!",
+            )
+        }
         val medExamples = when (styleIdx) {
             1 -> listOf(
                 "Keeping the energy sky high — crank it up because here comes Thunderstruck by AC/DC!",
@@ -495,11 +513,11 @@ object Announcer {
         val (lenSpec, maxTok, maxChars, example, extraRule) = when (lenIdx) {
             0 -> {
                 val ex = shortExamples[rng.nextInt(shortExamples.size)]
-                val exWithStation = if (mentionStation) "You're listening to Open Waves. $ex" else ex
+                val exWithStation = if (mentionStation) "You're listening to Open Waves — ${ex.replaceFirstChar { it.lowercase() }}" else ex
                 listOf(
-                    "ONE very short intro ONLY (5 to 11 words total, ~3 to 4 seconds spoken). Just introduce the next song title and artist — NO banter, NO extra commentary",
-                    32, 110, exWithStation,
-                    "Be brief and vary how you phrase the intro so it never sounds repetitive."
+                    "ONE brief, punchy radio-DJ sentence (10 to 16 words total, ~5 to 7 seconds spoken)",
+                    48, 165, exWithStation,
+                    "Include a very brief piece of radio DJ commentary matching your style before naming the next song and artist — never just read the song title alone."
                 )
             }
             2 -> {
@@ -527,7 +545,7 @@ object Announcer {
             if (cur != null && lenIdx > 0) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Next song: \"${next.title}\" by ${next.artist}")
             if (facts.isNotEmpty() && lenIdx > 0) append(" ($facts)")
-            append(if (lenIdx == 0) ". Give a very short, fresh intro naming the next song." else ". Say a fresh radio DJ link into the next song.")
+            append(if (lenIdx == 0) ". Give a brief 1-sentence radio DJ link with a tiny bit of commentary into the next song." else ". Say a fresh radio DJ link into the next song.")
         }
         val modelId = when (mode) {
             1 -> helium314.keyboard.latin.WritingTools.QUICK.id
@@ -551,7 +569,8 @@ object Announcer {
             }
             ?.takeIf { out ->
                 val low = out.lowercase()
-                out.length in 10..(maxChars as Int) &&
+                val words = out.split(Regex("\\s+")).size
+                out.length in 18..(maxChars as Int) && words >= 7 &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
@@ -572,24 +591,24 @@ object Announcer {
         )[rng.nextInt(3)] else ""
 
         if (lenIdx == 0) {
-            // Short: crisp, varied next-song intros only (~5-10 words)
+            // Short: brief 1-liner DJ commentary + next song (~10-15 words)
             val shortPool = listOf(
-                "Up next, $t by $a.",
-                "Here comes $t by $a.",
-                "Coming up now, $t by $a.",
-                "Rolling into $t by $a.",
-                "Next up, $a with $t.",
-                "This one's $t by $a.",
-                "Cueing up $t by $a.",
-                "Now playing next, $t by $a.",
-                "Here's $a with $t.",
-                "Dropping $t by $a next.",
-                "Sliding into $t by $a.",
-                "Next on the deck, $t by $a.",
-                "Let's hear $t by $a.",
-                "Over to $a with $t.",
-                "On deck right now, $t by $a.",
-                "Bringing in $t by $a.",
+                "Hope you're enjoying the mix — up next, $t by $a.",
+                "Keeping the good vibes rolling, here comes $t by $a.",
+                "Here's a great one coming up now — $t by $a.",
+                "Loving how this playlist flows — rolling into $t by $a.",
+                "Can't go wrong with this one — next up, $a with $t.",
+                "Great tune on deck right now — this is $t by $a.",
+                "Smoothly into the next track, cueing up $t by $a.",
+                "Turn it up a notch — here's $a with $t.",
+                "Keeping the music moving nicely — dropping $t by $a next.",
+                "Here's another favourite for you, sliding into $t by $a.",
+                "One great song into the next — $t by $a.",
+                "Hope this one hits the spot — let's hear $t by $a.",
+                "Right on cue for this mix — over to $a with $t.",
+                "Good taste all day long — on deck now, $t by $a.",
+                "Settle in for this one — bringing in $t by $a.",
+                "Always a pleasure spinning this track — $t by $a.",
             )
             return stPrefix + shortPool[pickFresh(shortPool.size, recentPicks)]
         }
