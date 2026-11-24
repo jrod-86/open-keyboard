@@ -412,9 +412,23 @@ object Announcer {
     suspend fun line(ctx: Context, cur: Song?, next: Song): String {
         val mode = aiMode(ctx)
         val cleanGenre = next.genre.split(',', '/', ';').map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.take(2).joinToString(", ")
+        val pop = Popularity.known(ctx, next)
+        val histChart = pop?.let {
+            val spots = listOfNotNull(
+                it.us.takeIf { n -> n > 0 }?.let { n -> "#$n in the US" },
+                it.au.takeIf { n -> n > 0 }?.let { n -> "#$n in Australia" },
+                it.uk.takeIf { n -> n > 0 }?.let { n -> "#$n in the UK" },
+            )
+            if (spots.isEmpty()) null
+            else {
+                val yr = it.year.takeIf { y -> y > 0 } ?: next.year.takeIf { y -> y > 0 }
+                val whenStr = if (yr != null) " back in $yr" else " when it was originally released"
+                "historical chart peak (past only): originally reached ${spots.joinToString(" and ")}$whenStr"
+            }
+        }
         val facts = listOfNotNull(
-            next.year.takeIf { it > 0 }?.let { "from $it" },
-            Popularity.known(ctx, next)?.story(),
+            next.year.takeIf { it > 0 }?.let { "released in $it" },
+            histChart,
             cleanGenre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
         ).joinToString("; ")
         val styleIdx = style(ctx)
@@ -517,7 +531,7 @@ object Announcer {
                 listOf(
                     "ONE brief, punchy radio-DJ sentence (10 to 16 words total, ~5 to 7 seconds spoken)",
                     48, 165, exWithStation,
-                    "Include a very brief piece of radio DJ commentary matching your style before naming the next song and artist — never just read the song title alone."
+                    "Include a very brief piece of radio DJ commentary matching your style before naming the next song and artist — never just read the song title alone. Mention ONLY this single song and artist (never mention the previous song or any other song)."
                 )
             }
             2 -> {
@@ -539,6 +553,7 @@ object Announcer {
         }
         val system = "You are $who. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
             "${extraRule as String} $stationRule " +
+            "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out — NEVER say it is currently charting or back in the charts). " +
             "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
             "Example: \"${example as String}\""
         val prompt = buildString {
