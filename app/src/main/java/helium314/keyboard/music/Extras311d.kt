@@ -327,9 +327,17 @@ object Announcer {
         val nextIndex = p.nextMediaItemIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET } ?: return
         val lib = Library.cached ?: return
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
+        val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
         val left = p.duration - p.currentPosition
         val r = ready
-        // 2. ready and near the end: start at 65% of clip duration (+ fade-out + crossfade offset) before song end
+        // 2a. if a clip finished synthesizing just after the song it introduces started, play it over the intro instead of dropping it
+        if (r != null && cur != null && r.forId == cur.id && p.currentPosition < 12_000L && speaking?.isActive != true) {
+            ready = null; songsSince = 0; spokenFor = cur.id
+            android.util.Log.w("OpenWaves", "announcer: late-ready intro into ${cur.title} (pos=${p.currentPosition}ms)")
+            say(r.audio)
+            return
+        }
+        // 2b. ready and near the end: start at 65% of clip duration (+ fade-out + crossfade offset) before song end
         // so ~65% plays over the finishing song's outro and ~35% lands over the new song's intro ("hitting the post")
         if (r != null && r.forId == next.id) {
             val clipMs = (r.audio.size * 1000L) / helium314.keyboard.tts.ZonosTts.RATE
@@ -345,14 +353,13 @@ object Announcer {
         // 1. strictly one prep job at a time; never re-generate a song we already announced; never overlap with stem splitting
         if (spokenFor == next.id) return
         if (makingJob?.isActive == true) {
-            // if the user skipped to a different song, cancel the stale prep
-            if (making != next.id) { makingJob?.cancel(); makingJob = null; making = -1 }
+            // keep finishing if it's for the song that just started (<12s in); cancel only if the user skipped elsewhere
+            val forJustStarted = cur != null && making == cur.id && p.currentPosition < 12_000L
+            if (making != next.id && !forJustStarted) { makingJob?.cancel(); makingJob = null; making = -1 }
             return
         }
         if (Stems.progress.value != null) return
         if (making == next.id || failedFor == next.id || !ready(ctx)) return
-        if (p.currentPosition < 4_000L && left > 20_000L) return
-        val cur = p.currentMediaItem?.mediaId?.toLongOrNull()?.let { lib.byId[it] }
         making = next.id
         val targetId = next.id
         val app = ctx.applicationContext
@@ -398,9 +405,9 @@ object Announcer {
         }
         val lenIdx = length(ctx)
         val (lenSpec, maxTok, maxChars) = when (lenIdx) {
-            0 -> Triple("1 short, punchy sentence (12 to 18 words total, about 6 to 8 seconds spoken)", 65, 220)
-            2 -> Triple("2 to 3 lively sentences (40 to 55 words total, about 18 to 22 seconds spoken)", 150, 480)
-            else -> Triple("2 natural, lively sentences (24 to 36 words total, about 12 to 15 seconds spoken)", 105, 340)
+            0 -> Triple("1 short, punchy sentence (10 to 16 words total, about 5 to 7 seconds spoken)", 45, 160)
+            2 -> Triple("2 to 3 lively sentences (34 to 46 words total, about 15 to 18 seconds spoken)", 115, 360)
+            else -> Triple("1 to 2 natural, lively sentences (20 to 30 words total, about 9 to 12 seconds spoken)", 75, 250)
         }
         val system = "You are $who on Open Waves. Reply with ONLY what you say out loud: $lenSpec. " +
             "Sound like a real radio DJ — open with banter matching your style (don't just read the song name!), mention the song that just finished if given, then smoothly introduce the exact next song title and artist. " +
@@ -424,6 +431,14 @@ object Announcer {
             else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok, modelId = modelId) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
+            ?.let { raw ->
+                // if maxTok cut mid-sentence, trim cleanly back to the last sentence ending
+                if (raw.lastOrNull() in charArrayOf('.', '!', '?')) raw
+                else {
+                    val cut = raw.lastIndexOfAny(charArrayOf('.', '!', '?'))
+                    if (cut >= 25) raw.substring(0, cut + 1).trim() else raw
+                }
+            }
             ?.takeIf { out ->
                 val low = out.lowercase()
                 out.length in 10..maxChars &&
