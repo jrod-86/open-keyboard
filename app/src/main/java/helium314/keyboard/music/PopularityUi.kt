@@ -117,6 +117,8 @@ private class PopView(val lib: Library, val version: Int, val ranked: List<Ranke
 private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?)
 
 private val popFilters = listOf("All", "Chart hits", "#1s", "Top 20s", "Top 20–50", "Hidden gems")
+private val popLengths = listOf(15 to "Short · 15", 30 to "Medium · 30", 60 to "Long · 60", -1 to "All")
+private val popSorts = listOf("random" to "Mixed up", "popular" to "Popular", "newest" to "Newest", "oldest" to "Oldest", "az" to "A–Z")
 
 /**
  * Test 297 (Jarrod): the Popular tab. Your whole library, most played in the world first. The lookup runs in the
@@ -158,11 +160,15 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
         }.also { PopView.last = it }
     }
     val ranked = view?.ranked
+    val prefs = remember { ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE) }
     var filter by remember { mutableStateOf("All") }
+    var popLen by remember { mutableStateOf(prefs.getInt("pop_len", 30)) }
+    var popSort by remember { mutableStateOf(prefs.getString("pop_sort", "random") ?: "random") }
+    var mixSeed by remember { mutableStateOf(System.nanoTime()) }
     val list = ranked.orEmpty()
     val hasPre70 = remember(list) { list.any { it.year in 1..1969 } }
     val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1970 }.distinct().sorted() }
-    val shown = remember(list, filter) {
+    val filtered = remember(list, filter) {
         when (filter) {
             "Chart hits" -> list.filter { it.best > 0 }
             "#1s" -> list.filter { it.best == 1 }
@@ -173,6 +179,19 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
         }
     }
+    fun buildMix(len: Int, sort: String, seed: Long): List<Ranked> {
+        val picked = if (len > 0 && filtered.size > len) filtered.shuffled(java.util.Random(seed)).take(len)
+            else filtered.shuffled(java.util.Random(seed))
+        return when (sort) {
+            "popular" -> if (filter == "Hidden gems") picked.sortedBy { it.pop.plays }
+                else picked.sortedWith(compareBy<Ranked>({ if (it.pop.plays > 0) 0 else 1 }, { -it.pop.plays }, { if (it.best > 0) it.best else Int.MAX_VALUE }))
+            "newest" -> picked.sortedWith(compareByDescending<Ranked> { it.year }.thenByDescending { it.song.dateAdded })
+            "oldest" -> picked.sortedWith(compareBy<Ranked> { if (it.year > 0) it.year else Int.MAX_VALUE }.thenBy { it.song.dateAdded })
+            "az" -> picked.sortedBy { it.song.title.lowercase() }
+            else -> picked
+        }
+    }
+    val shown = remember(filtered, popLen, popSort, mixSeed) { buildMix(popLen, popSort, mixSeed) }
     val left = view?.left ?: 0
     val unique = view?.unique ?: 0
     var wifiOnly by remember { mutableStateOf(PopScan.wifiOnly(ctx)) }
@@ -215,27 +234,53 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(popFilters + (if (hasPre70) listOf("Before 1970s") else emptyList()) + decades.map { "${it}s" }) { f ->
-                        androidx.compose.material3.FilterChip(f == filter, { filter = f }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
+                        androidx.compose.material3.FilterChip(f == filter, { filter = f; mixSeed = System.nanoTime(); saved = "" }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
                             colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
                     }
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button({
-                        // test 343 (Jarrod): fresh random mix every tap instead of the same fixed top list
-                        val pick = shown.shuffled().take(50).map { it.song }
-                        ui.play(pick, 0)
-                    }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
-                        Text(if (shown.size > 50) "Play random 50" else "Play random")
+                    Button({ ui.play(shown.map { it.song }, 0) }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                        Text("Play")
                     }
+                    OutlinedButton({
+                        val s = System.nanoTime(); mixSeed = s
+                        val fresh = buildMix(popLen, popSort, s)
+                        ui.play(fresh.map { it.song }, 0)
+                    }, enabled = filtered.isNotEmpty()) { Text("Shuffle", color = Accent) }
                     OutlinedButton({
                         val name = "Popular: $filter"
                         Playlists.create(ctx, name, shown.map { it.song.id })
                         saved = "Saved as playlist “$name”"
-                    }, enabled = shown.isNotEmpty()) { Text("Save as playlist", color = Accent) }
+                    }, enabled = shown.isNotEmpty()) { Text("Save", color = Accent) }
                 }
                 if (saved.isNotEmpty()) Text(saved, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
+                Text("How long", Modifier.padding(start = 16.dp, top = 6.dp), fontSize = 13.sp, color = dim)
+                androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(popLengths) { (n, label) ->
+                        androidx.compose.material3.FilterChip(popLen == n, {
+                            popLen = n; prefs.edit().putInt("pop_len", n).apply()
+                            val s = System.nanoTime(); mixSeed = s
+                            val fresh = buildMix(n, popSort, s)
+                            if (fresh.isNotEmpty()) ui.play(fresh.map { it.song }, 0)
+                        }, { Text(if (n == -1) "All · ${filtered.size}" else label) },
+                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                    }
+                }
+                Text("Sort by", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
+                androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(popSorts) { (id, label) ->
+                        androidx.compose.material3.FilterChip(popSort == id, {
+                            popSort = id; prefs.edit().putString("pop_sort", id).apply()
+                            val s = if (id == "random") System.nanoTime() else mixSeed
+                            mixSeed = s
+                            val fresh = buildMix(popLen, id, s)
+                            if (fresh.isNotEmpty()) ui.play(fresh.map { it.song }, 0)
+                        }, { Text(label) },
+                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                    }
+                }
             }
             if (shown.isEmpty()) item { Text("No songs here yet.", Modifier.padding(16.dp), color = dim) }
             itemsIndexed(shown, key = { _, r -> r.song.id }) { i, r ->
