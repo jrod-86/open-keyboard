@@ -433,7 +433,7 @@ object Announcer {
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.let { raw ->
                 // if maxTok cut mid-sentence, trim cleanly back to the last sentence ending
-                if (raw.lastOrNull() in charArrayOf('.', '!', '?')) raw
+                if (raw.isNotEmpty() && raw.last() in ".!?") raw
                 else {
                     val cut = raw.lastIndexOfAny(charArrayOf('.', '!', '?'))
                     if (cut >= 25) raw.substring(0, cut + 1).trim() else raw
