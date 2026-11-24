@@ -261,12 +261,16 @@ object Announcer {
     fun set(ctx: Context, key: String, v: Any) {
         prefs(ctx).edit().apply { when (v) { is Boolean -> putBoolean(key, v); is Int -> putInt(key, v); else -> putString(key, v.toString()) } }.apply()
         failedFor = -1
+        spokenFor = -1
         ready = null
         makingJob?.cancel(); makingJob = null; making = -1
         if (key == "ann_on" && v is Boolean) {
             enabled.value = v
             if (v) songsSince = 1000
             else { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
+        } else if (enabled.value) {
+            // Changing length, style, AI mode, or frequency takes effect on the very next song right away
+            songsSince = 1000
         }
     }
 
