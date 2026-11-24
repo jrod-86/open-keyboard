@@ -386,6 +386,24 @@ object Announcer {
         }
     }
 
+    private val rng = java.util.Random()
+    private val recentPicks = ArrayDeque<Int>()
+    private val recentAngles = ArrayDeque<Int>()
+    private var sinceStationId = 2
+
+    private fun pickFresh(size: Int, history: ArrayDeque<Int>): Int {
+        if (size <= 1) return 0
+        val keep = (size / 2).coerceIn(1, 8)
+        var idx = rng.nextInt(size)
+        for (tries in 0 until 12) {
+            if (idx !in history) break
+            idx = rng.nextInt(size)
+        }
+        history.addLast(idx)
+        while (history.size > keep) history.removeFirst()
+        return idx
+    }
+
     /** What the DJ says. Uses Instant built-in lines, Quick AI (1.1 GB), or Better AI (2.5 GB) with accuracy checks. */
     suspend fun line(ctx: Context, cur: Song?, next: Song): String {
         val mode = aiMode(ctx)
@@ -396,28 +414,116 @@ object Announcer {
             cleanGenre.takeIf { it.isNotBlank() }?.let { "genre: $it" },
         ).joinToString("; ")
         val styleIdx = style(ctx)
-        val who = STYLES.getOrElse(styleIdx) { STYLES[0] }.second
-        val example = when (styleIdx) {
-            1 -> "Oh yeah, Open Waves, we are not slowing down for a second today! Hope you've got the volume cranked up because this next track is an absolute classic. Get ready to turn it up for Thunderstruck by AC/DC!"
-            2 -> "Hope your night is treating you right out there on Open Waves. Take a deep breath, kick back, and let the late-night vibe carry you along. Drifting smoothly into our next track, here's Dreams by Fleetwood Mac."
-            3 -> "Zero commercials, zero traffic updates, and zero weird algorithm guesses — just your own great taste right here on Open Waves. If you don't sing along to this next one, I'm definitely judging you. Coming up, Africa by Toto!"
-            else -> "Hope you're having an awesome day and enjoying the tunes here on Open Waves! Nothing beats your own playlist rolling smoothly from one great track to the next. Coming up right now, here's Dreams by Fleetwood Mac."
-        }
         val lenIdx = length(ctx)
-        val (lenSpec, maxTok, maxChars) = when (lenIdx) {
-            0 -> Triple("1 short, punchy sentence (10 to 16 words total, about 5 to 7 seconds spoken)", 45, 160)
-            2 -> Triple("2 to 3 lively sentences (34 to 46 words total, about 15 to 18 seconds spoken)", 115, 360)
-            else -> Triple("1 to 2 natural, lively sentences (20 to 30 words total, about 9 to 12 seconds spoken)", 75, 250)
+        val who = STYLES.getOrElse(styleIdx) { STYLES[0] }.second
+        // Drop the station name ("You're listening to Open Waves") naturally every ~3-5 songs, never back-to-back
+        val mentionStation = (sinceStationId >= 3 && rng.nextInt(3) == 0) || sinceStationId >= 5
+        sinceStationId = if (mentionStation) 0 else sinceStationId + 1
+
+        val stationRule = if (mentionStation)
+            "Naturally mention the station name 'Open Waves' once (e.g. 'You're listening to Open Waves')."
+        else
+            "Do NOT say 'Open Waves' this time."
+
+        val shortExamples = listOf(
+            "Up next, Dreams by Fleetwood Mac.",
+            "Here comes Thunderstruck by AC/DC!",
+            "Rolling straight into Africa by Toto.",
+            "Coming up now, Billie Jean by Michael Jackson.",
+            "Next on the deck, Hotel California by Eagles.",
+            "This one's Dreams by Fleetwood Mac.",
+        )
+        val medExamples = when (styleIdx) {
+            1 -> listOf(
+                "Keeping the energy sky high — crank it up because here comes Thunderstruck by AC/DC!",
+                "No slowing down now! Get ready to turn the volume up for Africa by Toto!",
+                "That last one hit hard, and we're keeping the momentum rolling with Thunderstruck by AC/DC!",
+            )
+            2 -> listOf(
+                "Easy does it tonight. Let that last track drift away as we ease into Dreams by Fleetwood Mac.",
+                "Kick back, breathe out, and let this next one wash over you — here's Dreams by Fleetwood Mac.",
+                "Keeping the night smooth and unhurried. Rolling gently into Hotel California by Eagles.",
+            )
+            3 -> listOf(
+                "Zero commercials, zero traffic updates — just great taste. Coming up, Africa by Toto!",
+                "If you don't hum along to this next one, I'm quietly judging you. Here's Dreams by Fleetwood Mac!",
+                "Your streaming algorithm could never put together a run like this. Up next, Africa by Toto!",
+            )
+            else -> listOf(
+                "Hope your day's treating you well! Rolling smoothly into a great one — here's Dreams by Fleetwood Mac.",
+                "Nothing beats your own music flowing track to track. Coming up next, Africa by Toto!",
+                "Loving this mix so far! Keeping the good vibes moving with Hotel California by Eagles.",
+            )
         }
-        val system = "You are $who on Open Waves. Reply with ONLY what you say out loud: $lenSpec. " +
-            "Sound like a real radio DJ — open with banter matching your style (don't just read the song name!), mention the song that just finished if given, then smoothly introduce the exact next song title and artist. " +
+        val longExamples = when (styleIdx) {
+            1 -> listOf(
+                "Oh yeah, we are not slowing down for a second! Hope you've got the volume cranked up because this next track is an absolute classic. Get ready to turn it up for Thunderstruck by AC/DC!",
+                "What a run of tunes we've got going right now! If you're driving, working, or just vibing out, this next one's going to lift the roof right off. Dropping Thunderstruck by AC/DC!",
+            )
+            2 -> listOf(
+                "Hope your night is treating you right out there. Take a deep breath, kick back, and let the late-night vibe carry you along. Drifting smoothly into our next track, here's Dreams by Fleetwood Mac.",
+                "There's nothing better than letting the night slow down with the right soundtrack. Letting that last one fade gently into the quiet, here comes Hotel California by Eagles.",
+            )
+            3 -> listOf(
+                "Zero commercials, zero traffic updates, and zero weird algorithm guesses — just your own great taste right here. If you don't sing along to this next one, I'm definitely judging you. Coming up, Africa by Toto!",
+                "Still no ads, still no weather report, and honestly you're better off without me reading the news anyway. Let's stick to what matters — up next, Dreams by Fleetwood Mac!",
+            )
+            else -> listOf(
+                "Hope you're having an awesome day and enjoying the tunes! Nothing beats your own playlist rolling smoothly from one great track to the next. Coming up right now, here's Dreams by Fleetwood Mac.",
+                "So good to have you along for the ride today! That last track set the tone nicely, and we've got another beauty lined up right behind it. Here comes Africa by Toto.",
+            )
+        }
+
+        val angles = listOf(
+            "Start with a fresh, casual radio check-in (avoid saying 'Hey, folks').",
+            "Bridge smoothly from the song that just finished into the next track.",
+            "Build a little anticipation before naming the artist and title.",
+            "Keep it effortless and conversational, like a relaxed mid-show link.",
+            "Give a quick nod to the listener's playlist taste before dropping the track.",
+            "Start straight with the vibe or energy of the moment, then introduce the song.",
+            "Tease the artist first, then land on the song title.",
+            "Sound like you're smiling on the mic and genuinely excited for this track.",
+            "Keep the phrasing crisp and punchy with a natural radio rhythm.",
+            "Give a warm, human one-liner before cueing up the next song.",
+        )
+        val angle = angles[pickFresh(angles.size, recentAngles)]
+
+        val (lenSpec, maxTok, maxChars, example, extraRule) = when (lenIdx) {
+            0 -> {
+                val ex = shortExamples[rng.nextInt(shortExamples.size)]
+                val exWithStation = if (mentionStation) "You're listening to Open Waves. $ex" else ex
+                listOf(
+                    "ONE very short intro ONLY (5 to 11 words total, ~3 to 4 seconds spoken). Just introduce the next song title and artist — NO banter, NO extra commentary",
+                    32, 110, exWithStation,
+                    "Be brief and vary how you phrase the intro so it never sounds repetitive."
+                )
+            }
+            2 -> {
+                val ex = longExamples[rng.nextInt(longExamples.size)]
+                listOf(
+                    "2 to 3 lively sentences (34 to 46 words total, ~15 to 18 seconds spoken)",
+                    115, 360, ex,
+                    "$angle Mention the song that just finished if given, then smoothly introduce the exact next song title and artist."
+                )
+            }
+            else -> {
+                val ex = medExamples[rng.nextInt(medExamples.size)]
+                listOf(
+                    "1 to 2 natural sentences (18 to 28 words total, ~8 to 11 seconds spoken)",
+                    68, 225, ex,
+                    "$angle Smoothly introduce the exact next song title and artist."
+                )
+            }
+        }
+        val system = "You are $who. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
+            "${extraRule as String} $stationRule " +
             "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
-            "Example: \"$example\""
+            "Example: \"${example as String}\""
         val prompt = buildString {
-            if (cur != null) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
+            if (cur != null && lenIdx > 0) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Next song: \"${next.title}\" by ${next.artist}")
-            if (facts.isNotEmpty()) append(" ($facts)")
-            append(". Say a lively radio DJ link into the next song.")
+            if (facts.isNotEmpty() && lenIdx > 0) append(" ($facts)")
+            append(if (lenIdx == 0) ". Give a very short, fresh intro naming the next song." else ". Say a fresh radio DJ link into the next song.")
         }
         val modelId = when (mode) {
             1 -> helium314.keyboard.latin.WritingTools.QUICK.id
@@ -428,7 +534,7 @@ object Announcer {
         val artistWord = next.artist.split(Regex("[^A-Za-z0-9]+")).firstOrNull { it.length >= 3 }?.lowercase()
         val written = runCatching {
             if (modelId == null) null
-            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok, modelId = modelId) }
+            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok as Int, modelId = modelId) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.let { raw ->
@@ -436,65 +542,113 @@ object Announcer {
                 if (raw.isNotEmpty() && raw.last() in ".!?") raw
                 else {
                     val cut = raw.lastIndexOfAny(charArrayOf('.', '!', '?'))
-                    if (cut >= 25) raw.substring(0, cut + 1).trim() else raw
+                    if (cut >= 18) raw.substring(0, cut + 1).trim() else raw
                 }
             }
             ?.takeIf { out ->
                 val low = out.lowercase()
-                out.length in 10..maxChars &&
+                out.length in 10..(maxChars as Int) &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
         if (written != null) return written
-        // test 325 (Jarrod): distinct, brief real-radio DJ lines for each of the 4 styles
-        return builtInLine(style(ctx), cur, next)
+        // test 333 (Jarrod): large varied radio DJ pools matched to Short/Medium/Long with occasional station ID
+        return builtInLine(styleIdx, lenIdx, cur, next, mentionStation)
     }
 
-    private var lastPick = -1
-    private fun builtInLine(styleIdx: Int, cur: Song?, next: Song): String {
+    private fun builtInLine(styleIdx: Int, lenIdx: Int, cur: Song?, next: Song, mentionStation: Boolean): String {
         val t = next.title
         val a = next.artist
         val yr = if (next.year > 0) " from ${next.year}" else ""
         val prev = cur?.artist?.takeIf { it.isNotBlank() && it != "Unknown artist" }
+        val stPrefix = if (mentionStation) listOf(
+            "You're listening to Open Waves. ",
+            "Right here on Open Waves — ",
+            "On Open Waves, ",
+        )[rng.nextInt(3)] else ""
+
+        if (lenIdx == 0) {
+            // Short: crisp, varied next-song intros only (~5-10 words)
+            val shortPool = listOf(
+                "Up next, $t by $a.",
+                "Here comes $t by $a.",
+                "Coming up now, $t by $a.",
+                "Rolling into $t by $a.",
+                "Next up, $a with $t.",
+                "This one's $t by $a.",
+                "Cueing up $t by $a.",
+                "Now playing next, $t by $a.",
+                "Here's $a with $t.",
+                "Dropping $t by $a next.",
+                "Sliding into $t by $a.",
+                "Next on the deck, $t by $a.",
+                "Let's hear $t by $a.",
+                "Over to $a with $t.",
+                "On deck right now, $t by $a.",
+                "Bringing in $t by $a.",
+            )
+            return stPrefix + shortPool[pickFresh(shortPool.size, recentPicks)]
+        }
+
         val pool = when (styleIdx) {
             1 -> listOf( // Hyped
                 "Turn it up! Dropping $t by $a$yr right now!",
-                "Hands up, Open Waves — here comes $t by $a!",
+                "Hands up — here comes $t by $a!",
                 "No slowing down! Crank the volume for $t by $a$yr!",
                 if (prev != null) "From $prev straight into a banger — $t by $a!" else "Let's keep the energy flying! Next up, $t by $a!",
                 "Big tune incoming! Get ready for $t by $a$yr!",
                 "Hope you're ready for this one — $t by $a, let's go!",
+                "Keep that energy loud! Rolling straight into $t by $a!",
+                "Oh yeah, this one always hits! Here comes $t by $a$yr!",
+                "Don't touch that dial — we're turning it all the way up for $t by $a!",
+                "Here's one to wake up the speakers — $a with $t!",
+                "Momentum's sky high right now! Dropping $t by $a!",
+                "Time to turn the bass up — next up, $t by $a$yr!",
             )
             2 -> listOf( // Late night
-                "Easy listening on Open Waves. Drifting into $t by $a$yr.",
+                "Easy listening tonight. Drifting into $t by $a$yr.",
                 "Settle in and unwind. Up next, $t by $a.",
                 "Keeping the night smooth for you. Here's $t by $a$yr.",
                 "Late night vibes rolling on with $t by $a.",
                 if (prev != null) "Letting $prev fade out gently. Next up, $t by $a." else "Take a breather and enjoy this one — $t by $a.",
                 "Just good music, no rush. Here's $t by $a$yr.",
+                "Dim the lights and let this one carry you — $t by $a.",
+                "Smooth, unhurried, and right on cue. Coming up, $t by $a$yr.",
+                "Hope your night's treating you gently. Here's $a with $t.",
+                "Easing softly into our next track — $t by $a.",
+                "Take a deep breath and sink into this one. Up next, $t by $a$yr.",
+                "Quiet hours, great soundtrack. Rolling into $t by $a.",
             )
             3 -> listOf( // Funny
                 "Zero ads, zero traffic reports, just $t by $a. You're welcome.",
                 "Your streaming algorithm could never pick this well. Up next, $t by $a$yr.",
                 "Scientifically proven to improve your mood — probably. Here's $t by $a.",
-                "If you don't sing along to $t by $a, I'm judging you.",
+                "If you don't sing along to $t by $a, I'm quietly judging you.",
                 "No, I'm not taking requests, I'm already playing $t by $a$yr.",
                 if (prev != null) "$prev was great, don't get me wrong, but wait till you hear $t by $a." else "Best radio station on your phone. Here's $t by $a.",
+                "Still no commercials, still no awkward morning show banter. Just $t by $a!",
+                "I'd give you a weather update, but $t by $a is way better.",
+                "Good news: you have great taste. Proof: up next is $t by $a$yr.",
+                "No skip button allowed on this one — here comes $t by $a!",
+                "Officially the best excuse to turn your volume up. Here's $a with $t.",
+                "Your playlist is doing all the heavy lifting today. Next up, $t by $a$yr.",
             )
             else -> listOf( // Friendly
                 "Hope you're enjoying the music! Coming up next, $t by $a$yr.",
-                "Good to have you tuned in to Open Waves. Here's $t by $a.",
+                "So good to have you along today. Here's $t by $a.",
                 "Hope your day's going great! Rolling into $t by $a$yr.",
                 if (prev != null) "Loving the vibe — that was $prev, and next up is $t by $a." else "Nothing beats your own playlist. Up next, $t by $a.",
-                "Thanks for hanging out on Open Waves. Here's a good one, $t by $a$yr.",
-                "Keeping the good tunes coming with $t by $a.",
+                "Thanks for hanging out with the tunes. Here's a good one, $t by $a$yr.",
+                "Keeping the good songs coming with $t by $a.",
+                "Always a pleasure spinning your favourites. Coming up, $t by $a$yr.",
+                "Great run of tracks we've got going! Next in line, $t by $a.",
+                "Wherever you're headed today, here's a great soundtrack — $t by $a.",
+                "Let's keep the flow going smoothly with $a and $t$yr.",
+                "Hope this next one puts a smile on your face — here's $t by $a.",
+                "One great song into the next. Cueing up $t by $a$yr.",
             )
         }
-        val r = java.util.Random()
-        var idx = r.nextInt(pool.size)
-        if (idx == lastPick && pool.size > 1) idx = (idx + 1) % pool.size
-        lastPick = idx
-        return pool[idx]
+        return stPrefix + pool[pickFresh(pool.size, recentPicks)]
     }
 
     /** Called by the music service when a new song starts. */
