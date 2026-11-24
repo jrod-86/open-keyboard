@@ -661,12 +661,13 @@ object Announcer {
                 else -> null
             }
         }
-        val stPrefix = if (mentionStation) listOf(
-            "You're listening to Open Waves. ",
-            "Right here on Open Waves — ",
-            "On Open Waves, ",
-            "Welcome back to Open Waves. ",
+        val stSentence = if (mentionStation) listOf(
+            "You're listening to Open Waves.",
+            "Right here on Open Waves.",
+            "This is Open Waves.",
+            "Welcome back to Open Waves.",
         )[rng.nextInt(4)] else ""
+        val stPrefix = if (stSentence.isNotEmpty()) "$stSentence " else ""
 
         // 1. Short (~10-16 words / ~5-7 s): brief style-matched commentary + next song only
         if (lenIdx == 0) {
@@ -815,50 +816,84 @@ object Announcer {
             add("Whether you're singing along or just cruising, this one never misses.")
         }
 
+        val opener = openers[pickFresh(openers.size, recentPicks)]
+        val middle = if (lenIdx == 2) middles[pickFresh(middles.size, recentMiddles)] else ""
+        // Never repeat the release year if the middle beat already mentioned it
+        val yrInMiddle = next.year > 0 && next.year.toString() in middle
+        val yrTail = if (yrInMiddle) "" else yr
+
         val intros = when (styleIdx) {
             1 -> listOf(
-                "Get ready to turn it up for $t by $a$yr!",
-                "Dropping $t by $a$yr right now — let's go!",
-                "Crank the speakers, here comes $t by $a$yr!",
-                "Coming in hot right now, it's $a with $t$yr!",
-                "No holding back — here's $t by $a$yr!",
-                "Turning it all the way up for $t by $a$yr!",
+                "Get ready to turn it up for $t by $a$yrTail!",
+                "Dropping $t by $a$yrTail right now — let's go!",
+                "Crank the speakers, here comes $t by $a$yrTail!",
+                "Coming in hot right now, it's $a with $t$yrTail!",
+                "No holding back — here's $t by $a$yrTail!",
+                "Turning it all the way up for $t by $a$yrTail!",
+                "Hands up for $a and $t$yrTail!",
+                "Letting $t by $a$yrTail rip right now!",
+                "Brace yourself — next up is $t by $a$yrTail!",
+                "Bringing the roof down with $a and $t$yrTail!",
+                "Volume knob to the right for $t by $a$yrTail!",
+                "Hitting the gas with $t by $a$yrTail!",
             )
             2 -> listOf(
-                "Drifting smoothly into our next track, here's $t by $a$yr.",
-                "Easing right into $t by $a$yr.",
-                "Rolling gently into the next one — $a with $t$yr.",
-                "Settle in as we bring up $t by $a$yr.",
-                "Letting this next one take over — here's $t by $a$yr.",
-                "Floating quietly into $t by $a$yr.",
+                "Drifting smoothly into our next track, here's $t by $a$yrTail.",
+                "Easing right into $t by $a$yrTail.",
+                "Rolling gently into the next one — $a with $t$yrTail.",
+                "Settle in as we bring up $t by $a$yrTail.",
+                "Letting this next one take over — here's $t by $a$yrTail.",
+                "Floating quietly into $t by $a$yrTail.",
+                "Taking it nice and easy with $a and $t$yrTail.",
+                "Gliding straight into $t by $a$yrTail.",
+                "Here's $t by $a$yrTail to keep the mood right.",
+                "Letting $a take the wheel now with $t$yrTail.",
+                "Slowing down for a classic — $t by $a$yrTail.",
+                "Softly bringing in $t by $a$yrTail.",
             )
             3 -> listOf(
-                "Coming up right now, $t by $a$yr!",
-                "Up next on your unofficial favourite station, $t by $a$yr.",
-                "Cueing up $a with $t$yr — enjoy!",
-                "Here comes $t by $a$yr, no skipping allowed.",
-                "Rolling straight into $t by $a$yr!",
-                "Over to $a and $t$yr.",
+                "Coming up right now, $t by $a$yrTail!",
+                "Up next on your unofficial favourite station, $t by $a$yrTail.",
+                "Cueing up $a with $t$yrTail — enjoy!",
+                "Here comes $t by $a$yrTail, no skipping allowed.",
+                "Rolling straight into $t by $a$yrTail!",
+                "Over to $a and $t$yrTail.",
+                "Handing the mic straight to $a with $t$yrTail.",
+                "Next on the deck: $t by $a$yrTail — you're welcome.",
+                "Let's see if you still remember every word to $t by $a$yrTail.",
+                "Spinning up $t by $a$yrTail right now!",
+                "Time for $a to steal the show with $t$yrTail.",
+                "Dropping $t by $a$yrTail — go ahead and sing along.",
             )
             else -> listOf(
-                "Coming up right now, here's $t by $a$yr.",
-                "Rolling smoothly into $t by $a$yr.",
-                "Next up on the deck, it's $a with $t$yr.",
-                "Cueing up a great one for you — $t by $a$yr.",
-                "Here comes $t by $a$yr.",
-                "Let's jump right into $t by $a$yr.",
+                "Coming up right now, here's $t by $a$yrTail.",
+                "Rolling smoothly into $t by $a$yrTail.",
+                "Next up on the deck, it's $a with $t$yrTail.",
+                "Cueing up a great one for you — $t by $a$yrTail.",
+                "Here comes $t by $a$yrTail.",
+                "Let's jump right into $t by $a$yrTail.",
+                "Bringing in $a with $t$yrTail.",
+                "Up next for your $timeOfDay, $t by $a$yrTail.",
+                "Keeping things moving nicely with $t by $a$yrTail.",
+                "Sliding straight into $a and $t$yrTail.",
+                "Here's a favourite — $t by $a$yrTail.",
+                "Over to $a now with $t$yrTail.",
             )
         }
 
-        val opener = openers[pickFresh(openers.size, recentPicks)]
         val intro = intros[pickFresh(intros.size, recentIntros)]
         return if (lenIdx == 2) {
-            // Long (~38-52 words / ~15-20 s): opener + middle beat + intro
-            val middle = middles[pickFresh(middles.size, recentMiddles)]
-            "$stPrefix$opener $middle $intro"
+            // Long (~38-52 words / ~15-20 s): vary sentence structure & station ID placement so cadence stays fresh
+            val parts = when (rng.nextInt(3)) {
+                0 -> listOf(stSentence, opener, middle, intro)
+                1 -> listOf(opener, stSentence, middle, intro)
+                else -> listOf(middle, opener, stSentence, intro)
+            }
+            parts.filter { it.isNotBlank() }.joinToString(" ")
         } else {
-            // Medium (~22-32 words / ~10-13 s): opener + intro
-            "$stPrefix$opener $intro"
+            // Medium (~22-32 words / ~10-13 s): opener + intro (occasionally station ID in the middle)
+            val parts = if (rng.nextBoolean()) listOf(stSentence, opener, intro) else listOf(opener, stSentence, intro)
+            parts.filter { it.isNotBlank() }.joinToString(" ")
         }
     }
 
