@@ -330,7 +330,8 @@ object Stems {
                     buf.position(info.offset); buf.limit(info.offset + info.size)
                     val frames = info.size / ((if (isFloat) 4 else 2) * channels)
                     if (n + frames > cap) {
-                        cap = maxOf(cap * 3 / 2, n + frames + SR)
+                        // Grow modestly (+15 s) instead of 1.5x to avoid 65 MB+ spike allocations on long tracks
+                        cap = n + frames + SR * 15
                         left = left.copyOf(cap); right = right.copyOf(cap)
                     }
                     if (isFloat) {
@@ -345,16 +346,27 @@ object Stems {
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outDone = true
                 }
             }
-            if (rate == SR) return left.copyOf(n) to right.copyOf(n)
+            if (rate == SR) {
+                if (n == left.size) return left to right
+                val lOut = left.copyOf(n); left = FloatArray(0)
+                val rOut = right.copyOf(n); right = FloatArray(0)
+                return lOut to rOut
+            }
             // other sample rates (48 kHz…): the model is made for 44.1 kHz
             val outN = (n.toLong() * SR / rate).toInt()
-            val l2 = FloatArray(outN); val r2 = FloatArray(outN)
             val step = rate.toDouble() / SR
+            val l2 = FloatArray(outN)
             for (i in 0 until outN) {
                 val pos = i * step; val k = pos.toInt(); val fr = (pos - k).toFloat()
-                val k1 = minOf(k + 1, n - 1)
-                l2[i] = left[k] + (left[k1] - left[k]) * fr; r2[i] = right[k] + (right[k1] - right[k]) * fr
+                l2[i] = left[k] + (left[minOf(k + 1, n - 1)] - left[k]) * fr
             }
+            left = FloatArray(0) // release before allocating r2
+            val r2 = FloatArray(outN)
+            for (i in 0 until outN) {
+                val pos = i * step; val k = pos.toInt(); val fr = (pos - k).toFloat()
+                r2[i] = right[k] + (right[minOf(k + 1, n - 1)] - right[k]) * fr
+            }
+            right = FloatArray(0)
             return l2 to r2
         } finally {
             runCatching { codec?.stop() }; runCatching { codec?.release() }; ex.release()
