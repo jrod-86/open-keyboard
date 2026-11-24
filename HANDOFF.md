@@ -2,8 +2,8 @@
 
 - **Last updated:** 2026-11-24 by Gemini (Antigravity)
 - **Active branch:** `claude/project-thread-1y9nzr` ([PR #12](https://github.com/jrod-86/open-keyboard/pull/12))
-- **Latest APK:** **test 329** (building via GitHub Actions → GitHub Pre-Release `test-329`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 330**
+- **Latest APK:** **test 330** (building via GitHub Actions → GitHub Pre-Release `test-330`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 331**
 
 ## Confirmed Working on S24 (23 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All

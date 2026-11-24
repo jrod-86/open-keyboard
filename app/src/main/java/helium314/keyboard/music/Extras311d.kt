@@ -250,6 +250,8 @@ object Announcer {
     }
     fun every(ctx: Context) = prefs(ctx).getInt("ann_every", 3)
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
+    /** test 330 (Jarrod): 0 = Short (~6-8 s), 1 = Medium (~12-15 s), 2 = Long (~18-22 s) */
+    fun length(ctx: Context) = prefs(ctx).getInt("ann_len", 1).coerceIn(0, 2)
     /** test 327 (Jarrod): 0 = Instant (built-in radio lines), 1 = Quick AI (1.1 GB), 2 = Better AI (2.5 GB) */
     fun aiMode(ctx: Context): Int {
         val p = prefs(ctx)
@@ -327,15 +329,15 @@ object Announcer {
         val next = p.getMediaItemAt(nextIndex).mediaId.toLongOrNull()?.let { lib.byId[it] } ?: return
         val left = p.duration - p.currentPosition
         val r = ready
-        // 2. ready and near the end: start at exact 50% of clip duration (+ fade-out + crossfade offset) before song end
-        // When Crossfade is on (e.g. 6 s), the new song starts blending in blendSec before p.duration, so shift earlier to land true 50/50
+        // 2. ready and near the end: start at 65% of clip duration (+ fade-out + crossfade offset) before song end
+        // so ~65% plays over the finishing song's outro and ~35% lands over the new song's intro ("hitting the post")
         if (r != null && r.forId == next.id) {
             val clipMs = (r.audio.size * 1000L) / helium314.keyboard.tts.ZonosTts.RATE
             val blendOffset = if (MusicSettings.blendOn) (MusicSettings.blendSec * 750L).toLong() else 0L
-            val startBeforeEndMs = (clipMs / 2L + FADE_OUT_MS + blendOffset).coerceIn(4_000L, 22_000L)
+            val startBeforeEndMs = ((clipMs * 65L) / 100L + FADE_OUT_MS + blendOffset).coerceIn(4_000L, 26_000L)
             if (left <= startBeforeEndMs && speaking?.isActive != true) {
                 ready = null; songsSince = 0; spokenFor = next.id
-                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, blendOff=${blendOffset}ms, 50/50 trigger=${startBeforeEndMs}ms)")
+                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, blendOff=${blendOffset}ms, 65/35 trigger=${startBeforeEndMs}ms)")
                 say(r.audio)
             }
             return
@@ -394,15 +396,21 @@ object Announcer {
             3 -> "Zero commercials, zero traffic updates, and zero weird algorithm guesses — just your own great taste right here on Open Waves. If you don't sing along to this next one, I'm definitely judging you. Coming up, Africa by Toto!"
             else -> "Hope you're having an awesome day and enjoying the tunes here on Open Waves! Nothing beats your own playlist rolling smoothly from one great track to the next. Coming up right now, here's Dreams by Fleetwood Mac."
         }
-        val system = "You are $who on Open Waves. Reply with ONLY what you say out loud: 2 to 3 natural, lively sentences (35 to 48 words total, about 15 to 20 seconds spoken). " +
-            "Sound like a real radio DJ — open with brief banter matching your style (don't just read the song name!), mention the song that just finished if given, then smoothly introduce the exact next song title and artist. " +
+        val lenIdx = length(ctx)
+        val (lenSpec, maxTok, maxChars) = when (lenIdx) {
+            0 -> Triple("1 short, punchy sentence (12 to 18 words total, about 6 to 8 seconds spoken)", 65, 220)
+            2 -> Triple("2 to 3 lively sentences (40 to 55 words total, about 18 to 22 seconds spoken)", 150, 480)
+            else -> Triple("2 natural, lively sentences (24 to 36 words total, about 12 to 15 seconds spoken)", 105, 340)
+        }
+        val system = "You are $who on Open Waves. Reply with ONLY what you say out loud: $lenSpec. " +
+            "Sound like a real radio DJ — open with banter matching your style (don't just read the song name!), mention the song that just finished if given, then smoothly introduce the exact next song title and artist. " +
             "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
             "Example: \"$example\""
         val prompt = buildString {
             if (cur != null) append("Just played: \"${cur.title}\" by ${cur.artist}. ")
             append("Next song: \"${next.title}\" by ${next.artist}")
             if (facts.isNotEmpty()) append(" ($facts)")
-            append(". Say a lively 15 to 20 second radio DJ link into the next song.")
+            append(". Say a lively radio DJ link into the next song.")
         }
         val modelId = when (mode) {
             1 -> helium314.keyboard.latin.WritingTools.QUICK.id
@@ -413,12 +421,12 @@ object Announcer {
         val artistWord = next.artist.split(Regex("[^A-Za-z0-9]+")).firstOrNull { it.length >= 3 }?.lowercase()
         val written = runCatching {
             if (modelId == null) null
-            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, 130, modelId = modelId) }
+            else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok, modelId = modelId) }
         }.getOrNull()
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
             ?.takeIf { out ->
                 val low = out.lowercase()
-                out.length in 10..420 &&
+                out.length in 10..maxChars &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
@@ -559,6 +567,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var on by remember { mutableStateOf(Announcer.on(ctx)) }
     var every by remember { mutableIntStateOf(Announcer.every(ctx)) }
     var style by remember { mutableIntStateOf(Announcer.style(ctx)) }
+    var msgLen by remember { mutableIntStateOf(Announcer.length(ctx)) }
     var sample by remember { mutableStateOf<String?>(null) }
     var making by remember { mutableStateOf(false) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -643,6 +652,12 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
             Text("Style", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 Announcer.STYLES.forEachIndexed { i, (label, _) -> chip(label, style == i) { style = i; Announcer.set(ctx, "ann_style", i) } }
+            }
+            Text("Message length", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
+            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
+                listOf("Short", "Medium", "Long").forEachIndexed { i, label ->
+                    chip(label, msgLen == i) { msgLen = i; Announcer.set(ctx, "ann_len", i) }
+                }
             }
             Text("Voice: Savannah (Zonos)", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 12.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -112,3 +112,4 @@
 | 327 | 2026-11-24 | DJ Announcer 3-way writer picker (`Instant` / `Quick AI (1.1 GB)` / `Better AI (2.5 GB)`) with per-model download buttons, deduplicated genres, tighter example-guided prompt, and accuracy guardrail rejecting URLs or wrong song/artist mentions | Waiting |
 | 328 | 2026-11-24 | DJ Announcer exact 50/50 split timing (measures pre-synthesised voice clip duration so 50% plays on the outro fade-out and 50% on the intro fade-in) + 15–20 s (35–48 word) lively radio-DJ banter prompt with style-specific examples | Waiting |
 | 329 | 2026-11-24 | Fix DJ 50/50 split timing when Crossfade is on: shift trigger earlier by `blendSec * 750ms` so Savannah actually starts 50% before the crossfade into the new song instead of right as the new song begins | Waiting |
+| 330 | 2026-11-24 | DJ Announcer 65% outro / 35% intro transition split (with Crossfade `blendOffset`) + new **Message length** picker in DJ Settings (`Short` / `Medium` / `Long`) | Waiting |
