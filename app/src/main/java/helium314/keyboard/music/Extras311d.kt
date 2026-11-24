@@ -1078,9 +1078,9 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 chip("Better AI (2.5 GB)", aiMode == 2) { aiMode = 2; Announcer.set(ctx, "ann_ai_mode", 2) }
             }
             Text(when (aiMode) {
-                1 -> "Fast, light AI banter with accuracy checks (falls back to built-in lines if needed)."
-                2 -> "Smartest, warmest AI banter — best on phones with 8 GB+ RAM."
-                else -> "Built-in real-radio lines: instant, 0 MB extra RAM, coolest on battery."
+                1 -> "🔋 Medium battery · Small on-phone AI writes custom lines fast (~5–10 s) with accuracy checks."
+                2 -> "🔋 High battery · Large on-phone AI writes the smartest, funniest DJ banter — best with 'Every 2nd' or 'Every 3rd' song (8 GB+ RAM)."
+                else -> "🔋 Low battery · Built-in radio engine (1,000+ varied lines, 0 MB extra AI RAM, 100% accurate facts)."
             }, Modifier.padding(horizontal = 16.dp, vertical = 2.dp), fontSize = 12.sp, color = dim)
             if (aiMode == 1 && !quickReady) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
