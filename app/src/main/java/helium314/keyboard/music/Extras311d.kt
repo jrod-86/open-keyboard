@@ -395,6 +395,8 @@ object Announcer {
 
     private val rng = java.util.Random()
     private val recentPicks = ArrayDeque<Int>()
+    private val recentMiddles = ArrayDeque<Int>()
+    private val recentIntros = ArrayDeque<Int>()
     private val recentAngles = ArrayDeque<Int>()
     private val recentLines = ArrayDeque<String>()
     private var sinceStationId = 2
@@ -635,103 +637,229 @@ object Announcer {
             while (recentLines.size > 4) recentLines.removeFirst()
             return written
         }
-        // test 333 (Jarrod): large varied radio DJ pools matched to Short/Medium/Long with occasional station ID
-        return builtInLine(styleIdx, lenIdx, cur, next, mentionStation)
+        // test 345 (Jarrod): unified Short/Medium/Long composable radio DJ lines for Instant mode & fallback
+        return builtInLine(ctx, styleIdx, lenIdx, cur, next, mentionStation, timeOfDay)
     }
 
-    private fun builtInLine(styleIdx: Int, lenIdx: Int, cur: Song?, next: Song, mentionStation: Boolean): String {
+    private fun builtInLine(ctx: Context, styleIdx: Int, lenIdx: Int, cur: Song?, next: Song, mentionStation: Boolean, timeOfDay: String): String {
         val t = next.title
         val a = next.artist
         val yr = if (next.year > 0) " from ${next.year}" else ""
-        val prev = cur?.artist?.takeIf { it.isNotBlank() && it != "Unknown artist" }
+        val prevA = cur?.artist?.takeIf { it.isNotBlank() && it != "Unknown artist" }
+        val prevT = cur?.title?.takeIf { it.isNotBlank() }
+        val pop = Popularity.known(ctx, next)
+        val chartFact = pop?.let {
+            val spot = listOfNotNull(
+                it.au.takeIf { n -> n > 0 }?.let { n -> "number $n in Australia" },
+                it.us.takeIf { n -> n > 0 }?.let { n -> "number $n in the US" },
+                it.uk.takeIf { n -> n > 0 }?.let { n -> "number $n in the UK" },
+            ).firstOrNull()
+            val y = it.year.takeIf { v -> v > 0 } ?: next.year.takeIf { v -> v > 0 }
+            when {
+                spot != null && y != null -> "That one originally reached $spot back in $y."
+                spot != null -> "That one originally hit $spot when it came out."
+                else -> null
+            }
+        }
         val stPrefix = if (mentionStation) listOf(
             "You're listening to Open Waves. ",
             "Right here on Open Waves — ",
             "On Open Waves, ",
-        )[rng.nextInt(3)] else ""
+            "Welcome back to Open Waves. ",
+        )[rng.nextInt(4)] else ""
 
+        // 1. Short (~10-16 words / ~5-7 s): brief style-matched commentary + next song only
         if (lenIdx == 0) {
-            // Short: brief 1-liner DJ commentary + next song (~10-15 words)
-            val shortPool = listOf(
-                "Hope you're enjoying the mix — up next, $t by $a.",
-                "Keeping the good vibes rolling, here comes $t by $a.",
-                "Here's a great one coming up now — $t by $a.",
-                "Loving how this playlist flows — rolling into $t by $a.",
-                "Can't go wrong with this one — next up, $a with $t.",
-                "Great tune on deck right now — this is $t by $a.",
-                "Smoothly into the next track, cueing up $t by $a.",
-                "Turn it up a notch — here's $a with $t.",
-                "Keeping the music moving nicely — dropping $t by $a next.",
-                "Here's another favourite for you, sliding into $t by $a.",
-                "One great song into the next — $t by $a.",
-                "Hope this one hits the spot — let's hear $t by $a.",
-                "Right on cue for this mix — over to $a with $t.",
-                "Good taste all day long — on deck now, $t by $a.",
-                "Settle in for this one — bringing in $t by $a.",
-                "Always a pleasure spinning this track — $t by $a.",
-            )
+            val shortPool = when (styleIdx) {
+                1 -> listOf(
+                    "Keep the energy loud — up next, $t by $a!",
+                    "Turn the volume right up, here comes $t by $a!",
+                    "No slowing down now — dropping $t by $a!",
+                    "Big tune incoming, get ready for $t by $a!",
+                    "Hands up for this one — here's $a with $t!",
+                    "Wake up the speakers — rolling straight into $t by $a!",
+                    "Momentum's sky high right now, cueing up $t by $a!",
+                    "Time to crank the bass — coming up, $t by $a!",
+                    "Oh yeah, this one always hits — $t by $a!",
+                    "Let's keep the pace flying with $a and $t!",
+                    "Don't touch that dial — here comes $t by $a!",
+                    "Here's a proper crowd-pleaser — $t by $a!",
+                )
+                2 -> listOf(
+                    "Easy does it this $timeOfDay — drifting into $t by $a.",
+                    "Kick back and unwind with $t by $a.",
+                    "Keeping things smooth and unhurried — up next, $t by $a.",
+                    "Take a breather and enjoy this one, $t by $a.",
+                    "Dim the lights and let this one carry you — $t by $a.",
+                    "Smooth, mellow, and right on cue — here's $a with $t.",
+                    "Just good music, no rush — rolling into $t by $a.",
+                    "Easing gently into our next track, $t by $a.",
+                    "Sink into the groove with $a and $t.",
+                    "Quiet moments deserve a great soundtrack — here's $t by $a.",
+                    "Letting the melody take over now with $t by $a.",
+                    "Soft, steady, and easy on the ears — $t by $a.",
+                )
+                3 -> listOf(
+                    "Zero commercials, just great taste — up next, $t by $a!",
+                    "If you don't hum along, I'm quietly judging you — here's $t by $a!",
+                    "No skip button allowed on this one — here comes $t by $a!",
+                    "Scientifically proven to lift your mood, probably — $t by $a!",
+                    "Your algorithm could never pick this well — up next, $t by $a!",
+                    "Officially the best excuse to turn it up — $a with $t!",
+                    "Your playlist is doing all the heavy lifting today — $t by $a!",
+                    "No traffic report, no weather, just $t by $a!",
+                    "Not taking requests, I'm already playing $t by $a!",
+                    "Good news: you have great taste. Proof: $t by $a!",
+                    "Try not to tap the steering wheel to $t by $a!",
+                    "Zero awkward morning-show banter, just $t by $a!",
+                )
+                else -> listOf(
+                    "Hope your $timeOfDay is going great — up next, $t by $a.",
+                    "Loving how this playlist flows — rolling into $t by $a.",
+                    "Here's a great one coming up now — $t by $a.",
+                    "Can't go wrong with this track — next up, $a with $t.",
+                    "Keeping the good tunes moving with $t by $a.",
+                    "Always a pleasure spinning this one — here's $t by $a.",
+                    "Hope this next track puts a smile on your face — $t by $a.",
+                    "Great song on deck right now — this is $t by $a.",
+                    "Smoothly into the next tune, cueing up $t by $a.",
+                    "Right on cue for your $timeOfDay — over to $a with $t.",
+                    "Nothing beats your own music — bringing in $t by $a.",
+                    "One great track right into the next — $t by $a.",
+                )
+            }
             return stPrefix + shortPool[pickFresh(shortPool.size, recentPicks)]
         }
 
-        val pool = when (styleIdx) {
-            1 -> listOf( // Hyped
-                "Turn it up! Dropping $t by $a$yr right now!",
-                "Hands up — here comes $t by $a!",
-                "No slowing down! Crank the volume for $t by $a$yr!",
-                if (prev != null) "From $prev straight into a banger — $t by $a!" else "Let's keep the energy flying! Next up, $t by $a!",
-                "Big tune incoming! Get ready for $t by $a$yr!",
-                "Hope you're ready for this one — $t by $a, let's go!",
-                "Keep that energy loud! Rolling straight into $t by $a!",
-                "Oh yeah, this one always hits! Here comes $t by $a$yr!",
-                "Don't touch that dial — we're turning it all the way up for $t by $a!",
-                "Here's one to wake up the speakers — $a with $t!",
-                "Momentum's sky high right now! Dropping $t by $a!",
-                "Time to turn the bass up — next up, $t by $a$yr!",
+        // 2. Composable building blocks for Medium (~22-32 words / ~10-13 s) and Long (~38-52 words / ~15-20 s)
+        val openers = when (styleIdx) {
+            1 -> listOf(
+                "Oh yeah, we are not slowing down for a second this $timeOfDay!",
+                "Hope you've got the volume cranked up because this mix is on fire!",
+                "What a run of tunes we've got rolling right now!",
+                "Keeping the energy sky high for your $timeOfDay drive!",
+                "If you're cruising, working, or just vibing out, turn those speakers up!",
+                "No brakes on this playlist — every track is hitting just right!",
+                "Hands on the wheel and volume on high, because we're keeping the party moving!",
+                "That bassline energy isn't going anywhere anytime soon!",
+                "Big soundtrack energy coming through loud and clear this $timeOfDay!",
+                "Every single track on this list has been an absolute winner so far!",
+                "Let's keep the adrenaline pumping with another massive favourite!",
+                "You've built a seriously unstoppable playlist here!",
             )
-            2 -> listOf( // Late night
-                "Easy listening tonight. Drifting into $t by $a$yr.",
-                "Settle in and unwind. Up next, $t by $a.",
-                "Keeping the night smooth for you. Here's $t by $a$yr.",
-                "Late night vibes rolling on with $t by $a.",
-                if (prev != null) "Letting $prev fade out gently. Next up, $t by $a." else "Take a breather and enjoy this one — $t by $a.",
-                "Just good music, no rush. Here's $t by $a$yr.",
-                "Dim the lights and let this one carry you — $t by $a.",
-                "Smooth, unhurried, and right on cue. Coming up, $t by $a$yr.",
-                "Hope your night's treating you gently. Here's $a with $t.",
-                "Easing softly into our next track — $t by $a.",
-                "Take a deep breath and sink into this one. Up next, $t by $a$yr.",
-                "Quiet hours, great soundtrack. Rolling into $t by $a.",
+            2 -> listOf(
+                "Hope this $timeOfDay is treating you gently out there.",
+                "Take a deep breath, kick back, and let the music carry you along.",
+                "There's nothing better than letting the pace slow down with the right soundtrack.",
+                "Easy listening all the way — no rush, no noise, just great songs.",
+                "Keeping the mood smooth, warm, and effortless for you.",
+                "Let everything else fade into the background for a few minutes.",
+                "Just good music flowing quietly from one favourite to the next.",
+                "Sometimes all you need is a steady groove and a little peace and quiet.",
+                "Settling right into the pocket with another laid-back classic.",
+                "Low-key, unhurried, and exactly the right energy for this $timeOfDay.",
+                "Letting the rhythm breathe and taking our time with every track.",
+                "Smooth sailing all the way through your collection.",
             )
-            3 -> listOf( // Funny
-                "Zero ads, zero traffic reports, just $t by $a. You're welcome.",
-                "Your streaming algorithm could never pick this well. Up next, $t by $a$yr.",
-                "Scientifically proven to improve your mood — probably. Here's $t by $a.",
-                "If you don't sing along to $t by $a, I'm quietly judging you.",
-                "No, I'm not taking requests, I'm already playing $t by $a$yr.",
-                if (prev != null) "$prev was great, don't get me wrong, but wait till you hear $t by $a." else "Best radio station on your phone. Here's $t by $a.",
-                "Still no commercials, still no awkward morning show banter. Just $t by $a!",
-                "I'd give you a weather update, but $t by $a is way better.",
-                "Good news: you have great taste. Proof: up next is $t by $a$yr.",
-                "No skip button allowed on this one — here comes $t by $a!",
-                "Officially the best excuse to turn your volume up. Here's $a with $t.",
-                "Your playlist is doing all the heavy lifting today. Next up, $t by $a$yr.",
+            3 -> listOf(
+                "Still zero commercials, zero traffic updates, and zero awkward radio jingles.",
+                "Your streaming algorithm could spend a decade trying and still never build a run like this.",
+                "I'd read you the weather forecast, but honestly you're way better off just listening to the music.",
+                "Good news: your music taste is officially undefeated this $timeOfDay.",
+                "No callers, no prize giveaways, and no annoying airhorns — just your own bangers.",
+                "Scientifically proven to make any $timeOfDay at least forty percent better — probably.",
+                "Your playlist is doing all the heavy lifting right now and I'm just here to take the credit.",
+                "Fair warning: if you don't at least mouth the chorus on this next one, I am quietly judging you.",
+                "No, I'm not taking requests — mostly because you already picked a better song than I could.",
+                "Best radio station on your phone, and the studio budget is literally zero dollars.",
+                "Try not to tap the steering wheel or nod your head on this next track — impossible challenge.",
+                "Who needs a morning show crew laughing at their own jokes when you've got tunes like these?",
             )
-            else -> listOf( // Friendly
-                "Hope you're enjoying the music! Coming up next, $t by $a$yr.",
-                "So good to have you along today. Here's $t by $a.",
-                "Hope your day's going great! Rolling into $t by $a$yr.",
-                if (prev != null) "Loving the vibe — that was $prev, and next up is $t by $a." else "Nothing beats your own playlist. Up next, $t by $a.",
-                "Thanks for hanging out with the tunes. Here's a good one, $t by $a$yr.",
-                "Keeping the good songs coming with $t by $a.",
-                "Always a pleasure spinning your favourites. Coming up, $t by $a$yr.",
-                "Great run of tracks we've got going! Next in line, $t by $a.",
-                "Wherever you're headed today, here's a great soundtrack — $t by $a.",
-                "Let's keep the flow going smoothly with $a and $t$yr.",
-                "Hope this next one puts a smile on your face — here's $t by $a.",
-                "One great song into the next. Cueing up $t by $a$yr.",
+            else -> listOf(
+                "Hope you're having an awesome $timeOfDay and enjoying the tunes!",
+                "So good to have you along for the ride this $timeOfDay.",
+                "Nothing beats your own music collection rolling smoothly from one great song to the next.",
+                "Loving the flow of this playlist — every track has been landing right on the mark.",
+                "Wherever you're headed this $timeOfDay, you've got a cracking soundtrack for it.",
+                "Thanks for hanging out and letting the good songs roll.",
+                "Always a pleasure spinning through your favourites with you.",
+                "That's the beauty of your own library — zero filler, just the songs you actually love.",
+                "Keeping the good company and great melodies going strong this $timeOfDay.",
+                "One great track wraps up and another favourite is already lined up on the deck.",
+                "Hope the road ahead is smooth and the speakers are sounding great.",
+                "You really can't beat a solid run of classics to keep the $timeOfDay moving nicely.",
             )
         }
-        return stPrefix + pool[pickFresh(pool.size, recentPicks)]
+
+        val middles = buildList {
+            if (prevA != null && prevT != null) {
+                add("That was $prevT by $prevA setting the tone nicely.")
+                add("We just wrapped up $prevA with $prevT, and the next pick fits right in.")
+                add("Letting $prevT by $prevA fade out smoothly behind us.")
+                add("$prevA did a great job with $prevT, and we're keeping that momentum alive.")
+            } else if (prevA != null) {
+                add("That last one from $prevA set the vibe nicely.")
+                add("Letting $prevA fade out smoothly as we cue up the next deck.")
+            }
+            if (chartFact != null) {
+                add(chartFact)
+                add("Fun bit of history on this next one: ${chartFact.replaceFirstChar { it.lowercase() }}")
+            }
+            if (next.year > 0) {
+                add("We're taking a quick trip back to ${next.year} for this next one.")
+                add("This one's been a favourite ever since it first came out in ${next.year}.")
+            }
+            add("It's the kind of track you hear the first two seconds of and immediately recognise.")
+            add("Always hits just as good as the very first time you heard it.")
+            add("Definitely one of those songs that deserves a little extra volume.")
+            add("Whether you're singing along or just cruising, this one never misses.")
+        }
+
+        val intros = when (styleIdx) {
+            1 -> listOf(
+                "Get ready to turn it up for $t by $a$yr!",
+                "Dropping $t by $a$yr right now — let's go!",
+                "Crank the speakers, here comes $t by $a$yr!",
+                "Coming in hot right now, it's $a with $t$yr!",
+                "No holding back — here's $t by $a$yr!",
+                "Turning it all the way up for $t by $a$yr!",
+            )
+            2 -> listOf(
+                "Drifting smoothly into our next track, here's $t by $a$yr.",
+                "Easing right into $t by $a$yr.",
+                "Rolling gently into the next one — $a with $t$yr.",
+                "Settle in as we bring up $t by $a$yr.",
+                "Letting this next one take over — here's $t by $a$yr.",
+                "Floating quietly into $t by $a$yr.",
+            )
+            3 -> listOf(
+                "Coming up right now, $t by $a$yr!",
+                "Up next on your unofficial favourite station, $t by $a$yr.",
+                "Cueing up $a with $t$yr — enjoy!",
+                "Here comes $t by $a$yr, no skipping allowed.",
+                "Rolling straight into $t by $a$yr!",
+                "Over to $a and $t$yr.",
+            )
+            else -> listOf(
+                "Coming up right now, here's $t by $a$yr.",
+                "Rolling smoothly into $t by $a$yr.",
+                "Next up on the deck, it's $a with $t$yr.",
+                "Cueing up a great one for you — $t by $a$yr.",
+                "Here comes $t by $a$yr.",
+                "Let's jump right into $t by $a$yr.",
+            )
+        }
+
+        val opener = openers[pickFresh(openers.size, recentPicks)]
+        val intro = intros[pickFresh(intros.size, recentIntros)]
+        return if (lenIdx == 2) {
+            // Long (~38-52 words / ~15-20 s): opener + middle beat + intro
+            val middle = middles[pickFresh(middles.size, recentMiddles)]
+            "$stPrefix$opener $middle $intro"
+        } else {
+            // Medium (~22-32 words / ~10-13 s): opener + intro
+            "$stPrefix$opener $intro"
+        }
     }
 
     /** Called by the music service when a new song starts. */
