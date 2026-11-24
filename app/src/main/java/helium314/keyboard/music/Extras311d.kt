@@ -553,7 +553,8 @@ object Announcer {
         }
         val system = "You are $who. Reply with ONLY what you say out loud: ${lenSpec as String}. " +
             "${extraRule as String} $stationRule " +
-            "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out — NEVER say it is currently charting or back in the charts). " +
+            "If you mention a chart peak or release year, ALWAYS refer to it in the past tense as historical (from when it originally came out — NEVER say it is currently charting, back in the charts, or a 'new hit'). " +
+            "Never invent another song or artist that wasn't given to you. " +
             "No emojis, no URLs, no websites, no links, no stage directions. Never invent facts. " +
             "Example: \"${example as String}\""
         val prompt = buildString {
@@ -573,7 +574,13 @@ object Announcer {
             if (modelId == null) null
             else withTimeoutOrNull(45_000) { helium314.keyboard.latin.WriterClient.ask(ctx, system, prompt, maxTok as Int, modelId = modelId) }
         }.getOrNull()
-            ?.replace(Regex("(?s)<think>.*?</think>"), "")?.replace(Regex("^[\"“]|[\"”]$"), "")?.trim()
+            ?.replace(Regex("(?s)<think>.*?</think>"), "")?.trim()
+            ?.let { raw ->
+                // Strip wrapping quotes ONLY if the entire response is quoted (never strip the opening quote of a song title!)
+                if (raw.length >= 2 && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith('“') && raw.endsWith('”'))))
+                    raw.substring(1, raw.length - 1).trim()
+                else raw
+            }
             ?.let { raw ->
                 // if maxTok cut mid-sentence, trim cleanly back to the last sentence ending
                 if (raw.isNotEmpty() && raw.last() in ".!?") raw
@@ -585,7 +592,12 @@ object Announcer {
             ?.takeIf { out ->
                 val low = out.lowercase()
                 val words = out.split(Regex("\\s+")).size
-                out.length in 18..(maxChars as Int) && words >= 7 &&
+                val byCount = Regex("\\bby\\s+").findAll(low).count()
+                // Reject hallucinated second songs on Short mode (e.g. "Song A by X. Next up, Song B by Y.")
+                val hallucinatedSecondSong = (lenIdx == 0 && byCount > 1) ||
+                    (lenIdx > 0 && cur == null && byCount > 1) ||
+                    (lenIdx > 0 && byCount > 2)
+                out.length in 18..(maxChars as Int) && words >= 7 && !hallucinatedSecondSong &&
                     "http" !in low && ".fm" !in low && ".com" !in low && "check the link" !in low &&
                     ((titleWord == null || titleWord in low) || (artistWord == null || artistWord in low))
             }
