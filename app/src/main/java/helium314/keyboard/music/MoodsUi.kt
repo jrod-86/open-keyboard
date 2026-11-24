@@ -78,6 +78,7 @@ private object MoodState {
     var loaded = false
     var length by mutableStateOf(30)
     var sort by mutableStateOf("flow")
+    var seed by mutableStateOf(System.currentTimeMillis())
     var last: MoodView? = null
 }
 
@@ -110,8 +111,10 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     val ready = placed.size >= 20
 
     fun play(ask: Moods.Ask, title: String) {
-        val songs = Moods.mix(ctx, placed, ask, size = 500)
+        val newSeed = System.nanoTime()
+        val songs = Moods.mix(ctx, placed, ask, size = 500, seed = newSeed)
         if (songs.isEmpty()) { Toast.makeText(ctx, "No songs fit that yet", Toast.LENGTH_SHORT).show(); return }
+        MoodState.seed = newSeed
         MoodState.mix = songs; MoodState.title = title; MoodState.moodId = ask.mood?.id; saved = ""
         ui.play(moodShown(ctx, songs), 0)
     }
@@ -308,7 +311,7 @@ private fun moodShown(ctx: android.content.Context, full: List<Song>): List<Song
         "newest" -> picked.sortedWith(compareByDescending<Song> { it.year }.thenByDescending { it.dateAdded })
         "oldest" -> picked.sortedWith(compareBy<Song> { if (it.year > 0) it.year else Int.MAX_VALUE }.thenBy { it.dateAdded })
         "az" -> picked.sortedBy { it.title.lowercase() }
-        "random" -> picked.shuffled(java.util.Random(picked.size.toLong() * 31 + (MoodState.title.hashCode())))
+        "random" -> picked.shuffled(java.util.Random(MoodState.seed))
         else -> picked
     }
 }

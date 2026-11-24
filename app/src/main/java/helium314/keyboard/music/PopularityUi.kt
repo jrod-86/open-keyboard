@@ -222,8 +222,12 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             }
             item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button({ ui.play(shown.take(50).map { it.song }, 0) }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
-                        Text(if (shown.size > 50) "Play top 50" else "Play all")
+                    Button({
+                        // test 343 (Jarrod): fresh random mix every tap instead of the same fixed top list
+                        val pick = shown.shuffled().take(50).map { it.song }
+                        ui.play(pick, 0)
+                    }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
+                        Text(if (shown.size > 50) "Play random 50" else "Play random")
                     }
                     OutlinedButton({
                         val name = "Popular: $filter"

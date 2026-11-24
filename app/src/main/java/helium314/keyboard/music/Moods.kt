@@ -315,26 +315,30 @@ object Moods {
         }
         val ranked = allowed.map { it to score(it) }.sortedBy { it.second }
         val good = ranked.filter { it.second <= 0.32f }
-        var picked = (if (good.size >= 12) good else ranked.take(12)).take(size).map { it.first }
+        // test 343 (Jarrod): shuffle the matching pool with a fresh random seed every tap so each mix (e.g. 15/30/60) is genuinely different
+        val rng = java.util.Random(seed)
+        val candidates = (if (good.size >= 12) good else ranked.take(maxOf(12, size))).map { it.first }.shuffled(rng)
+        val picked = candidates.take(size)
         if (ask.popularFirst) {
             val plays = picked.associate { it.song.id to (Popularity.known(ctx, it.song)?.plays ?: 0L) }
             return picked.sortedByDescending { plays[it.song.id] }.map { it.song }
         }
-        return flow(picked, ask.lift)
+        return flow(picked, ask.lift, seed)
     }
 
-    /** Orders the songs so each one sounds close to the one before (no ballad straight into metal). */
-    private fun flow(list: List<Placed>, lift: Float): List<Song> {
+    /** Orders the songs so each one sounds close to the one before (no ballad straight into metal), starting from a random song each time. */
+    private fun flow(list: List<Placed>, lift: Float, seed: Long = System.currentTimeMillis()): List<Song> {
         if (list.size < 3) return list.map { it.song }
+        val rng = java.util.Random(seed xor 0x517CC1B727220A95L)
         val left = list.toMutableList()
-        // start in the middle of the mix's energy, a bit lower when going calmer
-        val startE = left.map { it.energy }.sorted().let { it[(it.size * (0.5f - lift * 0.2f)).toInt().coerceIn(0, it.size - 1)] }
-        var cur = left.minByOrNull { abs(it.energy - startE) }!!
-        left.remove(cur)
+        var cur = left.removeAt(rng.nextInt(left.size))
         val out = arrayListOf(cur.song)
         while (left.isNotEmpty()) {
             val c = cur
-            val next = left.minByOrNull { sq(it.energy - c.energy) * 2 + sq(it.tempo - c.tempo) + sq(it.bright - c.bright) * 0.5f + if (it.song.artist == c.song.artist) 0.03f else 0f }!!
+            val next = left.minByOrNull {
+                sq(it.energy - c.energy) * 2 + sq(it.tempo - c.tempo) + sq(it.bright - c.bright) * 0.5f +
+                    (if (it.song.artist == c.song.artist) 0.08f else 0f) + rng.nextFloat() * 0.06f
+            }!!
             left.remove(next); out += next.song; cur = next
         }
         return out
