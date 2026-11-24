@@ -252,6 +252,9 @@ object Announcer {
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
     /** test 330 (Jarrod): 0 = Short (~6-8 s), 1 = Medium (~12-15 s), 2 = Long (~18-22 s) */
     fun length(ctx: Context) = prefs(ctx).getInt("ann_len", 1).coerceIn(0, 2)
+    /** test 341 (Jarrod): battery warning dialog when enabling DJ in Settings (dismissible with "Don't show again") */
+    fun showBatteryWarn(ctx: Context) = !prefs(ctx).getBoolean("ann_no_batt_warn", false)
+    fun hideBatteryWarn(ctx: Context) { prefs(ctx).edit().putBoolean("ann_no_batt_warn", true).apply() }
     /** test 327 (Jarrod): 0 = Instant (built-in radio lines), 1 = Quick AI (1.1 GB), 2 = Better AI (2.5 GB) */
     fun aiMode(ctx: Context): Int {
         val p = prefs(ctx)
@@ -791,6 +794,8 @@ object Announcer {
 internal fun AnnouncerSettings(ui: PlayerUi?) {
     val ctx = LocalContext.current
     var on by remember { mutableStateOf(Announcer.on(ctx)) }
+    var askBatteryWarn by remember { mutableStateOf(false) }
+    var dontShowAgain by remember { mutableStateOf(false) }
     var every by remember { mutableIntStateOf(Announcer.every(ctx)) }
     var style by remember { mutableIntStateOf(Announcer.style(ctx)) }
     var msgLen by remember { mutableIntStateOf(Announcer.length(ctx)) }
@@ -816,7 +821,40 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 Text("Your writing model writes a short line about the next song and Savannah says it while the music ducks underneath. All on your phone.",
                     fontSize = 12.sp, color = dim)
             }
-            Switch(on, { on = it; Announcer.set(ctx, "ann_on", it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+            Switch(on, { wantOn ->
+                if (wantOn && Announcer.showBatteryWarn(ctx)) {
+                    dontShowAgain = false
+                    askBatteryWarn = true
+                } else {
+                    on = wantOn
+                    Announcer.set(ctx, "ann_on", wantOn)
+                }
+            }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
+        }
+        if (askBatteryWarn) {
+            AlertDialog(
+                onDismissRequest = { askBatteryWarn = false },
+                title = { Text("DJ uses extra battery") },
+                text = {
+                    Column {
+                        Text("Generating the DJ's voice and AI lines right on your phone uses noticeably more battery — even when plugged into a car charger.\n\nTip: Using 'Every 3rd' or 'Short' saves a lot of battery.")
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
+                            Text("Don't show this again", fontSize = 14.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton({
+                        if (dontShowAgain) Announcer.hideBatteryWarn(ctx)
+                        askBatteryWarn = false
+                        on = true
+                        Announcer.set(ctx, "ann_on", true)
+                    }) { Text("Turn on", color = Accent) }
+                },
+                dismissButton = { TextButton({ askBatteryWarn = false }) { Text("Cancel") } }
+            )
         }
         // test 319 (Jarrod): direct download buttons right here when Zonos voice or writing model isn't downloaded yet
         if (!zonosReady && helium314.keyboard.tts.ZonosTts.supported(ctx)) {
