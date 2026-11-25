@@ -384,10 +384,10 @@ object Announcer {
     }
 
     /**
-     * test 359 (Jarrod): Studio FM radio voice chain for Kokoro Heart (~15 ms in pure Kotlin, zero battery impact).
-     * Shapes the dry 24 kHz int8 TTS output into a warm, smooth broadcast mic sound:
-     * 1) 80 Hz HPF  2) +3.2 dB @ 190 Hz chest warmth  3) -2.8 dB @ 3.2 kHz de-harsh  4) -3.8 dB > 6.2 kHz de-ess/smooth
-     * 5) Gentle broadcast compressor  6) Subtle warm studio-booth early reflections (~6.5% wet).
+     * test 359 / 361 (Jarrod): Studio FM radio voice chain for Kokoro Heart (~15 ms in pure Kotlin, zero battery impact).
+     * Balanced for crisp, open vocal clarity + subtle broadcast warmth (no muffling):
+     * 1) 85 Hz HPF  2) +1.6 dB @ 160 Hz subtle warmth  3) +1.8 dB @ 2.8 kHz vocal clarity/presence
+     * 4) -2.0 dB @ 5.8 kHz narrow de-esser  5) +1.0 dB @ 8.5 kHz open air  6) gentle compressor  7) tiny ~3.5% booth ambience.
      */
     private fun warmBroadcastVoice(samples: FloatArray, rate: Int): FloatArray {
         if (samples.size < 64) return samples
@@ -402,34 +402,40 @@ object Announcer {
                 buf[i] = y0.toFloat()
             }
         }
-        // 1) 80 Hz high-pass (cleans DC/rumble)
+        // 1) 85 Hz high-pass (cleans DC/rumble)
         run {
-            val w0 = 2.0 * Math.PI * 80.0 / sr; val c = kotlin.math.cos(w0); val alpha = kotlin.math.sin(w0) / (2.0 * 0.707)
+            val w0 = 2.0 * Math.PI * 85.0 / sr; val c = kotlin.math.cos(w0); val alpha = kotlin.math.sin(w0) / (2.0 * 0.707)
             applyBiquad(samples, (1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + alpha, -2 * c, 1 - alpha)
         }
-        // 2) Low-shelf warmth (+3.2 dB @ 190 Hz, classic SM7B/RE20 broadcast body)
+        // 2) Subtle low-shelf warmth (+1.6 dB @ 160 Hz — light broadcast body without muddiness)
         run {
-            val a = Math.pow(10.0, 3.2 / 40.0); val w0 = 2.0 * Math.PI * 190.0 / sr; val c = kotlin.math.cos(w0)
+            val a = Math.pow(10.0, 1.6 / 40.0); val w0 = 2.0 * Math.PI * 160.0 / sr; val c = kotlin.math.cos(w0)
             val alpha = kotlin.math.sin(w0) / 2.0 * kotlin.math.sqrt((a + 1.0 / a) * (1.0 / 0.8 - 1.0) + 2.0)
             val sq = 2.0 * kotlin.math.sqrt(a) * alpha
             applyBiquad(samples, a * ((a + 1) - (a - 1) * c + sq), 2 * a * ((a - 1) - (a + 1) * c), a * ((a + 1) - (a - 1) * c - sq),
                 (a + 1) + (a - 1) * c + sq, -2 * ((a - 1) + (a + 1) * c), (a + 1) + (a - 1) * c - sq)
         }
-        // 3) De-harsh upper-mid dip (-2.8 dB @ 3200 Hz, Q = 1.3 — removes synthetic TTS edge)
+        // 3) Vocal clarity / presence lift (+1.8 dB @ 2800 Hz, Q = 1.2 — crisp, intelligible speech over road noise)
         run {
-            val a = Math.pow(10.0, -2.8 / 40.0); val w0 = 2.0 * Math.PI * 3200.0 / sr; val c = kotlin.math.cos(w0)
-            val alpha = kotlin.math.sin(w0) / (2.0 * 1.3)
+            val a = Math.pow(10.0, 1.8 / 40.0); val w0 = 2.0 * Math.PI * 2800.0 / sr; val c = kotlin.math.cos(w0)
+            val alpha = kotlin.math.sin(w0) / (2.0 * 1.2)
             applyBiquad(samples, 1 + alpha * a, -2 * c, 1 - alpha * a, 1 + alpha / a, -2 * c, 1 - alpha / a)
         }
-        // 4) High-shelf smooth roll-off (-3.8 dB @ 6200 Hz — tames int8 sibilance & metallic sheen)
+        // 4) Surgical narrow de-esser (-2.0 dB @ 5800 Hz, Q = 2.2 — tames harsh 's' spikes without dulling the voice)
         run {
-            val a = Math.pow(10.0, -3.8 / 40.0); val w0 = 2.0 * Math.PI * 6200.0 / sr; val c = kotlin.math.cos(w0)
+            val a = Math.pow(10.0, -2.0 / 40.0); val w0 = 2.0 * Math.PI * 5800.0 / sr; val c = kotlin.math.cos(w0)
+            val alpha = kotlin.math.sin(w0) / (2.0 * 2.2)
+            applyBiquad(samples, 1 + alpha * a, -2 * c, 1 - alpha * a, 1 + alpha / a, -2 * c, 1 - alpha / a)
+        }
+        // 5) Gentle studio air (+1.0 dB high-shelf @ 8500 Hz — open, clear condenser-mic sparkle)
+        run {
+            val a = Math.pow(10.0, 1.0 / 40.0); val w0 = 2.0 * Math.PI * 8500.0 / sr; val c = kotlin.math.cos(w0)
             val alpha = kotlin.math.sin(w0) / 2.0 * kotlin.math.sqrt((a + 1.0 / a) * (1.0 / 0.7 - 1.0) + 2.0)
             val sq = 2.0 * kotlin.math.sqrt(a) * alpha
             applyBiquad(samples, a * ((a + 1) + (a - 1) * c + sq), -2 * a * ((a - 1) + (a + 1) * c), a * ((a + 1) + (a - 1) * c - sq),
                 (a + 1) - (a - 1) * c + sq, 2 * ((a - 1) - (a + 1) * c), (a + 1) - (a - 1) * c - sq)
         }
-        // 5) Gentle broadcast compressor (evens out quiet words & loud peaks smoothly)
+        // 6) Gentle broadcast compressor (evens out quiet words & loud peaks smoothly)
         val atk = kotlin.math.exp(-1.0 / (0.008 * sr)).toFloat()
         val rel = kotlin.math.exp(-1.0 / (0.120 * sr)).toFloat()
         var env = 0f
@@ -438,21 +444,21 @@ object Announcer {
             env = if (ax > env) atk * env + (1f - atk) * ax else rel * env + (1f - rel) * ax
             if (env > 0.16f) {
                 val over = env / 0.16f
-                val g = Math.pow(over.toDouble(), (1.0 / 2.6) - 1.0).toFloat()
+                val g = Math.pow(over.toDouble(), (1.0 / 2.4) - 1.0).toFloat()
                 samples[i] = x * g
             }
         }
-        // 6) Subtle warm studio-booth early reflections (17 ms + 29 ms damped taps, ~6.5% wet)
-        val d1 = (rate * 0.017).toInt().coerceAtLeast(1)
-        val d2 = (rate * 0.029).toInt().coerceAtLeast(1)
+        // 7) Subtle close-mic studio ambience (15 ms + 26 ms damped taps, ~3.5% wet)
+        val d1 = (rate * 0.015).toInt().coerceAtLeast(1)
+        val d2 = (rate * 0.026).toInt().coerceAtLeast(1)
         val dry = samples.copyOf()
         var lp = 0f
         for (i in samples.indices) {
             val t1 = if (i >= d1) dry[i - d1] else 0f
             val t2 = if (i >= d2) dry[i - d2] else 0f
-            val refl = t1 * 0.042f + t2 * 0.026f
-            lp += 0.45f * (refl - lp) // warm low-pass on reflections so they're never metallic
-            samples[i] = dry[i] * 0.96f + lp
+            val refl = t1 * 0.022f + t2 * 0.014f
+            lp += 0.55f * (refl - lp)
+            samples[i] = dry[i] * 0.98f + lp
         }
         return samples
     }
