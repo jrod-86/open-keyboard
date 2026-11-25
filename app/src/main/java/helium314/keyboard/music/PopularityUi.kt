@@ -110,11 +110,11 @@ internal fun PopularitySort(songs: List<Song>, onApply: (List<Song>) -> Unit, on
 }
 
 /** One entry on the Popular tab. */
-private class PopView(val lib: Library, val version: Int, val ranked: List<Ranked>, val left: Int, val unique: Int) {
+private class PopView(val lib: Library, val version: Int, val ranked: List<Ranked>, val genres: List<String>, val left: Int, val unique: Int) {
     companion object { @Volatile var last: PopView? = null }
 }
 
-private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?)
+private class Ranked(val song: Song, val pop: Pop, val best: Int, val year: Int, val badge: String?, val genre: String)
 
 private val popFilters = listOf("All", "Chart hits", "#1s", "Top 20s", "Top 20–50", "Hidden gems")
 private val popLengths = listOf(15 to "Short · 15", 30 to "Medium · 30", 60 to "Long · 60", -1 to "All")
@@ -143,10 +143,11 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             val unique = songs.distinctBy { Popularity.key(it) }.size
             val left = PopScan.left(ctx, songs)
             val found = songs.mapNotNull { s -> Popularity.known(ctx, s)?.takeIf { it.found }?.let { s to it } }.distinctBy { Popularity.key(it.first) }
+            val genreMap = Moods.genres(ctx, found.map { it.first })
             val worldSorted = found.map { it.second.plays }.filter { it > 0 }.sorted()
             val median = worldSorted.getOrElse(worldSorted.size / 2) { 0L }
             val top10 = worldSorted.getOrElse((worldSorted.size * 0.9).toInt()) { Long.MAX_VALUE }
-            found.map { (s, p) ->
+            val rankedList = found.map { (s, p) ->
                 val best = listOf(p.us, p.au, p.uk).filter { it > 0 }.minOrNull() ?: 0
                 val mine = PlayStats.count(s.id)
                 val badge = when {
@@ -154,22 +155,26 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                     p.plays >= top10 && worldSorted.size >= 20 && mine <= 1 -> "🌍 A big hit you hardly play"
                     else -> null
                 }
-                Ranked(s, p, best, if (p.year > 0) p.year else s.year, badge)
+                Ranked(s, p, best, if (p.year > 0) p.year else s.year, badge, genreMap[s.id].orEmpty())
             }.sortedWith(compareBy<Ranked>({ if (it.pop.plays > 0) 0 else 1 }, { -it.pop.plays }, { if (it.best > 0) it.best else Int.MAX_VALUE }))
-                .let { r -> PopView(lib, version, r, left, unique) }
+            val genres = rankedList.map { it.genre }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount().entries
+                .sortedByDescending { it.value }.map { it.key }
+            PopView(lib, version, rankedList, genres, left, unique)
         }.also { PopView.last = it }
     }
     val ranked = view?.ranked
+    val genres = view?.genres.orEmpty()
     val prefs = remember { ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE) }
     var filter by remember { mutableStateOf("All") }
+    var genreFilter by remember { mutableStateOf("") }
     var popLen by remember { mutableStateOf(prefs.getInt("pop_len", 30)) }
     var popSort by remember { mutableStateOf(prefs.getString("pop_sort", "random") ?: "random") }
     var mixSeed by remember { mutableStateOf(System.nanoTime()) }
     val list = ranked.orEmpty()
     val hasPre70 = remember(list) { list.any { it.year in 1..1969 } }
     val decades = remember(list) { list.map { it.year / 10 * 10 }.filter { it >= 1970 }.distinct().sorted() }
-    val filtered = remember(list, filter) {
-        when (filter) {
+    val filtered = remember(list, filter, genreFilter) {
+        val byChart = when (filter) {
             "Chart hits" -> list.filter { it.best > 0 }
             "#1s" -> list.filter { it.best == 1 }
             "Top 20s" -> list.filter { it.best in 1..20 }
@@ -178,6 +183,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             "Before 1970s" -> list.filter { it.year in 1..1969 }
             else -> filter.removeSuffix("s").toIntOrNull()?.let { d -> list.filter { it.year / 10 * 10 == d } } ?: list
         }
+        if (genreFilter.isEmpty()) byChart else byChart.filter { it.genre == genreFilter }
     }
     fun buildMix(len: Int, sort: String, seed: Long): List<Ranked> {
         val picked = if (len > 0 && filtered.size > len) filtered.shuffled(java.util.Random(seed)).take(len)
@@ -228,14 +234,30 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             }
         }
         if (list.isNotEmpty()) {
-            // test 308 (Jarrod): the filter chips stay at the top while you scroll down the list
-            stickyHeader(key = "filters") {
-                androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 4.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(popFilters + (if (hasPre70) listOf("Before 1970s") else emptyList()) + decades.map { "${it}s" }) { f ->
-                        androidx.compose.material3.FilterChip(f == filter, { filter = f; mixSeed = System.nanoTime(); saved = "" }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
-                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+            // test 357 (Jarrod): transparent filter bar matching the rest of the app + Genres row right beneath it
+            item(key = "filters") {
+                Column(Modifier.fillMaxWidth()) {
+                    androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(popFilters + (if (hasPre70) listOf("Before 1970s") else emptyList()) + decades.map { "${it}s" }) { f ->
+                            androidx.compose.material3.FilterChip(f == filter, { filter = f; mixSeed = System.nanoTime(); saved = "" }, { Text(if (f.length == 5 && f[0].isDigit()) "'" + f.substring(2) else f) },
+                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                        }
+                    }
+                    if (genres.isNotEmpty()) {
+                        androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item {
+                                androidx.compose.material3.FilterChip(genreFilter.isEmpty(), { genreFilter = ""; mixSeed = System.nanoTime(); saved = "" }, { Text("All genres") },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                            }
+                            items(genres) { g ->
+                                androidx.compose.material3.FilterChip(genreFilter == g, { genreFilter = if (genreFilter == g) "" else g; mixSeed = System.nanoTime(); saved = "" }, { Text(g) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+                            }
+                        }
                     }
                 }
             }
@@ -250,7 +272,12 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         ui.play(fresh.map { it.song }, 0)
                     }, enabled = filtered.isNotEmpty()) { Text("Shuffle", color = Accent) }
                     OutlinedButton({
-                        val name = "Popular: $filter"
+                        val label = when {
+                            genreFilter.isEmpty() -> filter
+                            filter == "All" -> genreFilter
+                            else -> "$filter · $genreFilter"
+                        }
+                        val name = "Popular: $label"
                         Playlists.create(ctx, name, shown.map { it.song.id })
                         saved = "Saved as playlist “$name”"
                     }, enabled = shown.isNotEmpty()) { Text("Save", color = Accent) }

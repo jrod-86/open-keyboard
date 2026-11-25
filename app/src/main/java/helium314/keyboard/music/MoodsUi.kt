@@ -222,25 +222,7 @@ internal fun MoodsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                     Switch(MoodState.popularFirst, { MoodState.popularFirst = it }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
                 }
             }
-            // 6. genres
-            val genres = view?.genres.orEmpty()
-            if (genres.isNotEmpty()) item {
-                Text("Genres", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text(if (MoodState.genre.isEmpty()) "Tap one to mix it with a mood, or play it on its own" else "Moods now play ${MoodState.genre} only. Tap again to clear.",
-                    Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = dim)
-                LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(genres) { g ->
-                        FilterChip(MoodState.genre == g, { MoodState.genre = if (MoodState.genre == g) "" else g }, { Text(g) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
-                    }
-                }
-                if (MoodState.genre.isNotEmpty()) OutlinedButton({ play(Moods.Ask(null, MoodState.lift, MoodState.genre), MoodState.genre) }, Modifier.padding(horizontal = 12.dp)) {
-                    Text("Play all ${MoodState.genre}", color = Accent)
-                }
-            } else if (placed.isNotEmpty()) item {
-                Text("Genres show here once songs have genre info (from your music files, or the Popular tab's lookup).",
-                    Modifier.padding(16.dp), fontSize = 12.sp, color = dim)
-            }
+            // test 357 (Jarrod): Genres moved to the second filter row on the Popular tab
         }
     }
 }
