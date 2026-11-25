@@ -137,3 +137,5 @@
 | 349 | 2026-11-25 | Fixed Instant DJ shifting-index repeat bug (tagged middle templates tracked by ID instead of list index so templates never repeat back-to-back), expanded openers to 20 per style (non-repeat memory raised to 18) and middles to 20+ (with genre-aware beats) | Waiting |
 
 | 350 | 2026-11-25 | Redesigned Instant DJ engine (`DjScriptBank.kt`) with persistent Fisher-Yates shuffle-bags (zero repeats until 100% of each deck is played, persisted across restarts): 100 openers, 48+ middle beats, 48 intros, 60 short lines per style, and 6 rotating structures (~5+ hours zero repeat even on Every song) | Waiting |
+
+| 351 | 2026-11-25 | Expanded Instant DJ shuffle-bag bank (`assets/music/dj_bank_extra.txt`) to **15+ hours zero repeats** even on Every song: 270 unique openers per style (~15.75 h), 108+ middle beats, 128 intros, and 150 short lines — all on persistent Fisher-Yates shuffle-bags with zero extra battery/RAM | Waiting |

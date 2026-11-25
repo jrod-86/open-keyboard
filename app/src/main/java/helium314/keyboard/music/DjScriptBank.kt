@@ -16,6 +16,40 @@ internal object DjScriptBank {
     private const val PREFS = "music_dj_bags"
     private val rng = Random()
 
+    private class ExtraBank(
+        val openers: List<String>,
+        val middles: List<Pair<String, String>>,
+        val intros: List<String>,
+        val shorts: List<String>,
+    )
+    @Volatile private var cachedExtra: ExtraBank? = null
+
+    private fun extra(ctx: Context): ExtraBank = cachedExtra ?: synchronized(this) {
+        cachedExtra ?: run {
+            val op = ArrayList<String>()
+            val mid = ArrayList<Pair<String, String>>()
+            val intr = ArrayList<String>()
+            val sh = ArrayList<String>()
+            var sec = ""
+            runCatching {
+                ctx.assets.open("music/dj_bank_extra.txt").bufferedReader().useLines { lines ->
+                    for (raw in lines) {
+                        val line = raw.trim()
+                        if (line.isEmpty() || line.startsWith("#")) continue
+                        if (line.startsWith("[") && line.endsWith("]")) { sec = line; continue }
+                        when (sec) {
+                            "[OPENERS]" -> op += line
+                            "[MIDDLES]" -> line.split('|', limit = 2).takeIf { it.size == 2 }?.let { mid += it[0].trim() to it[1].trim() }
+                            "[INTROS]" -> intr += line
+                            "[SHORTS]" -> sh += line
+                        }
+                    }
+                }
+            }
+            ExtraBank(op, mid, intr, sh).also { cachedExtra = it }
+        }
+    }
+
     /** Draws the next item from a persistent Fisher-Yates shuffle-bag (zero repeats until the full deck is exhausted). */
     private fun draw(ctx: Context, bagKey: String, items: List<String>): String {
         if (items.isEmpty()) return ""
@@ -114,17 +148,19 @@ internal object DjScriptBank {
             .replace("{yr}", if (includeYr) yr else "")
             .replace("{tod}", timeOfDay)
 
-        // 1. Short (~10-16 words / ~5-7 s): 60 unique 1-liners per style (15 style + 45 universal)
+        val ex = extra(ctx)
+
+        // 1. Short (~10-16 words / ~5-7 s): 150 unique 1-liners per style (~8.75h zero repeat on Every song)
         if (lenIdx == 0) {
-            val line = fill(draw(ctx, "short_$styleIdx", shortLines(styleIdx)), includeYr = false)
+            val line = fill(draw(ctx, "short_$styleIdx", (shortLines(styleIdx) + ex.shorts).distinct()), includeYr = false)
             return if (stSentence.isNotEmpty()) "$stSentence $line" else line
         }
 
-        // 2. Draw from independent persistent shuffle-bags
-        val opener = fill(draw(ctx, "open_$styleIdx", openers(styleIdx)))
-        val middle = if (lenIdx == 2) drawEligible(ctx, "mid_bag", middleBeats(prevA, prevT, yrNum, decade, genre, chartFact, timeOfDay)) else ""
+        // 2. Draw from independent persistent shuffle-bags (270 openers = ~15.75h zero repeat even on Every song!)
+        val opener = fill(draw(ctx, "open_$styleIdx", (openers(styleIdx) + ex.openers).distinct()))
+        val middle = if (lenIdx == 2) drawEligible(ctx, "mid_bag", middleBeats(prevA, prevT, yrNum, decade, genre, chartFact, timeOfDay) + ex.middles) else ""
         val yrAlreadySaid = yrNum != null && (yrNum.toString() in middle || yrNum.toString() in opener)
-        val intro = fill(draw(ctx, "intro_$styleIdx", intros(styleIdx)), includeYr = !yrAlreadySaid)
+        val intro = fill(draw(ctx, "intro_$styleIdx", (intros(styleIdx) + ex.intros).distinct()), includeYr = !yrAlreadySaid)
 
         // 3. Rotate through 6 natural radio-DJ structures (also on a shuffle-bag!)
         val pattern = draw(ctx, "pat_$lenIdx", listOf("0", "1", "2", "3", "4", "5")).toInt()
