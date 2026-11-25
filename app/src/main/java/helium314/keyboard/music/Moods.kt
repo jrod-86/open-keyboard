@@ -82,23 +82,23 @@ object Moods {
     private val rules = listOf(
         "Metal" to listOf("metal", "metalcore", "djent", "grindcore", "thrash", "doom metal", "heavy metal", "nu metal", "death metal", "black metal"),
         "Punk" to listOf("punk", "hardcore punk", "pop punk", "post-punk", "emo", "grunge", "skate punk"),
-        "Hip-hop" to listOf("hip hop", "hip-hop", "hiphop", "rap", "gangsta rap", "boom bap", "g-funk", "trap", "drill", "grime", "east coast hip hop", "west coast hip hop", "southern hip hop"),
-        "Dance" to listOf("dance", "house", "edm", "techno", "trance", "disco", "dubstep", "drum and bass", "dnb", "uk garage", "eurodance", "club"),
-        "Electronic" to listOf("electronic", "electro", "synthpop", "synthwave", "idm", "downtempo", "trip hop", "chillout", "lo-fi", "lofi", "electronica"),
+        "Hip-hop" to listOf("hip hop", "hip-hop", "hiphop", "rap", "gangsta rap", "boom bap", "g-funk", "drill", "grime", "east coast hip hop", "west coast hip hop", "southern hip hop", "conscious hip hop", "hardcore hip hop"),
+        "Dance" to listOf("dance", "house", "vocal house", "deep house", "electro house", "progressive house", "tropical house", "hip house", "edm", "future bass", "big room", "techno", "trance", "disco", "dubstep", "drum and bass", "dnb", "uk garage", "garage", "speed garage", "2-step", "2 step", "eurodance", "club", "club dance"),
+        "Electronic" to listOf("electronic", "electro", "synthwave", "idm", "downtempo", "trip hop", "chillout", "lo-fi", "lofi", "electronica"),
         "R&B" to listOf("r&b", "rnb", "r and b", "rhythm and blues", "contemporary r&b", "neo soul", "new jack swing", "quiet storm"),
         "Funk & Soul" to listOf("soul", "funk", "motown", "gospel", "northern soul", "disco funk"),
         "Jazz" to listOf("jazz", "swing", "bebop", "bossa nova", "smooth jazz", "big band"),
         "Blues" to listOf("blues", "delta blues", "chicago blues", "blues rock"),
         "Country" to listOf("country", "country pop", "country rock", "bluegrass", "americana", "honky tonk", "outlaw country", "nashville", "alt-country"),
         "Folk" to listOf("folk", "singer-songwriter", "acoustic", "folk rock", "indie folk"),
-        "Indie" to listOf("indie", "indie rock", "indie pop", "alternative rock", "alternative", "shoegaze", "dream pop", "britpop"),
-        "Classical" to listOf("classical", "orchestra", "symphony", "baroque", "opera", "piano", "chamber music"),
+        "Indie" to listOf("indie", "indie rock", "indie pop", "alternative rock", "alternative", "alt rock", "post-grunge", "shoegaze", "dream pop", "britpop"),
+        "Classical" to listOf("classical", "orchestra", "symphony", "baroque", "opera", "chamber music"),
         "Ambient" to listOf("ambient", "new age", "meditation", "drone"),
         "Soundtrack" to listOf("soundtrack", "film score", "movie soundtrack", "musical", "video game music"),
         "Reggae" to listOf("reggae", "ska", "dancehall", "dub", "roots reggae", "lovers rock", "reggae fusion"),
         "Latin" to listOf("latin", "reggaeton", "salsa", "bachata", "cumbia", "samba", "k-pop", "kpop", "latin pop"),
-        "Rock" to listOf("rock", "classic rock", "hard rock", "soft rock", "pop rock", "heartland rock", "arena rock", "southern rock", "new wave", "glam rock", "prog rock", "progressive rock", "psychedelic rock"),
-        "Pop" to listOf("pop", "dance pop", "electropop", "teen pop", "boy band", "girl group", "bubblegum pop", "adult contemporary", "europop"),
+        "Rock" to listOf("rock", "classic rock", "hard rock", "heartland rock", "arena rock", "southern rock", "new wave", "glam rock", "prog rock", "progressive rock", "psychedelic rock"),
+        "Pop" to listOf("pop", "dance pop", "electropop", "synthpop", "pop rock", "piano pop", "piano rock", "soft rock", "teen pop", "boy band", "girl group", "bubblegum pop", "adult contemporary", "europop"),
         "World" to listOf("world", "afrobeat", "afropop", "celtic", "khmer", "bollywood", "arabic"),
     )
     // test 367 (Jarrod): O(1) HashMap whole-word/phrase matcher (zero Regexes -> ~100x faster, ~15 ms for 2,000+ songs!)
@@ -271,11 +271,13 @@ object Moods {
             val scores = HashMap<String, Float>()
             val popGenres = Popularity.known(ctx, s)?.genres.orEmpty()
             val artistTags = ArtistTags.of(ctx, s.artist)
-            voteTags(popGenres, 1.4f, scores)   // song-specific MusicBrainz tags (most accurate)
-            voteTags(artistTags, 1.15f, scores) // artist's primary genres
-            voteTags(s.genre, 1.0f, scores)     // file ID3 tag (often broad like "Pop" or "Rock")
+            val hasMb = popGenres.isNotBlank() || artistTags.isNotBlank()
+            voteTags(popGenres, 1.6f, scores)   // song-specific MusicBrainz tags (most accurate)
+            voteTags(artistTags, 1.2f, scores)  // artist's primary genres
+            // File ID3 tags are often broad compilation labels ("Pop"/"Rock"), so let MusicBrainz lead when available
+            voteTags(s.genre, if (hasMb) 0.6f else 1.0f, scores)
             val best = scores.maxByOrNull { it.value }
-            if (best != null && best.value >= 0.65f) out[s.id] = best.key
+            if (best != null && best.value >= 0.7f) out[s.id] = best.key
         }
         // songs with no genre get their artist's most common one
         val byArtist = songs.groupBy { AlbumRules.artistKey(it.artist) }
@@ -283,17 +285,7 @@ object Moods {
             val common = list.mapNotNull { out[it.id] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: continue
             list.forEach { if (it.id !in out) out[it.id] = common }
         }
-        // test 305/366: still nothing? only use the AI listener's guess when it's clearly confident (>= 0.045 margin)
-        val ai = Clap.scores(ctx)
-        if (ai.isNotEmpty()) {
-            val names = Clap.genreNames(ctx); val moods = Clap.moodNames(ctx).size
-            for (s in songs) {
-                if (s.id in out) continue
-                val a = ai[s.id]?.takeIf { it.size >= moods + names.size } ?: continue
-                val g = names.indices.sortedByDescending { a[moods + it] }
-                if (a[moods + g[0]] - a[moods + g[1]] >= 0.045f) out[s.id] = names[g[0]]
-            }
-        }
+        // test 368 (Jarrod): removed noisy CLAP AI genre guessing so untagged 90s house / UK garage / piano pop never gets misfiled into Rock or Hip-hop
         return out
     }
 
