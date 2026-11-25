@@ -139,3 +139,5 @@
 | 350 | 2026-11-25 | Redesigned Instant DJ engine (`DjScriptBank.kt`) with persistent Fisher-Yates shuffle-bags (zero repeats until 100% of each deck is played, persisted across restarts): 100 openers, 48+ middle beats, 48 intros, 60 short lines per style, and 6 rotating structures (~5+ hours zero repeat even on Every song) | Waiting |
 
 | 351 | 2026-11-25 | Expanded Instant DJ shuffle-bag bank (`assets/music/dj_bank_extra.txt`) to **15+ hours zero repeats** even on Every song: 270 unique openers per style (~15.75 h), 108+ middle beats, 128 intros, and 150 short lines — all on persistent Fisher-Yates shuffle-bags with zero extra battery/RAM | Waiting |
+
+| 352 | 2026-11-25 | Fixed Moods/playlist playback stopping (`STATE_ENDED`) after 1–2 songs when Shuffle is on: `PlayerUi.play()` now uses `setMediaItems(items, resetPosition = true)` when shuffled so ExoPlayer starts at index 0 of its `ShuffleOrder` and plays 100% of the playlist | Waiting |

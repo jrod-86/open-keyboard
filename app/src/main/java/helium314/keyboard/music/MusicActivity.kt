@@ -235,9 +235,16 @@ class PlayerUi {
         val c = controller ?: return
         if (songs.isEmpty()) return
         Radio.stop() // playing something else ends the radio (Radio.start turns it back on after)
-        c.shuffleModeEnabled = shuffled ?: c.shuffleModeEnabled
-        val start = if (shuffled == true) songs.indices.random() else index
-        c.setMediaItems(songs.map { it.toMediaItem() }, start, 0)
+        val isShuffled = shuffled ?: c.shuffleModeEnabled
+        c.shuffleModeEnabled = isShuffled
+        val items = songs.map { it.toMediaItem() }
+        // test 352 (Jarrod): when Shuffle is on and starting a mix/playlist (or tapping Shuffle), use resetPosition=true
+        // so ExoPlayer starts at the FIRST song of its ShuffleOrder instead of a random mid/end spot that stops after 1-2 songs!
+        if (shuffled == true || (isShuffled && index == 0)) {
+            c.setMediaItems(items, true)
+        } else {
+            c.setMediaItems(items, index, 0)
+        }
         c.prepare(); c.play()
     }
 
