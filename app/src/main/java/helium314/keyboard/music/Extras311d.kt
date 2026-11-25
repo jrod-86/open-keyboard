@@ -395,7 +395,7 @@ object Announcer {
 
     private val rng = java.util.Random()
     private val recentPicks = ArrayDeque<Int>()
-    private val recentMiddles = ArrayDeque<Int>()
+    private val recentMiddles = ArrayDeque<String>()
     private val recentIntros = ArrayDeque<Int>()
     private val recentAngles = ArrayDeque<Int>()
     private val recentLines = ArrayDeque<String>()
@@ -403,15 +403,28 @@ object Announcer {
 
     private fun pickFresh(size: Int, history: ArrayDeque<Int>): Int {
         if (size <= 1) return 0
-        val keep = (size / 2).coerceIn(1, 8)
+        val keep = (size * 3 / 4).coerceIn(1, 18)
         var idx = rng.nextInt(size)
-        for (tries in 0 until 12) {
+        for (tries in 0 until 20) {
             if (idx !in history) break
             idx = rng.nextInt(size)
         }
         history.addLast(idx)
         while (history.size > keep) history.removeFirst()
         return idx
+    }
+
+    private fun pickFreshTagged(items: List<Pair<String, String>>, history: ArrayDeque<String>): String {
+        if (items.size <= 1) return items.firstOrNull()?.second.orEmpty()
+        val keep = (items.size * 3 / 4).coerceIn(1, 14)
+        var pick = items[rng.nextInt(items.size)]
+        for (tries in 0 until 20) {
+            if (pick.first !in history) break
+            pick = items[rng.nextInt(items.size)]
+        }
+        history.addLast(pick.first)
+        while (history.size > keep) history.removeFirst()
+        return pick.second
     }
 
     /** What the DJ says. Uses Instant built-in lines, Quick AI (1.1 GB), or Better AI (2.5 GB) with accuracy checks. */
@@ -747,6 +760,14 @@ object Announcer {
                 "Every single track on this list has been an absolute winner so far!",
                 "Let's keep the adrenaline pumping with another massive favourite!",
                 "You've built a seriously unstoppable playlist here!",
+                "Speakers warmed up and ready? Because we're only getting louder from here!",
+                "Zero dull moments on this deck — pure momentum track after track!",
+                "If you needed a boost this $timeOfDay, this playlist has you completely covered!",
+                "Nothing wakes up the cabin like a back-to-back run of heavy hitters!",
+                "We're firing on all cylinders right now — don't even think about turning it down!",
+                "This is the kind of tracklist that makes the miles fly right by!",
+                "Energy levels are through the roof today and we're keeping it right there!",
+                "No fillers, no slowdowns — just wall-to-wall anthems all $timeOfDay!",
             )
             2 -> listOf(
                 "Hope this $timeOfDay is treating you gently out there.",
@@ -761,6 +782,14 @@ object Announcer {
                 "Low-key, unhurried, and exactly the right energy for this $timeOfDay.",
                 "Letting the rhythm breathe and taking our time with every track.",
                 "Smooth sailing all the way through your collection.",
+                "No hurry at all — just soft lights, clear roads, and good melodies.",
+                "Let your shoulders drop and enjoy a few calm minutes with this next one.",
+                "The kind of effortless flow that makes you forget to check the clock.",
+                "Keeping the atmosphere relaxed and easy on the ears.",
+                "Every song has its own space to shine when the mix moves this smoothly.",
+                "A quiet little pocket of great music right in the middle of your $timeOfDay.",
+                "Warm tones, steady beat, and zero distractions.",
+                "Just leaning back and letting your library do its thing.",
             )
             3 -> listOf(
                 "Still zero commercials, zero traffic updates, and zero awkward radio jingles.",
@@ -775,6 +804,14 @@ object Announcer {
                 "Best radio station on your phone, and the studio budget is literally zero dollars.",
                 "Try not to tap the steering wheel or nod your head on this next track — impossible challenge.",
                 "Who needs a morning show crew laughing at their own jokes when you've got tunes like these?",
+                "Quick station announcement: there is no announcement, I just really wanted to play this next song.",
+                "If anyone in traffic is wondering why you're grinning, blame this playlist.",
+                "I checked the rules and it's actually illegal to listen to this next one at low volume.",
+                "Not a single sponsored mattress ad in sight — just wall-to-wall favourites.",
+                "Honestly, whoever put this music library together deserves a raise.",
+                "No fake radio drama, no prank calls — just pure, unfiltered good taste.",
+                "Consider this your official permission slip to turn the stereo up two more clicks.",
+                "Breaking news: this next song is still way better than anything on regular FM radio.",
             )
             else -> listOf(
                 "Hope you're having an awesome $timeOfDay and enjoying the tunes!",
@@ -789,35 +826,56 @@ object Announcer {
                 "One great track wraps up and another favourite is already lined up on the deck.",
                 "Hope the road ahead is smooth and the speakers are sounding great.",
                 "You really can't beat a solid run of classics to keep the $timeOfDay moving nicely.",
+                "Great mix of tracks coming through today — really enjoying this session.",
+                "Just the right soundtrack to make a busy $timeOfDay feel a whole lot easier.",
+                "Every time you think this playlist can't top the last song, another gem shows up.",
+                "Glad to be riding shotgun with your music this $timeOfDay.",
+                "Nothing fancy, just great songs back to back the way radio should be.",
+                "Here's to a smooth $timeOfDay and plenty more classics waiting in the queue.",
+                "It's always a good time when your favourite artists keep showing up one after another.",
+                "Keeping the tunes fresh and the vibes steady right through the $timeOfDay.",
             )
         }
 
-        val middles = buildList {
+        val genreTag = next.genre.split(',', '/', ';').firstOrNull { it.isNotBlank() }?.trim()
+        val middles = buildList<Pair<String, String>> {
             if (prevA != null && prevT != null) {
-                add("That was $prevT by $prevA setting the tone nicely.")
-                add("We just wrapped up $prevA with $prevT, and the next pick fits right in.")
-                add("Letting $prevT by $prevA fade out smoothly behind us.")
-                add("$prevA did a great job with $prevT, and we're keeping that momentum alive.")
+                add("prev1" to "That was $prevT by $prevA setting the tone nicely.")
+                add("prev2" to "We just wrapped up $prevA with $prevT, and the next pick fits right in.")
+                add("prev3" to "Letting $prevT by $prevA fade out smoothly behind us.")
+                add("prev4" to "$prevA did a great job with $prevT, and we're keeping that momentum alive.")
+                add("prev5" to "Coming off $prevT by $prevA, we've got another killer lined up.")
+                add("prev6" to "Nice finish there from $prevA — now let's keep the flow moving.")
             } else if (prevA != null) {
-                add("That last one from $prevA set the vibe nicely.")
-                add("Letting $prevA fade out smoothly as we cue up the next deck.")
+                add("preva1" to "That last one from $prevA set the vibe nicely.")
+                add("preva2" to "Letting $prevA fade out smoothly as we cue up the next deck.")
             }
             if (chartFact != null) {
-                add(chartFact)
-                add("Fun bit of history on this next one: ${chartFact.replaceFirstChar { it.lowercase() }}")
+                add("chart1" to chartFact)
+                add("chart2" to "Fun bit of history on this next one: ${chartFact.replaceFirstChar { it.lowercase() }}")
             }
             if (next.year > 0) {
-                add("We're taking a quick trip back to ${next.year} for this next one.")
-                add("This one's been a favourite ever since it first came out in ${next.year}.")
+                add("yr1" to "We're taking a quick trip back to ${next.year} for this next one.")
+                add("yr2" to "This one's been a favourite ever since it first came out in ${next.year}.")
+                add("yr3" to "Throwing it back to ${next.year} with a track that still holds up today.")
+                add("yr4" to "Straight out of ${next.year}, and it still sounds just as sharp.")
             }
-            add("It's the kind of track you hear the first two seconds of and immediately recognise.")
-            add("Always hits just as good as the very first time you heard it.")
-            add("Definitely one of those songs that deserves a little extra volume.")
-            add("Whether you're singing along or just cruising, this one never misses.")
+            if (genreTag != null && genreTag.length in 3..22) {
+                add("gen1" to "A proper slice of $genreTag ready to roll next.")
+                add("gen2" to "Keeping that $genreTag energy alive on the deck.")
+            }
+            add("gen_a" to "It's the kind of track you hear the first two seconds of and immediately recognise.")
+            add("gen_b" to "Always hits just as good as the very first time you heard it.")
+            add("gen_c" to "Definitely one of those songs that deserves a little extra volume.")
+            add("gen_d" to "Whether you're singing along or just cruising, this one never misses.")
+            add("gen_e" to "One of those unmistakable riffs that grabs your attention straight away.")
+            add("gen_f" to "Hard to beat a track with this much character.")
+            add("gen_g" to "Always a welcome surprise when this one pops up in the queue.")
+            add("gen_h" to "A real standout in your collection — glad it landed in this mix.")
         }
 
         val opener = openers[pickFresh(openers.size, recentPicks)]
-        val middle = if (lenIdx == 2) middles[pickFresh(middles.size, recentMiddles)] else ""
+        val middle = if (lenIdx == 2) pickFreshTagged(middles, recentMiddles) else ""
         // Never repeat the release year if the middle beat already mentioned it
         val yrInMiddle = next.year > 0 && next.year.toString() in middle
         val yrTail = if (yrInMiddle) "" else yr

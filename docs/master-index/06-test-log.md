@@ -133,3 +133,5 @@
 | 347 | 2026-11-25 | Clear per-mode battery consumption labels (`🔋 Low / Medium / High battery`) under the DJ writer picker (`Instant` / `Quick AI` / `Better AI`) in Settings → DJ | Waiting |
 
 | 348 | 2026-11-25 | Tightened `Heavy` mood in `Moods.kt` so soft/pop/britpop rock (like Coldplay) is excluded while genuine Metal, Punk, Hard Rock, and high-energy heavy tracks stay in; also fixed fallback padding (`ranked.take(12)`) so small moods never pull in 500 loose matches | Waiting |
+
+| 349 | 2026-11-25 | Fixed Instant DJ shifting-index repeat bug (tagged middle templates tracked by ID instead of list index so templates never repeat back-to-back), expanded openers to 20 per style (non-repeat memory raised to 18) and middles to 20+ (with genre-aware beats) | Waiting |
