@@ -332,11 +332,11 @@ object Announcer {
     fun kokoroReady(ctx: Context) = helium314.keyboard.tts.KokoroTts.installed(ctx)
     fun ready(ctx: Context) = if (voiceEngine(ctx) == 1) kokoroReady(ctx) else zonosReady(ctx)
 
-    /** Keeps the active TTS engine warm between songs during playback (avoids 1.1 GB reloads every song), unloading after 3 min idle. */
+    /** Keeps the active TTS engine warm between songs during playback (avoids reloading from flash on 3-8 min songs), unloading after 10 min idle. */
     private fun bumpIdleUnload() {
         idleUnloadJob?.cancel()
         idleUnloadJob = scope.launch {
-            kotlinx.coroutines.delay(3 * 60_000L)
+            kotlinx.coroutines.delay(10 * 60_000L)
             ttsLock.withLock {
                 runCatching { helium314.keyboard.tts.ZonosTts.stop() }
                 runCatching { helium314.keyboard.tts.KokoroTts.release() }
@@ -350,18 +350,25 @@ object Announcer {
         idleUnloadJob?.cancel()
         val useKokoro = voiceEngine(ctx) == 1
         val cleanText = helium314.keyboard.tts.ChatSpeaker.forSpeech(text)
-        val (out, rate) = if (useKokoro) {
-            val k = kokoroHeart()
-            val prepared = helium314.keyboard.tts.Pronounce.prepare(cleanText, helium314.keyboard.tts.KokoroTts.knownWords(ctx, k))
-            // test 359 (Jarrod): 0.94x speed gives Heart a more relaxed, conversational radio-host cadence
-            val samples = helium314.keyboard.tts.KokoroTts.engine(ctx, k).generate(prepared, k.sid, 0.94f).samples
-            warmBroadcastVoice(samples, helium314.keyboard.tts.KokoroTts.RATE) to helium314.keyboard.tts.KokoroTts.RATE
-        } else {
-            val parts = ArrayList<FloatArray>()
-            helium314.keyboard.tts.ZonosTts.speak(ctx, cleanText, zonosVoice(), null, cancel) { parts += it }
-            val buf = FloatArray(parts.sumOf { it.size }); var i = 0
-            for (p in parts) { System.arraycopy(p, 0, buf, i, p.size); i += p.size }
-            buf to helium314.keyboard.tts.ZonosTts.RATE
+        // test 360 (Jarrod): pin thread to lowest priority right before TTS so ONNX/Zonos worker threads never compete with music audio
+        val prevPrio = runCatching { android.os.Process.getThreadPriority(android.os.Process.myTid()) }.getOrDefault(0)
+        runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LOWEST) }
+        val (out, rate) = try {
+            if (useKokoro) {
+                val k = kokoroHeart()
+                val prepared = helium314.keyboard.tts.Pronounce.prepare(cleanText, helium314.keyboard.tts.KokoroTts.knownWords(ctx, k))
+                // test 359/360 (Jarrod): 0.94x speed + 2-thread cap so music playback always keeps full CPU priority
+                val samples = helium314.keyboard.tts.KokoroTts.engine(ctx, k, maxThreads = 2).generate(prepared, k.sid, 0.94f).samples
+                warmBroadcastVoice(samples, helium314.keyboard.tts.KokoroTts.RATE) to helium314.keyboard.tts.KokoroTts.RATE
+            } else {
+                val parts = ArrayList<FloatArray>()
+                helium314.keyboard.tts.ZonosTts.speak(ctx, cleanText, zonosVoice(), null, cancel) { parts += it }
+                val buf = FloatArray(parts.sumOf { it.size }); var i = 0
+                for (p in parts) { System.arraycopy(p, 0, buf, i, p.size); i += p.size }
+                buf to helium314.keyboard.tts.ZonosTts.RATE
+            }
+        } finally {
+            runCatching { android.os.Process.setThreadPriority(prevPrio) }
         }
         bumpIdleUnload()
         // test 323 (Jarrod): broadcast-style speech loudness (~20% louder than the music before it, like FM radio)
