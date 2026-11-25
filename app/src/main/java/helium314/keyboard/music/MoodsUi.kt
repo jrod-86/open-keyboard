@@ -323,11 +323,20 @@ private fun MoodMixScreen(full: List<Song>, lib: Library, ui: PlayerUi, open: (P
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
     var saved by remember { mutableStateOf("") }
     androidx.activity.compose.BackHandler { onBack() }
-    val shown = remember(full, MoodState.length, MoodState.sort) { moodShown(ctx, full) }
+    val shown = remember(full, MoodState.length, MoodState.sort, MoodState.seed) { moodShown(ctx, full) }
     fun choose(len: Int? = null, sort: String? = null) {
         len?.let { MoodState.length = it }; sort?.let { MoodState.sort = it }
         ctx.getSharedPreferences("music", android.content.Context.MODE_PRIVATE).edit().putInt("mood_len", MoodState.length).putString("mood_sort", MoodState.sort).apply()
-        ui.play(moodShown(ctx, full), 0)
+        // test 353 (Jarrod): tapping 15 / 30 / 60 / All (or Mixed up) rolls a brand-new random mix just like Popular tab!
+        if (len != null || sort == "random") {
+            if (MoodState.moodId != null) { replay(); return }
+            val s = System.nanoTime(); MoodState.seed = s
+            val fresh = full.shuffled(java.util.Random(s))
+            MoodState.mix = fresh
+            ui.play(moodShown(ctx, fresh), 0)
+        } else {
+            ui.play(moodShown(ctx, full), 0)
+        }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item {

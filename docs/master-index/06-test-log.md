@@ -141,3 +141,5 @@
 | 351 | 2026-11-25 | Expanded Instant DJ shuffle-bag bank (`assets/music/dj_bank_extra.txt`) to **15+ hours zero repeats** even on Every song: 270 unique openers per style (~15.75 h), 108+ middle beats, 128 intros, and 150 short lines — all on persistent Fisher-Yates shuffle-bags with zero extra battery/RAM | Waiting |
 
 | 352 | 2026-11-25 | Fixed Moods/playlist playback stopping (`STATE_ENDED`) after 1–2 songs when Shuffle is on: `PlayerUi.play()` now uses `setMediaItems(items, resetPosition = true)` when shuffled so ExoPlayer starts at index 0 of its `ShuffleOrder` and plays 100% of the playlist | Waiting |
+
+| 353 | 2026-11-25 | Moods tab `How long` (`Short · 15` / `Medium · 30` / `Long · 60` / `All`) and `Mixed up` chips now roll a brand-new random mix on every tap (matching Popular tab's exact behaviour) | Waiting |
