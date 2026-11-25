@@ -650,8 +650,8 @@ object Announcer {
             while (recentLines.size > 4) recentLines.removeFirst()
             return written
         }
-        // test 345 (Jarrod): unified Short/Medium/Long composable radio DJ lines for Instant mode & fallback
-        return builtInLine(ctx, styleIdx, lenIdx, cur, next, mentionStation, timeOfDay)
+        // test 350 (Jarrod): 5-hour zero-repeat persistent Fisher-Yates shuffle-bag engine for Instant mode & AI fallback
+        return DjScriptBank.build(ctx, styleIdx, lenIdx, cur, next, mentionStation, timeOfDay)
     }
 
     private fun builtInLine(ctx: Context, styleIdx: Int, lenIdx: Int, cur: Song?, next: Song, mentionStation: Boolean, timeOfDay: String): String {
