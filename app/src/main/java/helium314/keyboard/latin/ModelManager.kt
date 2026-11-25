@@ -24,10 +24,12 @@ object ModelManager {
 
     private val known = listOf(
         Known("voice-models", "Voice typing", "Voice typing, Chat Talk mode, voice commands"),
-        Known("tts-models/kokoro-v1", "Kokoro voices", "TTS, Chat replies"),
-        Known("tts-models/zonos3-mini", "Zonos voices", "TTS"),
+        Known("tts-models/kokoro-v1", "Kokoro voices", "TTS, Chat replies, Open Waves DJ"),
+        Known("tts-models/zonos3-mini", "Zonos voices", "TTS, Open Waves DJ"),
         Known("tts-models/zonos3-clone", "Make a voice (cloning)", "TTS"),
         Known("tts-voices", "Voices you made", "TTS, Chat", userMade = true),
+        Known("models/clap", "AI music listener (CLAP)", "Open Waves Moods"),
+        Known("stem-models/spleeter4", "Stem splitter (Spleeter)", "Open Waves Stem mode"),
         Known("ocr", "Scan text (basic)", "Scan text"),
         Known("ocr-paddle", "Scan text", "Scan text"),
         Known("ocr-best", "Scan text (best)", "Scan text"),
@@ -37,7 +39,7 @@ object ModelManager {
 
     // the user's own things or small bits that aren't models
     private val notModels = setOf("dicts", "clipboard", "chat", "sticker-packs", "image_maker_gallery", "crash_report",
-        "blacklists", "temp_clip", "tts-models", "llm", "Download", "Pictures", "Music")
+        "blacklists", "temp_clip", "tts-models", "llm", "models", "stem-models", "stems", "music", "Download", "Pictures", "Music")
 
     /** Everything downloaded, biggest first. Walks folders: call off the main thread. */
     fun list(ctx: Context): List<Entry> {
@@ -53,8 +55,8 @@ object ModelManager {
         listOfNotNull(ext, files).distinct().forEach { root ->
             File(root, "llm").listFiles()?.filter { it.isFile && !it.name.endsWith(".ok") && it.length() > 0 }?.forEach { f ->
                 val (name, usedBy) = when {
-                    f.name == WritingTools.QUICK.fileName -> "Writing model (Quick)" to "Smart compose, Writing help, AI writer, Chat"
-                    f.name == WritingTools.BETTER.fileName -> "Writing model (Better)" to "Smart compose, Writing help, AI writer, Chat"
+                    f.name == WritingTools.QUICK.fileName -> "Writing model (Quick)" to "Smart compose, Writing help, AI writer, Chat, Open Waves DJ"
+                    f.name == WritingTools.BETTER.fileName -> "Writing model (Better)" to "Smart compose, Writing help, AI writer, Chat, Open Waves DJ"
                     f.name.startsWith("madlad") -> "Khmer translator" to "Translate"
                     else -> f.name to "?"
                 }
@@ -106,6 +108,8 @@ object ModelManager {
                 return "The writing model is in use. It's being put away now, so try again in a few seconds (close Chat first if it's open)."
             }
         }
+        if (e.file.path.contains("kokoro")) runCatching { helium314.keyboard.tts.KokoroTts.release() }
+        if (e.file.path.contains("zonos")) runCatching { helium314.keyboard.tts.ZonosTts.stop() }
         val ok = if (e.file.isDirectory) e.file.deleteRecursively() else e.file.delete().also { File(e.file.path + ".ok").delete() }
         WritingTools.forgetReady()
         return if (ok) null else "Couldn't delete it all."

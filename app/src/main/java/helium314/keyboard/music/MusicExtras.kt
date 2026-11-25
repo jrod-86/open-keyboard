@@ -360,9 +360,96 @@ internal fun SettingsPage(open: (Page) -> Unit, onBack: () -> Unit, onLibraryCha
         item { TabsSettings() }
         item { ScrobbleSettings() }
         item { BackupSettings() }
+        item { ModelManagerSettings() }
         item {
             TextButton({ addHomeShortcut(ctx) }, Modifier.padding(8.dp)) { Text("Add Music to Home screen", color = Accent) }
         }
+    }
+}
+
+/** test 365 (Jarrod): View and remove shared AI models right from Open Waves Settings. */
+@Composable
+private fun ModelManagerSettings() {
+    val ctx = LocalContext.current
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var entries by remember { mutableStateOf<List<helium314.keyboard.latin.ModelManager.Entry>?>(null) }
+    var askDelete by remember { mutableStateOf<helium314.keyboard.latin.ModelManager.Entry?>(null) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf(false) }
+
+    fun reload() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val list = helium314.keyboard.latin.ModelManager.list(ctx)
+            withContext(kotlinx.coroutines.Dispatchers.Main) { entries = list }
+        }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    val list = entries
+    val totalBytes = list?.sumOf { it.bytes } ?: 0L
+    Column {
+        Section("Model manager")
+        Row(
+            Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Shared AI models", fontSize = 16.sp)
+                Text(
+                    when {
+                        list == null -> "Checking downloaded models…"
+                        list.isEmpty() -> "No AI models downloaded yet."
+                        else -> "${list.size} models · ${helium314.keyboard.latin.ModelManager.sizeText(totalBytes)} total (shared with Open Keyboard). Tap to ${if (expanded) "hide" else "manage"}."
+                    },
+                    fontSize = 12.sp, color = dim,
+                )
+            }
+            Text(if (expanded) "Hide" else "View", color = Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+        msg?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 2.dp), fontSize = 12.sp, color = Accent) }
+        if (expanded && list != null) {
+            if (list.isEmpty()) {
+                Text("Nothing to remove.", Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontSize = 13.sp, color = dim)
+            } else {
+                list.forEach { e ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${e.name} · ${helium314.keyboard.latin.ModelManager.sizeText(e.bytes)}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Used by: ${e.usedBy}", fontSize = 12.sp, color = dim)
+                        }
+                        TextButton({ askDelete = e }) { Text("Remove", color = Color(0xFFFF5252)) }
+                    }
+                }
+            }
+        }
+    }
+    askDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { askDelete = null },
+            title = { Text("Remove ${target.name}?") },
+            text = { Text("Frees ${helium314.keyboard.latin.ModelManager.sizeText(target.bytes)}.\n\nUsed by: ${target.usedBy}\n\nYou can always download it again later.") },
+            confirmButton = {
+                TextButton({
+                    val t = target; askDelete = null; msg = null
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val err = helium314.keyboard.latin.ModelManager.delete(ctx, t)
+                        val refreshed = helium314.keyboard.latin.ModelManager.list(ctx)
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            entries = refreshed
+                            msg = err ?: "Removed ${t.name}"
+                        }
+                    }
+                }) { Text("Remove", color = Color(0xFFFF5252)) }
+            },
+            dismissButton = { TextButton({ askDelete = null }) { Text("Cancel") } },
+        )
     }
 }
 
