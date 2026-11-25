@@ -353,8 +353,9 @@ object Announcer {
         val (out, rate) = if (useKokoro) {
             val k = kokoroHeart()
             val prepared = helium314.keyboard.tts.Pronounce.prepare(cleanText, helium314.keyboard.tts.KokoroTts.knownWords(ctx, k))
-            val samples = helium314.keyboard.tts.KokoroTts.engine(ctx, k).generate(prepared, k.sid, 1.0f).samples
-            samples to helium314.keyboard.tts.KokoroTts.RATE
+            // test 359 (Jarrod): 0.94x speed gives Heart a more relaxed, conversational radio-host cadence
+            val samples = helium314.keyboard.tts.KokoroTts.engine(ctx, k).generate(prepared, k.sid, 0.94f).samples
+            warmBroadcastVoice(samples, helium314.keyboard.tts.KokoroTts.RATE) to helium314.keyboard.tts.KokoroTts.RATE
         } else {
             val parts = ArrayList<FloatArray>()
             helium314.keyboard.tts.ZonosTts.speak(ctx, cleanText, zonosVoice(), null, cancel) { parts += it }
@@ -369,9 +370,84 @@ object Announcer {
         for (v in out) { if (kotlin.math.abs(v) > 0.01f) { sumSq += v * v; active++ } }
         val rms = if (active > 0) kotlin.math.sqrt(sumSq / active).toFloat() else 0.1f
         val gain = (0.28f / rms.coerceAtLeast(0.03f)).coerceIn(1.2f, 4.5f)
-        val norm = kotlin.math.tanh(1.15).toFloat()
-        for (k in out.indices) out[k] = (kotlin.math.tanh((out[k] * gain * 1.15f).toDouble()).toFloat() / norm).coerceIn(-0.98f, 0.98f)
+        val drive = if (useKokoro) 1.05f else 1.15f
+        val norm = kotlin.math.tanh(drive.toDouble()).toFloat()
+        for (k in out.indices) out[k] = (kotlin.math.tanh((out[k] * gain * drive).toDouble()).toFloat() / norm).coerceIn(-0.98f, 0.98f)
         out to rate
+    }
+
+    /**
+     * test 359 (Jarrod): Studio FM radio voice chain for Kokoro Heart (~15 ms in pure Kotlin, zero battery impact).
+     * Shapes the dry 24 kHz int8 TTS output into a warm, smooth broadcast mic sound:
+     * 1) 80 Hz HPF  2) +3.2 dB @ 190 Hz chest warmth  3) -2.8 dB @ 3.2 kHz de-harsh  4) -3.8 dB > 6.2 kHz de-ess/smooth
+     * 5) Gentle broadcast compressor  6) Subtle warm studio-booth early reflections (~6.5% wet).
+     */
+    private fun warmBroadcastVoice(samples: FloatArray, rate: Int): FloatArray {
+        if (samples.size < 64) return samples
+        val sr = rate.toDouble()
+        fun applyBiquad(buf: FloatArray, b0: Double, b1: Double, b2: Double, a0: Double, a1: Double, a2: Double) {
+            val nb0 = b0 / a0; val nb1 = b1 / a0; val nb2 = b2 / a0; val na1 = a1 / a0; val na2 = a2 / a0
+            var x1 = 0.0; var x2 = 0.0; var y1 = 0.0; var y2 = 0.0
+            for (i in buf.indices) {
+                val x0 = buf[i].toDouble()
+                val y0 = nb0 * x0 + nb1 * x1 + nb2 * x2 - na1 * y1 - na2 * y2
+                x2 = x1; x1 = x0; y2 = y1; y1 = y0
+                buf[i] = y0.toFloat()
+            }
+        }
+        // 1) 80 Hz high-pass (cleans DC/rumble)
+        run {
+            val w0 = 2.0 * Math.PI * 80.0 / sr; val c = kotlin.math.cos(w0); val alpha = kotlin.math.sin(w0) / (2.0 * 0.707)
+            applyBiquad(samples, (1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + alpha, -2 * c, 1 - alpha)
+        }
+        // 2) Low-shelf warmth (+3.2 dB @ 190 Hz, classic SM7B/RE20 broadcast body)
+        run {
+            val a = Math.pow(10.0, 3.2 / 40.0); val w0 = 2.0 * Math.PI * 190.0 / sr; val c = kotlin.math.cos(w0)
+            val alpha = kotlin.math.sin(w0) / 2.0 * kotlin.math.sqrt((a + 1.0 / a) * (1.0 / 0.8 - 1.0) + 2.0)
+            val sq = 2.0 * kotlin.math.sqrt(a) * alpha
+            applyBiquad(samples, a * ((a + 1) - (a - 1) * c + sq), 2 * a * ((a - 1) - (a + 1) * c), a * ((a + 1) - (a - 1) * c - sq),
+                (a + 1) + (a - 1) * c + sq, -2 * ((a - 1) + (a + 1) * c), (a + 1) + (a - 1) * c - sq)
+        }
+        // 3) De-harsh upper-mid dip (-2.8 dB @ 3200 Hz, Q = 1.3 — removes synthetic TTS edge)
+        run {
+            val a = Math.pow(10.0, -2.8 / 40.0); val w0 = 2.0 * Math.PI * 3200.0 / sr; val c = kotlin.math.cos(w0)
+            val alpha = kotlin.math.sin(w0) / (2.0 * 1.3)
+            applyBiquad(samples, 1 + alpha * a, -2 * c, 1 - alpha * a, 1 + alpha / a, -2 * c, 1 - alpha / a)
+        }
+        // 4) High-shelf smooth roll-off (-3.8 dB @ 6200 Hz — tames int8 sibilance & metallic sheen)
+        run {
+            val a = Math.pow(10.0, -3.8 / 40.0); val w0 = 2.0 * Math.PI * 6200.0 / sr; val c = kotlin.math.cos(w0)
+            val alpha = kotlin.math.sin(w0) / 2.0 * kotlin.math.sqrt((a + 1.0 / a) * (1.0 / 0.7 - 1.0) + 2.0)
+            val sq = 2.0 * kotlin.math.sqrt(a) * alpha
+            applyBiquad(samples, a * ((a + 1) + (a - 1) * c + sq), -2 * a * ((a - 1) + (a + 1) * c), a * ((a + 1) + (a - 1) * c - sq),
+                (a + 1) - (a - 1) * c + sq, 2 * ((a - 1) - (a + 1) * c), (a + 1) - (a - 1) * c - sq)
+        }
+        // 5) Gentle broadcast compressor (evens out quiet words & loud peaks smoothly)
+        val atk = kotlin.math.exp(-1.0 / (0.008 * sr)).toFloat()
+        val rel = kotlin.math.exp(-1.0 / (0.120 * sr)).toFloat()
+        var env = 0f
+        for (i in samples.indices) {
+            val x = samples[i]; val ax = kotlin.math.abs(x)
+            env = if (ax > env) atk * env + (1f - atk) * ax else rel * env + (1f - rel) * ax
+            if (env > 0.16f) {
+                val over = env / 0.16f
+                val g = Math.pow(over.toDouble(), (1.0 / 2.6) - 1.0).toFloat()
+                samples[i] = x * g
+            }
+        }
+        // 6) Subtle warm studio-booth early reflections (17 ms + 29 ms damped taps, ~6.5% wet)
+        val d1 = (rate * 0.017).toInt().coerceAtLeast(1)
+        val d2 = (rate * 0.029).toInt().coerceAtLeast(1)
+        val dry = samples.copyOf()
+        var lp = 0f
+        for (i in samples.indices) {
+            val t1 = if (i >= d1) dry[i - d1] else 0f
+            val t2 = if (i >= d2) dry[i - d2] else 0f
+            val refl = t1 * 0.042f + t2 * 0.026f
+            lp += 0.45f * (refl - lp) // warm low-pass on reflections so they're never metallic
+            samples[i] = dry[i] * 0.96f + lp
+        }
+        return samples
     }
 
     /**
