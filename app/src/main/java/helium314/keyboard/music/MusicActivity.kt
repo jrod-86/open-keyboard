@@ -1031,6 +1031,7 @@ internal fun WavyProgressLine(
     trackColor: Color = Color.White.copy(alpha = 0.25f),
     strokeDp: Float = 3.5f,
     ampDp: Float = 3.2f,
+    thumbDp: Float = 0f,
 ) {
     StyledProgressLine(
         frac = frac,
@@ -1040,6 +1041,7 @@ internal fun WavyProgressLine(
         trackColor = trackColor,
         strokeDp = strokeDp,
         ampDp = ampDp,
+        thumbDp = thumbDp,
     )
 }
 
@@ -1062,13 +1064,11 @@ private fun SeekBar(ui: PlayerUi) {
             WavyProgressLine(
                 frac = frac,
                 playing = ui.playing && dragFrac == null,
-                modifier = Modifier.fillMaxWidth().height(22.dp),
+                modifier = Modifier.fillMaxWidth().height(26.dp),
                 strokeDp = if (dragFrac != null) 5f else 3.5f,
                 ampDp = 4.2f,
+                thumbDp = if (dragFrac != null) 22f else 18f,
             )
-            val thumb = if (dragFrac != null) 22.dp else 18.dp
-            val thumbColor = TimelineStyles.accentColorAt(MusicSettings.timelineColor, Color.White, frac, 0f)
-            Box(Modifier.offset(x = (maxWidth - thumb) * frac).size(thumb).clip(CircleShape).background(thumbColor))
         }
         val shown = ((dragFrac ?: frac) * dur).toLong()
         Row(Modifier.fillMaxWidth()) {

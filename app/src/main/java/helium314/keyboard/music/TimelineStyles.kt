@@ -157,6 +157,7 @@ internal fun StyledProgressLine(
     trackColor: Color = Color.White.copy(alpha = 0.25f),
     strokeDp: Float = 3.5f,
     ampDp: Float = 3.5f,
+    thumbDp: Float = 0f,
     styleIdx: Int = MusicSettings.timelineStyle,
     colorIdx: Int = MusicSettings.timelineColor,
 ) {
@@ -179,7 +180,9 @@ internal fun StyledProgressLine(
         val h = size.height
         val cy = h / 2f
         val stroke = strokeDp.dp.toPx()
-        val splitX = w * frac.coerceIn(0f, 1f)
+        val thumbR = (thumbDp / 2f).dp.toPx()
+        val splitX = if (thumbR > 0f) thumbR + (w - thumbR * 2f).coerceAtLeast(0f) * frac.coerceIn(0f, 1f)
+            else w * frac.coerceIn(0f, 1f)
         val brush = TimelineStyles.brushFor(colorIdx, defaultColor, phase, w.coerceAtLeast(1f))
         val amp = (ampDp.dp.toPx()).coerceAtMost(h * 0.42f) * activeAmp
 
@@ -194,9 +197,7 @@ internal fun StyledProgressLine(
             )
         }
 
-        if (splitX <= 1f && styleIdx != 8) return@Canvas
-
-        when (styleIdx) {
+        if (splitX > 1f || styleIdx == 8) when (styleIdx) {
             // 0: Wavy (flowing sine wave)
             0 -> {
                 if (amp < 0.25f) {
@@ -411,6 +412,15 @@ internal fun StyledProgressLine(
                 drawPath(p1, brush, style = Stroke(stroke * 0.9f, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
         }
+
+        // Thumb ball drawn inside the same Canvas so its colour animates in 100% live sync with animated gradients!
+        if (thumbR > 0f) {
+            val ballColor = TimelineStyles.accentColorAt(colorIdx, defaultColor, frac.coerceIn(0f, 1f), phase)
+            if (styleIdx == 5) {
+                drawCircle(ballColor.copy(alpha = 0.35f), thumbR * 1.45f, Offset(splitX, cy))
+            }
+            drawCircle(ballColor, thumbR, Offset(splitX, cy))
+        }
     }
 }
 
@@ -440,22 +450,17 @@ internal fun TimelineStudioSection(onChanged: () -> Unit) {
                     Text("Live preview", color = Accent, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(10.dp))
-                BoxWithConstraints(Modifier.fillMaxWidth().height(26.dp), contentAlignment = Alignment.CenterStart) {
-                    val previewFrac = 0.66f
-                    StyledProgressLine(
-                        frac = previewFrac,
-                        playing = true,
-                        modifier = Modifier.fillMaxWidth().height(22.dp),
-                        defaultColor = Color.White,
-                        strokeDp = 3.5f,
-                        ampDp = 4.2f,
-                        styleIdx = styleIdx,
-                        colorIdx = colorIdx,
-                    )
-                    val thumb = 16.dp
-                    val thumbColor = TimelineStyles.accentColorAt(colorIdx, Color.White, previewFrac, 0f)
-                    Box(Modifier.offset(x = (maxWidth - thumb) * previewFrac).size(thumb).clip(CircleShape).background(thumbColor))
-                }
+                StyledProgressLine(
+                    frac = 0.66f,
+                    playing = true,
+                    modifier = Modifier.fillMaxWidth().height(26.dp),
+                    defaultColor = Color.White,
+                    strokeDp = 3.5f,
+                    ampDp = 4.2f,
+                    thumbDp = 16f,
+                    styleIdx = styleIdx,
+                    colorIdx = colorIdx,
+                )
             }
         }
 
