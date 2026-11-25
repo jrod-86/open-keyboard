@@ -223,7 +223,7 @@ internal fun StyledProgressLine(
                 drawLine(brush, Offset(0f, cy), Offset(splitX, cy), stroke, StrokeCap.Round)
             }
 
-            // 2: Musical notes (connected notes dancing/jumping along the played line!)
+            // 2: Musical notes (connected notes streaming continuously to the left & bouncing!)
             2 -> {
                 // Connecting flowing line underneath the notes
                 drawLine(brush, Offset(0f, cy), Offset(splitX, cy), (stroke * 0.65f).coerceAtLeast(1.5f), StrokeCap.Round)
@@ -232,17 +232,24 @@ internal fun StyledProgressLine(
                 val stemH = (h * 0.42f).coerceIn(4.dp.toPx(), 9.5.dp.toPx())
                 val bounceAmp = (h * 0.22f) * activeAmp
                 val stemW = (stroke * 0.55f).coerceAtLeast(1.3.dp.toPx())
-                var idx = 0
-                var x = noteSpacing * 0.55f
-                while (x < splitX - headR * 1.4f) {
-                    val bounce = abs(sin(phase * 1.15f - idx * 0.9f)) * bounceAmp
+                // Scroll continuously to the left while preserving each note's identity (n) so ♪ / ♫ never flicker
+                val scrollPx = phase * 9.5.dp.toPx()
+                val firstN = kotlin.math.floor(scrollPx / noteSpacing).toInt()
+                val lastN = kotlin.math.ceil((scrollPx + splitX) / noteSpacing).toInt()
+                val edgeFadePx = 10.dp.toPx()
+                for (n in firstN..lastN) {
+                    val x = n * noteSpacing - scrollPx
+                    if (x < -noteSpacing || x > splitX - headR * 1.2f) continue
+                    val alpha = minOf(1f, (x + headR) / edgeFadePx, (splitX - x) / edgeFadePx).coerceIn(0f, 1f)
+                    if (alpha <= 0.02f) continue
+                    val bounce = abs(sin(phase * 1.15f + n * 0.9f)) * bounceAmp
                     val ny = cy + headR * 0.7f - bounce
-                    val c = TimelineStyles.accentColorAt(colorIdx, defaultColor, x / w.coerceAtLeast(1f), phase)
-                    val paired = (idx % 3 == 1) && (x + noteSpacing * 0.52f < splitX - headR * 1.4f)
+                    val c = TimelineStyles.accentColorAt(colorIdx, defaultColor, (x / w.coerceAtLeast(1f)).coerceIn(0f, 1f), phase).copy(alpha = alpha)
+                    val paired = (Math.floorMod(n, 3) == 1) && (x + noteSpacing * 0.48f < splitX - headR * 1.2f)
                     if (paired) {
-                        // Beamed eighth notes (♫) jumping together!
-                        val x2 = x + noteSpacing * 0.48f
-                        val b2 = abs(sin(phase * 1.15f - (idx + 0.5f) * 0.9f)) * bounceAmp
+                        // Beamed eighth notes (♫) gliding left together
+                        val x2 = x + noteSpacing * 0.44f
+                        val b2 = abs(sin(phase * 1.15f + (n + 0.5f) * 0.9f)) * bounceAmp
                         val ny2 = cy + headR * 0.7f - b2
                         drawOval(c, Offset(x - headR * 1.15f, ny - headR * 0.85f), Size(headR * 2.3f, headR * 1.7f))
                         drawOval(c, Offset(x2 - headR * 1.15f, ny2 - headR * 0.85f), Size(headR * 2.3f, headR * 1.7f))
@@ -251,9 +258,8 @@ internal fun StyledProgressLine(
                         drawLine(c, Offset(x + headR * 0.9f, ny), top1, stemW, StrokeCap.Round)
                         drawLine(c, Offset(x2 + headR * 0.9f, ny2), top2, stemW, StrokeCap.Round)
                         drawLine(c, top1, top2, stemW * 1.45f, StrokeCap.Round)
-                        x += noteSpacing * 1.15f
                     } else {
-                        // Single eighth note (♪)
+                        // Single eighth note (♪) gliding left
                         drawOval(c, Offset(x - headR * 1.15f, ny - headR * 0.85f), Size(headR * 2.3f, headR * 1.7f))
                         val top = Offset(x + headR * 0.9f, (ny - stemH).coerceAtLeast(1f))
                         drawLine(c, Offset(x + headR * 0.9f, ny), top, stemW, StrokeCap.Round)
@@ -262,9 +268,7 @@ internal fun StyledProgressLine(
                             quadraticTo(top.x + headR * 2.1f, top.y + stemH * 0.28f, top.x + headR * 1.3f, top.y + stemH * 0.62f)
                         }
                         drawPath(flag, c, style = Stroke(stemW, cap = StrokeCap.Round))
-                        x += noteSpacing
                     }
-                    idx++
                 }
             }
 
