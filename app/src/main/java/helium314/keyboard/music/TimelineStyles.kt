@@ -293,7 +293,7 @@ internal fun StyledProgressLine(
                 }
             }
 
-            // 4: Heartbeat (ECG pulse traveling down the played bar)
+            // 4: Heartbeat (ECG pulse traveling leftward from the thumb, like a real ECG monitor)
             4 -> {
                 val path = Path()
                 val period = 46.dp.toPx()
@@ -301,7 +301,7 @@ internal fun StyledProgressLine(
                 val peak = (h * 0.44f) * (0.25f + 0.75f * activeAmp)
                 var x = 0f; var first = true
                 while (x <= splitX) {
-                    val u = (((x - phase * 10.dp.toPx()) % period) + period) % period / period
+                    val u = (((x + phase * 10.dp.toPx()) % period) + period) % period / period
                     val ecg = when {
                         u in 0.10f..0.18f -> -sin((u - 0.10f) / 0.08f * PI).toFloat() * 0.25f
                         u in 0.24f..0.29f -> sin((u - 0.24f) / 0.05f * PI).toFloat() * 0.35f
