@@ -43,6 +43,8 @@ object MusicState {
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MusicService : MediaLibraryService() {
     private var session: MediaLibraryService.MediaLibrarySession? = null
+    private var activeDeck: ExoPlayer? = null
+    private var standbyDeck: ExoPlayer? = null
     private var leveler: LevelApplier? = null
     private var floating: FloatingPlayer? = null
     private var blender: Crossfader? = null
@@ -68,86 +70,118 @@ class MusicService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         Eq.load(this)
-        val player = ExoPlayer.Builder(this, Eq.renderers(this))
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+        val musicAttrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
+        fun buildDeck(handleFocus: Boolean): ExoPlayer = ExoPlayer.Builder(this, Eq.renderers(this))
+            .setAudioAttributes(musicAttrs, handleFocus)
             .setHandleAudioBecomingNoisy(true) // headphones unplugged: pause
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
-        MusicState.audioSession = player.audioSessionId
+        val deckA = buildDeck(true)
+        val deckB = buildDeck(false)
+        activeDeck = deckA
+        standbyDeck = deckB
+        MusicState.audioSession = deckA.audioSessionId
         runCatching { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).registerAudioDeviceCallback(devices, handler) }
         var counted = -1L
         // Most played / Recently played (test 238): count a song once each time it starts playing
-        fun count() {
-            val id = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
-            if (player.isPlaying && id != counted) { counted = id; PlayStats.record(this, id) }
+        fun count(p: ExoPlayer) {
+            val id = p.currentMediaItem?.mediaId?.toLongOrNull() ?: return
+            if (p.isPlaying && id != counted) { counted = id; PlayStats.record(this, id) }
         }
-        player.addListener(object : Player.Listener {
-            override fun onAudioSessionIdChanged(audioSessionId: Int) { MusicState.audioSession = audioSessionId }
-            override fun onTracksChanged(tracks: Tracks) {
-                val id = player.currentMediaItem?.mediaId?.toLongOrNull() ?: return
-                val metas = tracks.groups.flatMap { g -> (0 until g.length).mapNotNull { g.getTrackFormat(it).metadata } }
-                Lyrics.fromMetadata(metas)?.let { MusicState.embeddedLyrics.value = id to it }
-                leveler?.let { it.tags = Leveler.tags(metas); it.apply() }
-            }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (MusicState.sleepAt.value == -1L && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                    player.pause(); MusicState.sleepAt.value = 0
+        fun applyTracks(p: ExoPlayer, tracks: Tracks) {
+            val id = p.currentMediaItem?.mediaId?.toLongOrNull() ?: return
+            val metas = tracks.groups.flatMap { g -> (0 until g.length).mapNotNull { g.getTrackFormat(it).metadata } }
+            Lyrics.fromMetadata(metas)?.let { MusicState.embeddedLyrics.value = id to it }
+            leveler?.let { it.tags = Leveler.tags(metas); it.apply() }
+        }
+        fun attachListener(p: ExoPlayer) {
+            p.addListener(object : Player.Listener {
+                override fun onAudioSessionIdChanged(audioSessionId: Int) { if (p === activeDeck) MusicState.audioSession = audioSessionId }
+                override fun onTracksChanged(tracks: Tracks) { if (p === activeDeck) applyTracks(p, tracks) }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (p !== activeDeck) return
+                    if (MusicState.sleepAt.value == -1L && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                        p.pause(); MusicState.sleepAt.value = 0
+                    }
+                    save()
+                    leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
+                    counted = -1L; count(p)
+                    Radio.topUp(this@MusicService, p)
+                    PlayerWidget.update(this@MusicService)
+                    // test 314: stem mode on: get this song and the next one split, and play the split versions
+                    handler.post { runCatching { Stems.songChanged(this@MusicService) } }
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) Announcer.songStarted(this@MusicService, mediaItem?.mediaId?.toLongOrNull())
+                    // test 311: long tracks carry on from where you stopped
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                        val id = mediaItem?.mediaId?.toLongOrNull()
+                        val spot = id?.let { Playback.spotOf(this@MusicService, it) } ?: 0L
+                        if (spot > 0 && p.currentPosition < 5_000) p.seekTo(spot)
+                    }
                 }
-                save()
-                leveler?.let { it.tags = null; it.apply(); it.prepareNext() }
-                counted = -1L; count()
-                Radio.topUp(this@MusicService, player)
-                PlayerWidget.update(this@MusicService)
-                // test 314: stem mode on: get this song and the next one split, and play the split versions
-                handler.post { runCatching { Stems.songChanged(this@MusicService) } }
-                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) Announcer.songStarted(this@MusicService, mediaItem?.mediaId?.toLongOrNull())
-                // test 311: long tracks carry on from where you stopped
-                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
-                    val id = mediaItem?.mediaId?.toLongOrNull()
-                    val spot = id?.let { Playback.spotOf(this@MusicService, it) } ?: 0L
-                    if (spot > 0 && player.currentPosition < 5_000) player.seekTo(spot)
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (p !== activeDeck) return
+                    if (!isPlaying) {
+                        android.util.Log.w("OpenWaves", "player paused/stopped: playWhenReady=${p.playWhenReady} state=${p.playbackState} suppress=${p.playbackSuppressionReason} item=${p.currentMediaItem?.mediaMetadata?.title}")
+                        save(); if (p.playbackState != Player.STATE_BUFFERING) Announcer.hush()
+                    } else count(p)
+                    PlayerWidget.update(this@MusicService)
                 }
-            }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) {
-                    android.util.Log.w("OpenWaves", "player paused/stopped: playWhenReady=${player.playWhenReady} state=${player.playbackState} suppress=${player.playbackSuppressionReason} item=${player.currentMediaItem?.mediaMetadata?.title}")
-                    save(); if (player.playbackState != Player.STATE_BUFFERING) Announcer.hush()
-                } else count()
-                PlayerWidget.update(this@MusicService)
-            }
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                android.util.Log.w("OpenWaves", "player error: ${error.errorCodeName} ${error.message}", error)
-            }
-        })
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    if (p === activeDeck) android.util.Log.w("OpenWaves", "player error: ${error.errorCodeName} ${error.message}", error)
+                }
+                // shuffle or repeat changed in the app: update the buttons on the phone's player too
+                override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { if (p === activeDeck) session?.setMediaButtonPreferences(SessionButtons.buttons(p)) }
+                override fun onRepeatModeChanged(repeatMode: Int) { if (p === activeDeck) session?.setMediaButtonPreferences(SessionButtons.buttons(p)) }
+            })
+        }
+        attachListener(deckA)
+        attachListener(deckB)
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         // test 266: real covers and shuffle/repeat buttons for the phone's own pop-up player (see SessionLook.kt)
         // test 311: a library session, so Android Auto and the car can browse your music
-        val s = MediaLibraryService.MediaLibrarySession.Builder(this, player, CarLibrary.callback(this)).setSessionActivity(open)
+        val s = MediaLibraryService.MediaLibrarySession.Builder(this, deckA, CarLibrary.callback(this)).setSessionActivity(open)
             .setBitmapLoader(androidx.media3.session.CacheBitmapLoader(CoverBitmapLoader(this)))
-            .setMediaButtonPreferences(SessionButtons.buttons(player))
+            .setMediaButtonPreferences(SessionButtons.buttons(deckA))
             .build()
         session = s
-        PlayerWidget.player = player; PlayerWidget.update(this)
+        PlayerWidget.player = deckA; PlayerWidget.update(this)
         Stems.load(this)
-        player.addListener(object : Player.Listener {
-            // shuffle or repeat changed in the app: update the buttons on the phone's player too
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
-            override fun onRepeatModeChanged(repeatMode: Int) { s.setMediaButtonPreferences(SessionButtons.buttons(player)) }
-        })
         Leveler.load(this)
-        leveler = LevelApplier(this, player).also { player.addListener(it.listener) }
+        leveler = LevelApplier(this, deckA).also { deckA.addListener(it.listener) }
         Tuning.load(this)
-        scope.launch { Tuning.hz.collect { Tuning.apply(player) } }
+        scope.launch { Tuning.hz.collect { activeDeck?.let { Tuning.apply(it) } } }
         Playback.load(this)
-        scope.launch { Playback.speed.collect { Tuning.apply(player) } }
+        scope.launch { Playback.speed.collect { activeDeck?.let { Tuning.apply(it) } } }
         scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level, Leveler.custom) { a, b, c -> Triple(a, b, c) }.collect { leveler?.apply() } }
-        restore(player)
+        restore(deckA)
         MusicSettings.load(this)
-        floating = FloatingPlayer(this, player).also { it.start() }
-        blender = Crossfader(this, player) { leveler }.also { it.start() }
-        handler.postDelayed(saveTick, 15_000)
+        floating = FloatingPlayer(this) { activeDeck ?: deckA }.also { it.start() }
+        // test 356 (Jarrod): true dual-deck A/B crossfade — standby becomes active directly with zero mid-song seek or glitch
+        blender = Crossfader(
+            activeProvider = { activeDeck ?: deckA },
+            standbyProvider = { standbyDeck ?: deckB },
+            musicAttrs = musicAttrs,
+            leveler = { leveler },
+            onSwap = { newActive, oldActive ->
+                activeDeck = newActive
+                standbyDeck = oldActive
+                MusicState.audioSession = newActive.audioSessionId
+                leveler?.swapPlayer(newActive)
+                applyTracks(newActive, newActive.currentTracks)
+                PlayerWidget.player = newActive
+                session?.setPlayer(newActive)
+                session?.setMediaButtonPreferences(SessionButtons.buttons(newActive))
+                save()
+                counted = -1L; count(newActive)
+                Radio.topUp(this@MusicService, newActive)
+                PlayerWidget.update(this@MusicService)
+                handler.post { runCatching { Stems.songChanged(this@MusicService) } }
+                Announcer.songStarted(this@MusicService, newActive.currentMediaItem?.mediaId?.toLongOrNull())
+            },
+        ).also { it.start() }
+        handler.postDelayed(saveTick, 60_000)
         handler.post(sleepTick)
     }
 
@@ -183,8 +217,10 @@ class MusicService : MediaLibraryService() {
         blender?.release(); blender = null
         leveler?.release(); leveler = null
         PlayerWidget.player = null; PlayerWidget.update(this)
-        session?.run { player.release(); release() }
+        session?.release()
         session = null
+        activeDeck?.release(); activeDeck = null
+        standbyDeck?.release(); standbyDeck = null
         super.onDestroy()
     }
 

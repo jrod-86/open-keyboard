@@ -1,36 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package helium314.keyboard.music
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Open Waves test 299 (Jarrod): "Blend songs together". A few seconds before a song ends, a second player starts the
- * next song quietly and the two cross over (the old one fades down as the new one comes up). At the end, the main
- * player jumps to the same spot in the new song and takes over, so the lock screen, notification and everything else
- * carry on as normal.
+ * Open Waves test 299 / 356 (Jarrod): "Blend songs together" with true dual-deck (A/B) swapping.
+ * A few seconds before a song ends on the active deck, the standby deck starts the next song cleanly from 0:00
+ * and the two cross over. When the old song finishes fading out, the standby deck becomes the active deck
+ * directly — zero mid-song seek, zero second-player handoff, zero audio glitch.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class Crossfader(private val ctx: Context, private val main: ExoPlayer, private val leveler: () -> LevelApplier?) {
+class Crossfader(
+    private val activeProvider: () -> ExoPlayer,
+    private val standbyProvider: () -> ExoPlayer,
+    private val musicAttrs: AudioAttributes,
+    private val leveler: () -> LevelApplier?,
+    private val onSwap: (newActive: ExoPlayer, oldActive: ExoPlayer) -> Unit,
+) {
     private val handler = Handler(Looper.getMainLooper())
-    private var helper: ExoPlayer? = null
-    private enum class Stage { IDLE, BLEND, HANDOFF }
+    private enum class Stage { IDLE, BLEND }
     private var stage = Stage.IDLE
     private var fromIndex = -1
     private var nextIndex = -1
     private var nextId = ""
     private var nextVol = 1f
-    private var handoffAt = 0L
-    private var rampFrom = 0L
-    private var resynced = false
 
     private val tick = object : Runnable {
         override fun run() {
@@ -40,97 +42,120 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
     }
 
     fun start() { handler.post(tick) }
-    fun release() { handler.removeCallbacks(tick); cancel(); helper?.release(); helper = null }
-
-    private fun helper(): ExoPlayer = helper ?: ExoPlayer.Builder(ctx, Eq.renderers(ctx))
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
-        .build().also { helper = it }
+    fun release() { handler.removeCallbacks(tick); cancel() }
 
     private fun blendMs() = (MusicSettings.blendSec * 1000).toLong().coerceIn(2000, 12000)
 
     private fun step(): Long {
         if (!MusicSettings.blendOn) { if (stage != Stage.IDLE) cancel(); return 2000L }
+        val active = activeProvider()
+        val standby = standbyProvider()
         when (stage) {
             Stage.IDLE -> {
-                if (!main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return 2000L
+                if (!active.isPlaying || active.repeatMode == Player.REPEAT_MODE_ONE || !active.hasNextMediaItem()) return 2000L
                 if (MusicState.sleepAt.value == -1L) return 1000L // sleep timer "end of this song"
-                val dur = main.duration; val pos = main.currentPosition
+                val dur = active.duration; val pos = active.currentPosition
                 val blend = blendMs()
                 if (dur == C.TIME_UNSET || dur < blend * 3) return 1000L
                 val rem = dur - pos
                 if (rem > blend + 3000) return 1000L
                 if (rem > blend || rem < 500) return 100L
                 // albums made to play without gaps (live albums, DJ mixes): the songs already run into each other
-                val cur = main.currentMediaItem?.mediaId?.toLongOrNull()?.let { Library.cached?.byId?.get(it) }
-                nextIndex = main.nextMediaItemIndex
-                val item = main.getMediaItemAt(nextIndex)
+                val cur = active.currentMediaItem?.mediaId?.toLongOrNull()?.let { Library.cached?.byId?.get(it) }
+                nextIndex = active.nextMediaItemIndex
+                if (nextIndex == C.INDEX_UNSET) return 1000L
+                val item = active.getMediaItemAt(nextIndex)
                 val next = item.mediaId.toLongOrNull()?.let { Library.cached?.byId?.get(it) }
                 if (cur != null && next != null && cur.albumId == next.albumId && next.track == cur.track + 1 && cur.album != "Unknown album") return 1000L
-                fromIndex = main.currentMediaItemIndex
+                fromIndex = active.currentMediaItemIndex
                 nextId = item.mediaId
                 nextVol = leveler()?.volumeFor(next) ?: 1f
-                val h = helper()
-                h.playbackParameters = main.playbackParameters
-                h.setMediaItem(item); h.volume = 0f; h.prepare(); h.play()
+                standby.setAudioAttributes(musicAttrs, false)
+                standby.playbackParameters = active.playbackParameters
+                standby.repeatMode = active.repeatMode
+                standby.setMediaItem(item)
+                standby.volume = 0f
+                standby.prepare()
+                standby.play()
                 stage = Stage.BLEND
                 return 50L
             }
             Stage.BLEND -> {
-                val h = helper ?: run { cancel(); return 500L }
-                if (main.currentMediaItemIndex != fromIndex) {
-                    // the song ended by itself before we took over: take over now; anything else (you skipped): stop blending
-                    if (main.currentMediaItem?.mediaId == nextId) handoff() else cancel()
-                    return 50L
+                if (active.currentMediaItemIndex != fromIndex) {
+                    // the song ended by itself right as we finished blending: complete swap; anything else (you skipped): cancel
+                    if (active.currentMediaItem?.mediaId == nextId) {
+                        completeSwap(active, standby)
+                        return 1000L
+                    } else {
+                        cancel()
+                        return 500L
+                    }
                 }
-                if (!main.playWhenReady) { if (h.isPlaying) h.pause(); return 250L } else if (!h.playWhenReady) h.play()
-                val remaining = (main.duration - main.currentPosition).coerceAtLeast(0)
+                if (!active.playWhenReady) { if (standby.isPlaying) standby.pause(); return 250L }
+                else if (!standby.playWhenReady) standby.play()
+                val remaining = (active.duration - active.currentPosition).coerceAtLeast(0)
                 val t = (1f - remaining.toFloat() / blendMs()).coerceIn(0f, 1f)
                 leveler()?.fade = cos(t * PI / 2).toFloat()
-                h.volume = nextVol * sin(t * PI / 2).toFloat()
-                if (remaining <= 250) handoff()
-                return 50L
-            }
-            Stage.HANDOFF -> {
-                val h = helper ?: run { cancel(); return 500L }
-                val now = System.currentTimeMillis()
-                val onNext = main.currentMediaItem?.mediaId == nextId
-                if (!onNext && now - handoffAt > 500) { cancel(); return 500L } // you skipped somewhere else meanwhile
-                if (rampFrom == 0L) {
-                    if (onNext && main.isPlaying && main.playbackState == Player.STATE_READY) {
-                        // test 354 (Jarrod): main took 300-450 ms to open the file, so it can lag behind helper by ~350 ms.
-                        // While main is still muted (fade=0), do one fast in-track seek to match helper's exact position (<20 ms drift).
-                        val drift = h.currentPosition - main.currentPosition
-                        if (!resynced && kotlin.math.abs(drift) > 45L) {
-                            resynced = true
-                            main.seekTo((h.currentPosition + 25L).coerceAtLeast(0L))
-                            return 50L
-                        }
-                        rampFrom = now
-                    }
-                    else if (now - handoffAt > 1500) { leveler()?.fade = 1f; rampFrom = now } // never sit muted
-                    return 50L
+                standby.volume = nextVol * sin(t * PI / 2).toFloat()
+                if (remaining <= 200L) {
+                    completeSwap(active, standby)
+                    return 1000L
                 }
-                val k = ((now - rampFrom) / 160f).coerceIn(0f, 1f)
-                leveler()?.fade = k
-                h.volume = nextVol * (1f - k)
-                if (k >= 1f) { h.stop(); h.clearMediaItems(); stage = Stage.IDLE; return 1000L }
                 return 50L
             }
         }
     }
 
-    private fun handoff() {
-        val h = helper ?: return cancel()
-        val target = h.currentPosition + 60 // the main player starts a moment later
-        leveler()?.fade = 0f
-        h.volume = nextVol
-        if (main.currentMediaItem?.mediaId == nextId) main.seekTo(target) else main.seekTo(nextIndex, target)
-        handoffAt = System.currentTimeMillis(); rampFrom = 0L; resynced = false
-        stage = Stage.HANDOFF
+    /**
+     * test 356 (Jarrod): True dual-deck swap. Standby is already playing the new song cleanly from 0:00,
+     * so we never seek or touch its AudioTrack — we simply graft the rest of the queue around it, preserve
+     * exact shuffle order, stop the faded-out old deck, and hand MediaSession to the new deck.
+     */
+    private fun completeSwap(active: ExoPlayer, standby: ExoPlayer) {
+        val count = active.mediaItemCount
+        if (count > 0) {
+            val resolvedIdx = (0 until count).firstOrNull { active.getMediaItemAt(it).mediaId == nextId }
+                ?: nextIndex.coerceIn(0, count - 1)
+            val before = (0 until resolvedIdx).map { active.getMediaItemAt(it) }
+            val after = ((resolvedIdx + 1) until count).map { active.getMediaItemAt(it) }
+            if (before.isNotEmpty()) standby.addMediaItems(0, before)
+            if (after.isNotEmpty()) standby.addMediaItems(after)
+            val tl = active.currentTimeline
+            if (active.shuffleModeEnabled && !tl.isEmpty) {
+                val order = IntArray(count)
+                var n = 0
+                var idx = tl.getFirstWindowIndex(true)
+                while (idx != C.INDEX_UNSET && n < count) {
+                    order[n++] = idx
+                    idx = tl.getNextWindowIndex(idx, Player.REPEAT_MODE_OFF, true)
+                }
+                if (n == count) {
+                    standby.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
+                }
+                standby.shuffleModeEnabled = true
+            } else {
+                standby.shuffleModeEnabled = false
+            }
+            standby.repeatMode = active.repeatMode
+        }
+        active.setAudioAttributes(musicAttrs, false)
+        active.stop()
+        active.clearMediaItems()
+        active.volume = 1f
+
+        standby.volume = nextVol
+        standby.setAudioAttributes(musicAttrs, true)
+        stage = Stage.IDLE
+        android.util.Log.w("OpenWaves", "crossfade: seamless dual-deck swap into ${standby.currentMediaItem?.mediaMetadata?.title}")
+        onSwap(standby, active)
     }
 
     private fun cancel() {
-        helper?.let { runCatching { it.stop(); it.clearMediaItems() } }
+        runCatching {
+            val standby = standbyProvider()
+            standby.stop()
+            standby.clearMediaItems()
+        }
         leveler()?.fade = 1f
         stage = Stage.IDLE
     }

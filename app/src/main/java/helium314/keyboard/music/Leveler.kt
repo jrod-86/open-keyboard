@@ -143,7 +143,7 @@ object Tuning {
 }
 
 /** Applies the volume change to the player. Lives in the music service. */
-class LevelApplier(private val ctx: Context, private val player: ExoPlayer) {
+class LevelApplier(private val ctx: Context, private var player: ExoPlayer) {
     private var enhancer: LoudnessEnhancer? = null
     private var session = 0
     var tags: Leveler.Tags? = null
@@ -152,6 +152,19 @@ class LevelApplier(private val ctx: Context, private val player: ExoPlayer) {
     /** test 299: song blending turns this down at the end of a song and up at the start of the next */
     var fade = 1f
         set(v) { field = v.coerceIn(0f, 1f); player.volume = wanted * field }
+
+    /** test 356: switch to the newly active crossfade deck without interrupting its audio */
+    fun swapPlayer(newPlayer: ExoPlayer) {
+        if (player === newPlayer) return
+        player.removeListener(listener)
+        runCatching { enhancer?.release() }; enhancer = null; session = 0
+        player = newPlayer
+        player.addListener(listener)
+        tags = null
+        fade = 1f
+        apply()
+        prepareNext()
+    }
 
     /** The player volume the leveler would use for [song] (for the blend's second player). */
     fun volumeFor(song: Song?): Float {

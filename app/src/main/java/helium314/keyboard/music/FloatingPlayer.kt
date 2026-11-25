@@ -88,7 +88,8 @@ import kotlin.math.sin
  * Drag it anywhere; drop it at the bottom of the screen to close it until Open Waves is opened again.
  * Five styles, each with the same theme choices as the mini player.
  */
-class FloatingPlayer(private val ctx: Context, private val player: Player) {
+class FloatingPlayer(private val ctx: Context, private val playerProvider: () -> Player) {
+    private val player get() = playerProvider()
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val handler = Handler(Looper.getMainLooper())
     private val ui = PlayerUi()
