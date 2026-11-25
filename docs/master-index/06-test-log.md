@@ -145,3 +145,5 @@
 | 353 | 2026-11-25 | Moods tab `How long` (`Short · 15` / `Medium · 30` / `Long · 60` / `All`) and `Mixed up` chips now roll a brand-new random mix on every tap (matching Popular tab's exact behaviour) | Waiting |
 
 | 354 | 2026-11-25 | Fixed post-announcement audio glitch at song transition: `Crossfader.kt` now performs one silent in-track re-sync when `main` becomes ready (eliminating the ~350 ms double-beat drift between `helper` and `main`), and `Announcer.tick()` waits 6 s after song start & until Savannah finishes speaking before spawning Zonos TTS | Waiting |
+
+| 355 | 2026-11-25 | Battery optimization pack + Kokoro Heart DJ voice: added `Heart (Kokoro · Low battery)` DJ voice option alongside `Savannah (Zonos)` with built-in download button, keep TTS engine warm between songs with 3-min idle unload (eliminates 1.1 GB reloads every song), adaptive Crossfader polling (95% fewer CPU wakeups), 30 fps FloatingPlayer vinyl spin, and 60 s playing-only queue save | Waiting |

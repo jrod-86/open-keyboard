@@ -33,7 +33,10 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
     private var resynced = false
 
     private val tick = object : Runnable {
-        override fun run() { runCatching { step() }; handler.postDelayed(this, 50) }
+        override fun run() {
+            val nextMs = runCatching { step() }.getOrDefault(500L)
+            handler.postDelayed(this, nextMs)
+        }
     }
 
     fun start() { handler.post(tick) }
@@ -45,22 +48,24 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
 
     private fun blendMs() = (MusicSettings.blendSec * 1000).toLong().coerceIn(2000, 12000)
 
-    private fun step() {
-        if (!MusicSettings.blendOn) { if (stage != Stage.IDLE) cancel(); return }
+    private fun step(): Long {
+        if (!MusicSettings.blendOn) { if (stage != Stage.IDLE) cancel(); return 2000L }
         when (stage) {
             Stage.IDLE -> {
-                if (!main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return
-                if (MusicState.sleepAt.value == -1L) return // sleep timer "end of this song"
+                if (!main.isPlaying || main.repeatMode == Player.REPEAT_MODE_ONE || !main.hasNextMediaItem()) return 2000L
+                if (MusicState.sleepAt.value == -1L) return 1000L // sleep timer "end of this song"
                 val dur = main.duration; val pos = main.currentPosition
                 val blend = blendMs()
-                if (dur == C.TIME_UNSET || dur < blend * 3) return
-                if (dur - pos > blend || dur - pos < 500) return
+                if (dur == C.TIME_UNSET || dur < blend * 3) return 1000L
+                val rem = dur - pos
+                if (rem > blend + 3000) return 1000L
+                if (rem > blend || rem < 500) return 100L
                 // albums made to play without gaps (live albums, DJ mixes): the songs already run into each other
                 val cur = main.currentMediaItem?.mediaId?.toLongOrNull()?.let { Library.cached?.byId?.get(it) }
                 nextIndex = main.nextMediaItemIndex
                 val item = main.getMediaItemAt(nextIndex)
                 val next = item.mediaId.toLongOrNull()?.let { Library.cached?.byId?.get(it) }
-                if (cur != null && next != null && cur.albumId == next.albumId && next.track == cur.track + 1 && cur.album != "Unknown album") return
+                if (cur != null && next != null && cur.albumId == next.albumId && next.track == cur.track + 1 && cur.album != "Unknown album") return 1000L
                 fromIndex = main.currentMediaItemIndex
                 nextId = item.mediaId
                 nextVol = leveler()?.volumeFor(next) ?: 1f
@@ -68,26 +73,28 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
                 h.playbackParameters = main.playbackParameters
                 h.setMediaItem(item); h.volume = 0f; h.prepare(); h.play()
                 stage = Stage.BLEND
+                return 50L
             }
             Stage.BLEND -> {
-                val h = helper ?: return cancel()
+                val h = helper ?: run { cancel(); return 500L }
                 if (main.currentMediaItemIndex != fromIndex) {
                     // the song ended by itself before we took over: take over now; anything else (you skipped): stop blending
                     if (main.currentMediaItem?.mediaId == nextId) handoff() else cancel()
-                    return
+                    return 50L
                 }
-                if (!main.playWhenReady) { if (h.isPlaying) h.pause(); return } else if (!h.playWhenReady) h.play()
+                if (!main.playWhenReady) { if (h.isPlaying) h.pause(); return 250L } else if (!h.playWhenReady) h.play()
                 val remaining = (main.duration - main.currentPosition).coerceAtLeast(0)
                 val t = (1f - remaining.toFloat() / blendMs()).coerceIn(0f, 1f)
                 leveler()?.fade = cos(t * PI / 2).toFloat()
                 h.volume = nextVol * sin(t * PI / 2).toFloat()
                 if (remaining <= 250) handoff()
+                return 50L
             }
             Stage.HANDOFF -> {
-                val h = helper ?: return cancel()
+                val h = helper ?: run { cancel(); return 500L }
                 val now = System.currentTimeMillis()
                 val onNext = main.currentMediaItem?.mediaId == nextId
-                if (!onNext && now - handoffAt > 500) return cancel() // you skipped somewhere else meanwhile
+                if (!onNext && now - handoffAt > 500) { cancel(); return 500L } // you skipped somewhere else meanwhile
                 if (rampFrom == 0L) {
                     if (onNext && main.isPlaying && main.playbackState == Player.STATE_READY) {
                         // test 354 (Jarrod): main took 300-450 ms to open the file, so it can lag behind helper by ~350 ms.
@@ -96,17 +103,18 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
                         if (!resynced && kotlin.math.abs(drift) > 45L) {
                             resynced = true
                             main.seekTo((h.currentPosition + 25L).coerceAtLeast(0L))
-                            return
+                            return 50L
                         }
                         rampFrom = now
                     }
                     else if (now - handoffAt > 1500) { leveler()?.fade = 1f; rampFrom = now } // never sit muted
-                    return
+                    return 50L
                 }
                 val k = ((now - rampFrom) / 160f).coerceIn(0f, 1f)
                 leveler()?.fade = k
                 h.volume = nextVol * (1f - k)
-                if (k >= 1f) { h.stop(); h.clearMediaItems(); stage = Stage.IDLE }
+                if (k >= 1f) { h.stop(); h.clearMediaItems(); stage = Stage.IDLE; return 1000L }
+                return 50L
             }
         }
     }

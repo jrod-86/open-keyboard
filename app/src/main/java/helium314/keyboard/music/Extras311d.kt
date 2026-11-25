@@ -252,6 +252,8 @@ object Announcer {
     fun style(ctx: Context) = prefs(ctx).getInt("ann_style", 0)
     /** test 330 (Jarrod): 0 = Short (~6-8 s), 1 = Medium (~12-15 s), 2 = Long (~18-22 s) */
     fun length(ctx: Context) = prefs(ctx).getInt("ann_len", 1).coerceIn(0, 2)
+    /** test 355 (Jarrod): 0 = Savannah (Zonos · richest), 1 = Heart (Kokoro · low battery) */
+    fun voiceEngine(ctx: Context) = prefs(ctx).getInt("ann_voice_eng", 0).coerceIn(0, 1)
     /** test 341 (Jarrod): battery warning dialog when enabling DJ in Settings (dismissible with "Don't show again") */
     fun showBatteryWarn(ctx: Context) = !prefs(ctx).getBoolean("ann_no_batt_warn", false)
     fun hideBatteryWarn(ctx: Context) { prefs(ctx).edit().putBoolean("ann_no_batt_warn", true).apply() }
@@ -270,10 +272,26 @@ object Announcer {
         if (key == "ann_on" && v is Boolean) {
             enabled.value = v
             if (v) songsSince = 1000
-            else { hush(); scope.launch { runCatching { helium314.keyboard.tts.ZonosTts.stop() } } }
-        } else if (enabled.value) {
-            // Changing length, style, AI mode, or frequency takes effect on the very next song right away
-            songsSince = 1000
+            else {
+                hush()
+                idleUnloadJob?.cancel()
+                scope.launch {
+                    runCatching { helium314.keyboard.tts.ZonosTts.stop() }
+                    runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                }
+            }
+        } else {
+            if (key == "ann_voice_eng") {
+                idleUnloadJob?.cancel()
+                scope.launch {
+                    runCatching { helium314.keyboard.tts.ZonosTts.stop() }
+                    runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                }
+            }
+            if (enabled.value) {
+                // Changing length, style, voice, AI mode, or frequency takes effect on the very next song right away
+                songsSince = 1000
+            }
         }
     }
 
@@ -285,11 +303,12 @@ object Announcer {
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private class Ready(val forId: Long, val audio: FloatArray)
+    private class Ready(val forId: Long, val audio: FloatArray, val rate: Int)
     @Volatile private var ready: Ready? = null
     @Volatile private var making: Long = -1
     @Volatile private var makingJob: Job? = null
     @Volatile private var speaking: Job? = null
+    @Volatile private var idleUnloadJob: Job? = null
     @Volatile private var track: AudioTrack? = null
     // test 316: the first song after turning it on gets a DJ line too
     private var songsSince = 1000
@@ -300,19 +319,46 @@ object Announcer {
     /** fade-out ramp duration before Savannah begins speaking */
     private const val FADE_OUT_MS = 700L
 
-    // test 317 (Jarrod): Savannah only — she sounds like a proper radio DJ
-    private fun voice() = helium314.keyboard.tts.ZonosTts.VOICES.firstOrNull { it.id == "savannah" }
+    // test 317/355 (Jarrod): Savannah (Zonos) or Heart (Kokoro · low battery)
+    private fun zonosVoice() = helium314.keyboard.tts.ZonosTts.VOICES.firstOrNull { it.id == "savannah" }
         ?: helium314.keyboard.tts.ZonosTts.VOICES[0]
-    fun ready(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
+    private fun kokoroHeart() = helium314.keyboard.tts.KokoroTts.VOICES.firstOrNull { it.id == "af_heart" }
+        ?: helium314.keyboard.tts.KokoroTts.VOICES[0]
+    fun zonosReady(ctx: Context) = helium314.keyboard.tts.ZonosTts.installed(ctx) && helium314.keyboard.tts.ZonosTts.supported(ctx)
+    fun kokoroReady(ctx: Context) = helium314.keyboard.tts.KokoroTts.installed(ctx)
+    fun ready(ctx: Context) = if (voiceEngine(ctx) == 1) kokoroReady(ctx) else zonosReady(ctx)
+
+    /** Keeps the active TTS engine warm between songs during playback (avoids 1.1 GB reloads every song), unloading after 3 min idle. */
+    private fun bumpIdleUnload() {
+        idleUnloadJob?.cancel()
+        idleUnloadJob = scope.launch {
+            kotlinx.coroutines.delay(3 * 60_000L)
+            ttsLock.withLock {
+                runCatching { helium314.keyboard.tts.ZonosTts.stop() }
+                runCatching { helium314.keyboard.tts.KokoroTts.release() }
+            }
+        }
+    }
+
     private val ttsLock = kotlinx.coroutines.sync.Mutex()
-    /** The whole line as sound (44.1 kHz). Serialised so background prep and "Hear a sample" never overlap on ZonosTts. */
-    private suspend fun speech(ctx: Context, text: String, cancel: () -> Boolean = { !on(ctx) }): FloatArray = ttsLock.withLock {
-        val parts = ArrayList<FloatArray>()
-        // test 316: the voice engine is only running while it makes the line, then it gives its memory back
-        try { helium314.keyboard.tts.ZonosTts.speak(ctx, helium314.keyboard.tts.ChatSpeaker.forSpeech(text), voice(), null, cancel) { parts += it } }
-        finally { helium314.keyboard.tts.ZonosTts.stop() }
-        val out = FloatArray(parts.sumOf { it.size }); var i = 0
-        for (p in parts) { System.arraycopy(p, 0, out, i, p.size); i += p.size }
+    /** Synthesises the line using the selected engine (Savannah 44.1 kHz or Kokoro Heart 24 kHz) with broadcast RMS loudness. */
+    private suspend fun speech(ctx: Context, text: String, cancel: () -> Boolean = { !on(ctx) }): Pair<FloatArray, Int> = ttsLock.withLock {
+        idleUnloadJob?.cancel()
+        val useKokoro = voiceEngine(ctx) == 1
+        val cleanText = helium314.keyboard.tts.ChatSpeaker.forSpeech(text)
+        val (out, rate) = if (useKokoro) {
+            val k = kokoroHeart()
+            val prepared = helium314.keyboard.tts.Pronounce.prepare(cleanText, helium314.keyboard.tts.KokoroTts.knownWords(ctx, k))
+            val samples = helium314.keyboard.tts.KokoroTts.engine(ctx, k).generate(prepared, k.sid, 1.0f).samples
+            samples to helium314.keyboard.tts.KokoroTts.RATE
+        } else {
+            val parts = ArrayList<FloatArray>()
+            helium314.keyboard.tts.ZonosTts.speak(ctx, cleanText, zonosVoice(), null, cancel) { parts += it }
+            val buf = FloatArray(parts.sumOf { it.size }); var i = 0
+            for (p in parts) { System.arraycopy(p, 0, buf, i, p.size); i += p.size }
+            buf to helium314.keyboard.tts.ZonosTts.RATE
+        }
+        bumpIdleUnload()
         // test 323 (Jarrod): broadcast-style speech loudness (~20% louder than the music before it, like FM radio)
         // Normalise active speech RMS to ~0.28 (~ -11 dBFS, ~20% above -14 LUFS music) with smooth soft-limiting so it never clips
         var sumSq = 0.0; var active = 0
@@ -321,7 +367,7 @@ object Announcer {
         val gain = (0.28f / rms.coerceAtLeast(0.03f)).coerceIn(1.2f, 4.5f)
         val norm = kotlin.math.tanh(1.15).toFloat()
         for (k in out.indices) out[k] = (kotlin.math.tanh((out[k] * gain * 1.15f).toDouble()).toFloat() / norm).coerceIn(-0.98f, 0.98f)
-        out
+        out to rate
     }
 
     /**
@@ -341,19 +387,19 @@ object Announcer {
         if (r != null && cur != null && r.forId == cur.id && p.currentPosition < 12_000L && speaking?.isActive != true) {
             ready = null; songsSince = 0; spokenFor = cur.id
             android.util.Log.w("OpenWaves", "announcer: late-ready intro into ${cur.title} (pos=${p.currentPosition}ms)")
-            say(r.audio)
+            say(r.audio, r.rate)
             return
         }
         // 2b. ready and near the end: start at 65% of clip duration (+ fade-out + crossfade offset) before song end
         // so ~65% plays over the finishing song's outro and ~35% lands over the new song's intro ("hitting the post")
         if (r != null && r.forId == next.id) {
-            val clipMs = (r.audio.size * 1000L) / helium314.keyboard.tts.ZonosTts.RATE
+            val clipMs = (r.audio.size * 1000L) / r.rate
             val blendOffset = if (MusicSettings.blendOn) (MusicSettings.blendSec * 750L).toLong() else 0L
             val startBeforeEndMs = ((clipMs * 65L) / 100L + FADE_OUT_MS + blendOffset).coerceIn(4_000L, 26_000L)
             if (left <= startBeforeEndMs && speaking?.isActive != true) {
                 ready = null; songsSince = 0; spokenFor = next.id
-                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, blendOff=${blendOffset}ms, 65/35 trigger=${startBeforeEndMs}ms)")
-                say(r.audio)
+                android.util.Log.w("OpenWaves", "announcer: talking into ${next.title} (clip=${clipMs}ms, rate=${r.rate}, blendOff=${blendOffset}ms, 65/35 trigger=${startBeforeEndMs}ms)")
+                say(r.audio, r.rate)
             }
             return
         }
@@ -380,11 +426,11 @@ object Announcer {
                 val line = line(app, cur, next)
                 if (making != targetId) return@launch
                 android.util.Log.w("OpenWaves", "announcer: line ready in ${System.currentTimeMillis() - t0} ms: $line")
-                val audio = speech(app, line) { !on(app) || making != targetId }
+                val (audio, rate) = speech(app, line) { !on(app) || making != targetId }
                 if (making != targetId) return@launch
                 if (audio.isEmpty()) throw IllegalStateException("no sound")
-                ready = Ready(targetId, audio)
-                android.util.Log.w("OpenWaves", "announcer: voice ready in ${System.currentTimeMillis() - t0} ms (${audio.size / 441} cs)")
+                ready = Ready(targetId, audio, rate)
+                android.util.Log.w("OpenWaves", "announcer: voice ready in ${System.currentTimeMillis() - t0} ms (${(audio.size * 100L) / rate} cs, rate=$rate)")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -978,11 +1024,10 @@ object Announcer {
         Eq.duck = target
     }
 
-    /** Plays it now (also the settings' "Hear a sample"). Smoothly fades the music down under Savannah, then fades back up. */
-    fun say(audio: FloatArray) {
+    /** Plays it now (also the settings' "Hear a sample"). Smoothly fades the music down under the DJ voice, then fades back up. */
+    fun say(audio: FloatArray, rate: Int = helium314.keyboard.tts.ZonosTts.RATE) {
         hush()
         speaking = scope.launch(Dispatchers.IO) {
-            val rate = helium314.keyboard.tts.ZonosTts.RATE
             val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
             val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
             val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
@@ -1026,10 +1071,11 @@ object Announcer {
         val app = ctx.applicationContext
         scope.launch {
             val msg = runCatching {
-                if (!ready(app)) return@runCatching "First download the Zonos voices in the keyboard's TTS tile (✨ Zonos)."
+                if (!ready(app)) return@runCatching if (voiceEngine(app) == 1) "First download the Heart (Kokoro) DJ voice above." else "First download the Savannah (Zonos) DJ voice above."
                 val next = lib?.uniqueSongs?.filter { it.id != cur?.id }?.randomOrNull() ?: return@runCatching "No songs yet."
                 val line = line(app, cur, next)
-                say(speech(app, line))
+                val (audio, rate) = speech(app, line)
+                say(audio, rate)
                 "“$line”"
             }.getOrElse { "Couldn't make a sample: ${it.message}" }
             withContext(Dispatchers.Main) { done(msg) }
@@ -1050,9 +1096,13 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
     var making by remember { mutableStateOf(false) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val dlScope = androidx.compose.runtime.rememberCoroutineScope()
-    var zonosReady by remember { mutableStateOf(Announcer.ready(ctx)) }
+    var voiceEng by remember { mutableIntStateOf(Announcer.voiceEngine(ctx)) }
+    var zonosReady by remember { mutableStateOf(Announcer.zonosReady(ctx)) }
     var zonosDl by remember { mutableStateOf<Float?>(null) }
     var zonosErr by remember { mutableStateOf<String?>(null) }
+    var kokoroReady by remember { mutableStateOf(Announcer.kokoroReady(ctx)) }
+    var kokoroDl by remember { mutableStateOf<Float?>(null) }
+    var kokoroErr by remember { mutableStateOf<String?>(null) }
     var aiMode by remember { mutableIntStateOf(Announcer.aiMode(ctx)) }
     var quickReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.QUICK)) }
     var betterReady by remember { mutableStateOf(helium314.keyboard.latin.WritingTools.isReady(ctx, helium314.keyboard.latin.WritingTools.BETTER)) }
@@ -1065,7 +1115,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("📻 DJ between songs", fontSize = 16.sp)
-                Text("Your writing model writes a short line about the next song and Savannah says it while the music ducks underneath. All on your phone.",
+                Text("A DJ introduces the next song while the music ducks underneath. All on your phone.",
                     fontSize = 12.sp, color = dim)
             }
             Switch(on, { wantOn ->
@@ -1084,7 +1134,7 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 title = { Text("DJ uses extra battery") },
                 text = {
                     Column {
-                        Text("Generating the DJ's voice and AI lines right on your phone uses noticeably more battery — even when plugged into a car charger.\n\nTip: Using 'Every 3rd' or 'Short' saves a lot of battery.")
+                        Text("Generating the DJ's voice and AI lines right on your phone uses noticeably more battery — even when plugged into a car charger.\n\nTip: Using 'Heart (Kokoro)' voice, 'Every 3rd', or 'Short' saves a lot of battery.")
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
@@ -1103,31 +1153,63 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                 dismissButton = { TextButton({ askBatteryWarn = false }) { Text("Cancel") } }
             )
         }
-        // test 319 (Jarrod): direct download buttons right here when Zonos voice or writing model isn't downloaded yet
-        if (!zonosReady && helium314.keyboard.tts.ZonosTts.supported(ctx)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Text("Needs the Savannah DJ voice (~1.1 GB, one-time download).", fontSize = 12.sp, color = Accent)
-                if (zonosDl != null) {
-                    androidx.compose.material3.LinearProgressIndicator(progress = { zonosDl ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent)
-                    Text("Downloading Savannah voice… ${((zonosDl ?: 0f) * 100).toInt()}%", fontSize = 12.sp, color = dim)
-                } else {
-                    zonosErr?.let { Text(it, fontSize = 12.sp, color = Accent) }
-                    OutlinedButton({
-                        zonosDl = 0f; zonosErr = null
-                        dlScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            runCatching {
-                                helium314.keyboard.tts.ZonosTts.download(ctx, { false }) { p -> zonosDl = p }
-                            }.onSuccess {
-                                withContext(kotlinx.coroutines.Dispatchers.Main) { zonosReady = Announcer.ready(ctx); zonosDl = null }
-                            }.onFailure { e ->
-                                withContext(kotlinx.coroutines.Dispatchers.Main) { zonosErr = "Download failed: ${e.message}"; zonosDl = null }
+        if (on) {
+            Text("DJ voice", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
+            Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
+                chip("Savannah (Zonos)", voiceEng == 0) { voiceEng = 0; Announcer.set(ctx, "ann_voice_eng", 0) }
+                chip("Heart (Kokoro · Low battery)", voiceEng == 1) { voiceEng = 1; Announcer.set(ctx, "ann_voice_eng", 1) }
+            }
+            Text(
+                if (voiceEng == 1) "🔋 Low battery · Lightweight Kokoro Heart voice (~155 MB) — ~5× faster and ~80% less battery."
+                else "🔋 Higher battery · Richest natural Zonos DJ voice (~1.1 GB).",
+                Modifier.padding(horizontal = 16.dp, vertical = 2.dp), fontSize = 12.sp, color = dim
+            )
+            // test 319/355 (Jarrod): direct download button for whichever DJ voice is selected
+            if (voiceEng == 0 && !zonosReady && helium314.keyboard.tts.ZonosTts.supported(ctx)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text("Needs the Savannah DJ voice (~1.1 GB, one-time download).", fontSize = 12.sp, color = Accent)
+                    if (zonosDl != null) {
+                        androidx.compose.material3.LinearProgressIndicator(progress = { zonosDl ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent)
+                        Text("Downloading Savannah voice… ${((zonosDl ?: 0f) * 100).toInt()}%", fontSize = 12.sp, color = dim)
+                    } else {
+                        zonosErr?.let { Text(it, fontSize = 12.sp, color = Accent) }
+                        OutlinedButton({
+                            zonosDl = 0f; zonosErr = null
+                            dlScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                runCatching {
+                                    helium314.keyboard.tts.ZonosTts.download(ctx, { false }) { p -> zonosDl = p }
+                                }.onSuccess {
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) { zonosReady = Announcer.zonosReady(ctx); zonosDl = null }
+                                }.onFailure { e ->
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) { zonosErr = "Download failed: ${e.message}"; zonosDl = null }
+                                }
                             }
-                        }
-                    }, Modifier.padding(top = 4.dp)) { Text("Download DJ voice (Savannah)", color = Accent) }
+                        }, Modifier.padding(top = 4.dp)) { Text("Download DJ voice (Savannah)", color = Accent) }
+                    }
+                }
+            } else if (voiceEng == 1 && !kokoroReady) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text("Needs the Heart DJ voice (~155 MB, one-time download).", fontSize = 12.sp, color = Accent)
+                    if (kokoroDl != null) {
+                        androidx.compose.material3.LinearProgressIndicator(progress = { kokoroDl ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Accent)
+                        Text("Downloading Heart voice… ${((kokoroDl ?: 0f) * 100).toInt()}%", fontSize = 12.sp, color = dim)
+                    } else {
+                        kokoroErr?.let { Text(it, fontSize = 12.sp, color = Accent) }
+                        OutlinedButton({
+                            kokoroDl = 0f; kokoroErr = null
+                            dlScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                runCatching {
+                                    helium314.keyboard.tts.KokoroTts.download(ctx, { false }) { p -> kokoroDl = p }
+                                }.onSuccess {
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) { kokoroReady = Announcer.kokoroReady(ctx); kokoroDl = null }
+                                }.onFailure { e ->
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) { kokoroErr = "Download failed: ${e.message}"; kokoroDl = null }
+                                }
+                            }
+                        }, Modifier.padding(top = 4.dp)) { Text("Download DJ voice (Heart · 155 MB)", color = Accent) }
+                    }
                 }
             }
-        }
-        if (on) {
             Text("How often", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 13.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState())) {
                 for ((n, label) in listOf(1 to "Every song", 2 to "Every 2nd", 3 to "Every 3rd", 5 to "Every 5th")) chip(label, every == n) { every = n; Announcer.set(ctx, "ann_every", n) }
@@ -1170,7 +1252,6 @@ internal fun AnnouncerSettings(ui: PlayerUi?) {
                     chip(label, msgLen == i) { msgLen = i; Announcer.set(ctx, "ann_len", i) }
                 }
             }
-            Text("Voice: Savannah (Zonos)", Modifier.padding(start = 16.dp, top = 4.dp), fontSize = 12.sp, color = dim)
             Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton({
                     making = true; sample = null

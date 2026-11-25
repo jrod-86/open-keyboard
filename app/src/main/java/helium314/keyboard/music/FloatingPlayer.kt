@@ -430,8 +430,11 @@ private class FloatParts(
     fun Vinyl() {
         var angle by remember { mutableFloatStateOf(0f) }
         LaunchedEffect(playing) {
-            var last = 0L
-            while (playing) withFrameNanos { t -> if (last != 0L) angle = (angle + (t - last) / 1e9f * 120f) % 360f; last = t }
+            // test 355: cap Vinyl spin to ~30 fps instead of 120 fps to save battery
+            while (playing) {
+                kotlinx.coroutines.delay(33)
+                angle = (angle + 4f) % 360f
+            }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             val d = 124f * k

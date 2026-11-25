@@ -49,7 +49,8 @@ class MusicService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
     private val saveTick = object : Runnable {
-        override fun run() { save(); handler.postDelayed(this, 15_000) }
+        // test 355: save every 60 s only while playing (already saves on pause/transition/destroy)
+        override fun run() { if (session?.player?.isPlaying == true) save(); handler.postDelayed(this, 60_000) }
     }
     private val sleepTick = object : Runnable {
         override fun run() {
