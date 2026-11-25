@@ -143,3 +143,5 @@
 | 352 | 2026-11-25 | Fixed Moods/playlist playback stopping (`STATE_ENDED`) after 1–2 songs when Shuffle is on: `PlayerUi.play()` now uses `setMediaItems(items, resetPosition = true)` when shuffled so ExoPlayer starts at index 0 of its `ShuffleOrder` and plays 100% of the playlist | Waiting |
 
 | 353 | 2026-11-25 | Moods tab `How long` (`Short · 15` / `Medium · 30` / `Long · 60` / `All`) and `Mixed up` chips now roll a brand-new random mix on every tap (matching Popular tab's exact behaviour) | Waiting |
+
+| 354 | 2026-11-25 | Fixed post-announcement audio glitch at song transition: `Crossfader.kt` now performs one silent in-track re-sync when `main` becomes ready (eliminating the ~350 ms double-beat drift between `helper` and `main`), and `Announcer.tick()` waits 6 s after song start & until Savannah finishes speaking before spawning Zonos TTS | Waiting |

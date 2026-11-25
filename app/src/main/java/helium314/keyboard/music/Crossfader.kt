@@ -30,6 +30,7 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
     private var nextVol = 1f
     private var handoffAt = 0L
     private var rampFrom = 0L
+    private var resynced = false
 
     private val tick = object : Runnable {
         override fun run() { runCatching { step() }; handler.postDelayed(this, 50) }
@@ -88,11 +89,21 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
                 val onNext = main.currentMediaItem?.mediaId == nextId
                 if (!onNext && now - handoffAt > 500) return cancel() // you skipped somewhere else meanwhile
                 if (rampFrom == 0L) {
-                    if (onNext && main.isPlaying && main.playbackState == Player.STATE_READY) rampFrom = now
+                    if (onNext && main.isPlaying && main.playbackState == Player.STATE_READY) {
+                        // test 354 (Jarrod): main took 300-450 ms to open the file, so it can lag behind helper by ~350 ms.
+                        // While main is still muted (fade=0), do one fast in-track seek to match helper's exact position (<20 ms drift).
+                        val drift = h.currentPosition - main.currentPosition
+                        if (!resynced && kotlin.math.abs(drift) > 45L) {
+                            resynced = true
+                            main.seekTo((h.currentPosition + 25L).coerceAtLeast(0L))
+                            return
+                        }
+                        rampFrom = now
+                    }
                     else if (now - handoffAt > 1500) { leveler()?.fade = 1f; rampFrom = now } // never sit muted
                     return
                 }
-                val k = ((now - rampFrom) / 250f).coerceIn(0f, 1f)
+                val k = ((now - rampFrom) / 160f).coerceIn(0f, 1f)
                 leveler()?.fade = k
                 h.volume = nextVol * (1f - k)
                 if (k >= 1f) { h.stop(); h.clearMediaItems(); stage = Stage.IDLE }
@@ -106,7 +117,7 @@ class Crossfader(private val ctx: Context, private val main: ExoPlayer, private 
         leveler()?.fade = 0f
         h.volume = nextVol
         if (main.currentMediaItem?.mediaId == nextId) main.seekTo(target) else main.seekTo(nextIndex, target)
-        handoffAt = System.currentTimeMillis(); rampFrom = 0L
+        handoffAt = System.currentTimeMillis(); rampFrom = 0L; resynced = false
         stage = Stage.HANDOFF
     }
 

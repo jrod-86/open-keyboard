@@ -366,6 +366,9 @@ object Announcer {
             return
         }
         if (Stems.progress.value != null) return
+        if (speaking?.isActive == true) return
+        // test 354 (Jarrod): let the new track & Crossfader handoff settle cleanly for 6 s before spawning Zonos TTS
+        if (p.currentPosition < 6_000L && left > 45_000L) return
         if (making == next.id || failedFor == next.id || !ready(ctx)) return
         making = next.id
         val targetId = next.id
