@@ -276,16 +276,20 @@ object Announcer {
                 hush()
                 idleUnloadJob?.cancel()
                 scope.launch {
-                    runCatching { helium314.keyboard.tts.ZonosTts.stop() }
-                    runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                    ttsLock.withLock {
+                        runCatching { helium314.keyboard.tts.ZonosTts.stop() }
+                        runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                    }
                 }
             }
         } else {
             if (key == "ann_voice_eng") {
                 idleUnloadJob?.cancel()
                 scope.launch {
-                    runCatching { helium314.keyboard.tts.ZonosTts.stop() }
-                    runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                    ttsLock.withLock {
+                        runCatching { helium314.keyboard.tts.ZonosTts.stop() }
+                        runCatching { helium314.keyboard.tts.KokoroTts.release() }
+                    }
                 }
             }
             if (enabled.value) {
