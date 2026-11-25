@@ -80,36 +80,57 @@ object Moods {
     val groups = listOf("Rock", "Metal", "Punk", "Pop", "Hip-hop", "Dance", "Electronic", "R&B", "Funk & Soul", "Jazz", "Blues",
         "Country", "Folk", "Indie", "Classical", "Ambient", "Soundtrack", "Reggae", "Latin", "World")
     private val rules = listOf(
-        "Metal" to listOf("metal", "metalcore", "djent", "grindcore", "thrash", "doom"),
-        "Punk" to listOf("punk", "hardcore", "emo", "grunge"),
-        "Hip-hop" to listOf("hip hop", "hip-hop", "hiphop", "rap", "trap", "drill", "grime"),
-        "Dance" to listOf("dance", "house", "edm", "techno", "trance", "disco", "dubstep", "drum and bass", "dnb", "garage", "eurodance"),
-        "Electronic" to listOf("electronic", "electro", "synth", "idm", "downtempo", "trip hop", "chillout", "lo-fi", "lofi"),
-        "R&B" to listOf("r&b", "rnb", "r and b", "rhythm and blues", "neo soul"),
-        "Funk & Soul" to listOf("soul", "funk", "motown", "gospel"),
-        "Jazz" to listOf("jazz", "swing", "bebop", "bossa"),
-        "Blues" to listOf("blues"),
-        "Country" to listOf("country", "bluegrass", "americana"),
-        "Folk" to listOf("folk", "singer-songwriter", "acoustic"),
-        "Indie" to listOf("indie", "alternative", "shoegaze", "dream pop"),
-        "Classical" to listOf("classical", "orchestra", "symphony", "baroque", "opera", "piano", "chamber"),
-        "Ambient" to listOf("ambient", "new age", "meditation", "relax", "sleep", "drone"),
-        "Soundtrack" to listOf("soundtrack", "score", "film", "musical", "video game"),
-        "Reggae" to listOf("reggae", "ska", "dancehall", "dub"),
-        "Latin" to listOf("latin", "reggaeton", "salsa", "bachata", "cumbia", "samba", "k-pop", "kpop"),
-        "Rock" to listOf("rock", "britpop", "new wave", "post-punk"),
-        "Pop" to listOf("pop", "teen", "boy band", "girl group"),
-        "World" to listOf("world", "afro", "celtic", "khmer", "bollywood", "arabic"),
+        "Metal" to listOf("metal", "metalcore", "djent", "grindcore", "thrash", "doom metal", "heavy metal", "nu metal", "death metal", "black metal"),
+        "Punk" to listOf("punk", "hardcore punk", "pop punk", "post-punk", "emo", "grunge", "skate punk"),
+        "Hip-hop" to listOf("hip hop", "hip-hop", "hiphop", "rap", "gangsta rap", "boom bap", "g-funk", "trap", "drill", "grime", "east coast hip hop", "west coast hip hop", "southern hip hop"),
+        "Dance" to listOf("dance", "house", "edm", "techno", "trance", "disco", "dubstep", "drum and bass", "dnb", "uk garage", "eurodance", "club"),
+        "Electronic" to listOf("electronic", "electro", "synthpop", "synthwave", "idm", "downtempo", "trip hop", "chillout", "lo-fi", "lofi", "electronica"),
+        "R&B" to listOf("r&b", "rnb", "r and b", "rhythm and blues", "contemporary r&b", "neo soul", "new jack swing", "quiet storm"),
+        "Funk & Soul" to listOf("soul", "funk", "motown", "gospel", "northern soul", "disco funk"),
+        "Jazz" to listOf("jazz", "swing", "bebop", "bossa nova", "smooth jazz", "big band"),
+        "Blues" to listOf("blues", "delta blues", "chicago blues", "blues rock"),
+        "Country" to listOf("country", "country pop", "country rock", "bluegrass", "americana", "honky tonk", "outlaw country", "nashville", "alt-country"),
+        "Folk" to listOf("folk", "singer-songwriter", "acoustic", "folk rock", "indie folk"),
+        "Indie" to listOf("indie", "indie rock", "indie pop", "alternative rock", "alternative", "shoegaze", "dream pop", "britpop"),
+        "Classical" to listOf("classical", "orchestra", "symphony", "baroque", "opera", "piano", "chamber music"),
+        "Ambient" to listOf("ambient", "new age", "meditation", "drone"),
+        "Soundtrack" to listOf("soundtrack", "film score", "movie soundtrack", "musical", "video game music"),
+        "Reggae" to listOf("reggae", "ska", "dancehall", "dub", "roots reggae", "lovers rock", "reggae fusion"),
+        "Latin" to listOf("latin", "reggaeton", "salsa", "bachata", "cumbia", "samba", "k-pop", "kpop", "latin pop"),
+        "Rock" to listOf("rock", "classic rock", "hard rock", "soft rock", "pop rock", "heartland rock", "arena rock", "southern rock", "new wave", "glam rock", "prog rock", "progressive rock", "psychedelic rock"),
+        "Pop" to listOf("pop", "dance pop", "electropop", "teen pop", "boy band", "girl group", "bubblegum pop", "adult contemporary", "europop"),
+        "World" to listOf("world", "afrobeat", "afropop", "celtic", "khmer", "bollywood", "arabic"),
     )
-    /** "alternative rock, female vocalists" -> "Indie". The first rule that matches the first tag wins. */
+    // Precompiled whole-word matchers so short words ("rap", "emo", "ska", "dub", "pop") never match substrings like "demo", "alaska", "dublin", or "therapeutic"
+    private val compiledRules = rules.map { (g, words) ->
+        g to words.map { w -> Regex("(?i)(?:^|[^a-z0-9])${Regex.escape(w)}(?:$|[^a-z0-9])") }
+    }
+    /** Generic catch-all genres that should yield to specific genres (e.g. "pop, country" -> Country, "pop, hip hop" -> Hip-hop). */
+    private val broadGenres = setOf("Pop", "Rock")
+
+    /** Adds weighted genre votes from a comma/semicolon/slash-separated tag string. */
+    private fun voteTags(tags: String, weight: Float, scores: MutableMap<String, Float>) {
+        if (tags.isBlank()) return
+        val parts = tags.lowercase().split(',', ';', '/').map { it.trim() }.filter { it.isNotEmpty() }
+        parts.forEachIndexed { idx, t ->
+            // Earlier tags in a list are slightly stronger, but every tag gets a real vote
+            val posBoost = if (idx == 0) 1.25f else if (idx == 1) 1.05f else 0.9f
+            for ((genre, regexes) in compiledRules) {
+                if (regexes.any { it.containsMatchIn(t) }) {
+                    val specificity = if (genre in broadGenres) 0.72f else 1.15f
+                    scores[genre] = (scores[genre] ?: 0f) + weight * posBoost * specificity
+                    break
+                }
+            }
+        }
+    }
+
+    /** "pop, country, country pop" -> "Country"; "pop, hip hop, rap" -> "Hip-hop". Whole-word weighted voting. */
     fun group(tags: String): String {
         if (tags.isBlank()) return ""
-        for (tag in tags.lowercase().split(',', ';', '/')) {
-            val t = tag.trim()
-            if (t.isEmpty()) continue
-            rules.firstOrNull { (_, words) -> words.any { w -> t == w || t.contains(w) } }?.let { return it.first }
-        }
-        return ""
+        val scores = HashMap<String, Float>()
+        voteTags(tags, 1f, scores)
+        return scores.maxByOrNull { it.value }?.key.orEmpty()
     }
 
     // ---- what each song sounds like, saved in files/music/feel.json ----
@@ -190,14 +211,22 @@ object Moods {
     }
 
     // ---- genres for each song ----
-    /** Genre group for each song: the file's genre, else MusicBrainz tags, else what the artist's other songs are. */
+    /**
+     * test 366 (Jarrod): Weighted multi-source genre classifier. Combines song MusicBrainz tags, artist MusicBrainz tags,
+     * and file tags with whole-word matching so specific genres (Country, Hip-hop, R&B, etc.) cleanly beat generic "Pop"
+     * crossover tags, and tightens the CLAP fallback margin so untagged tracks don't pollute Hip-hop/Pop.
+     */
     fun genres(ctx: Context, songs: List<Song>): Map<Long, String> {
         val out = HashMap<Long, String>()
         for (s in songs) {
-            var g = group(s.genre)
-            if (g.isEmpty()) g = group(ArtistTags.of(ctx, s.artist)) // test 305: the artist's genres
-            if (g.isEmpty()) g = group(Popularity.known(ctx, s)?.genres ?: "")
-            if (g.isNotEmpty()) out[s.id] = g
+            val scores = HashMap<String, Float>()
+            val popGenres = Popularity.known(ctx, s)?.genres.orEmpty()
+            val artistTags = ArtistTags.of(ctx, s.artist)
+            voteTags(popGenres, 1.4f, scores)   // song-specific MusicBrainz tags (most accurate)
+            voteTags(artistTags, 1.15f, scores) // artist's primary genres
+            voteTags(s.genre, 1.0f, scores)     // file ID3 tag (often broad like "Pop" or "Rock")
+            val best = scores.maxByOrNull { it.value }
+            if (best != null && best.value >= 0.65f) out[s.id] = best.key
         }
         // songs with no genre get their artist's most common one
         val byArtist = songs.groupBy { AlbumRules.artistKey(it.artist) }
@@ -205,7 +234,7 @@ object Moods {
             val common = list.mapNotNull { out[it.id] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: continue
             list.forEach { if (it.id !in out) out[it.id] = common }
         }
-        // test 305: still nothing? the AI listener's best guess, when it's clearly one genre
+        // test 305/366: still nothing? only use the AI listener's guess when it's clearly confident (>= 0.045 margin)
         val ai = Clap.scores(ctx)
         if (ai.isNotEmpty()) {
             val names = Clap.genreNames(ctx); val moods = Clap.moodNames(ctx).size
@@ -213,7 +242,7 @@ object Moods {
                 if (s.id in out) continue
                 val a = ai[s.id]?.takeIf { it.size >= moods + names.size } ?: continue
                 val g = names.indices.sortedByDescending { a[moods + it] }
-                if (a[moods + g[0]] - a[moods + g[1]] >= 0.015f) out[s.id] = names[g[0]]
+                if (a[moods + g[0]] - a[moods + g[1]] >= 0.045f) out[s.id] = names[g[0]]
             }
         }
         return out
