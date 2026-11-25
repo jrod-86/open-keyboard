@@ -134,6 +134,9 @@ object MusicSettings {
     /** test 299 (Jarrod): songs blend into each other like a DJ mix, off by default; [blendSec] = how long the overlap is */
     var blendOn by mutableStateOf(false)
     var blendSec by mutableFloatStateOf(6f)
+    /** test 362 (Jarrod): custom timeline animation style (0..9) and colour/gradient mode (0..13) on Now Playing & Mini Player */
+    var timelineStyle by mutableIntStateOf(0)
+    var timelineColor by mutableIntStateOf(0)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -152,6 +155,8 @@ object MusicSettings {
             ?: (setOfNotNull("Popular".takeIf { !p.getBoolean("pop_tab", true) }, "Moods".takeIf { !p.getBoolean("moods_tab", true) }))
         startTab = p.getString("start_tab", "Tracks") ?: "Tracks"
         blendOn = p.getBoolean("blend_on", false); blendSec = p.getFloat("blend_sec", 6f)
+        timelineStyle = p.getInt("seek_style", 0).coerceIn(0, TimelineStyles.styles.lastIndex)
+        timelineColor = p.getInt("seek_color", 0).coerceIn(0, TimelineStyles.colors.lastIndex)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
@@ -161,7 +166,8 @@ object MusicSettings {
             .putFloat("look_t_contrast", themeContrast).putFloat("look_t_sat", themeSat).putFloat("look_t_warm", themeWarm).putFloat("look_t_hue", themeHue).putFloat("look_t_shadow", themeShadow)
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
-            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putStringSet("hidden_tabs", HashSet(hiddenTabs)).putString("start_tab", startTab).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec).apply()
+            .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putStringSet("hidden_tabs", HashSet(hiddenTabs)).putString("start_tab", startTab).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec)
+            .putInt("seek_style", timelineStyle).putInt("seek_color", timelineColor).apply()
     }
 }
 

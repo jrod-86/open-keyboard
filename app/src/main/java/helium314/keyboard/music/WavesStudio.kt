@@ -106,6 +106,11 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             Text("The song name sits above the buttons and the artist below, at every size.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp, color = dim)
         }
 
+        // ---------------- timeline & progress bar ----------------
+        // test 362 (Jarrod): 10 animated timeline styles + 14 colours/gradients on Now Playing & Mini Player
+        item { Section("Timeline & progress bar") }
+        item { TimelineStudioSection(::changed) }
+
         // ---------------- floating player ----------------
         // test 277 (Jarrod): our own player floating over other apps, 5 styles, same themes as the mini player
         item { Section("Floating player (over other apps)") }

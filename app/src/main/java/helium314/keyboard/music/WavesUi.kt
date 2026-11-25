@@ -1028,16 +1028,16 @@ internal fun WavesMiniPlayer(song: Song, ui: PlayerUi, tint: Color, onOpen: () -
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 ShineText(song.artist, Color.White.copy(alpha = 0.75f), 12f * tk)
             }
-            // test 317 (Jarrod): wavy animated progress line on the mini player too
+            // test 317 / 362 (Jarrod): custom animated progress line on the mini player too
             val frac = (ui.position.toFloat() / ui.duration.coerceAtLeast(1L)).coerceIn(0f, 1f)
             WavyProgressLine(
                 frac = frac,
                 playing = ui.playing,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(12.dp),
                 color = Accent,
                 trackColor = Color.White.copy(alpha = 0.2f),
                 strokeDp = 2.4f,
-                ampDp = 2.0f,
+                ampDp = 2.4f,
             )
         }
     } else Row(Modifier.fillMaxWidth().padding(horizontal = (10 * k).dp, vertical = (8 * k).dp), verticalAlignment = Alignment.CenterVertically) {

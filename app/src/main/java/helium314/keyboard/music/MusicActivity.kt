@@ -1021,7 +1021,7 @@ internal fun DeleteDialog(songs: List<Song>, onDone: () -> Unit) {
         dismissButton = { TextButton(onDone) { Text("Cancel") } })
 }
 
-/** Test 317 (Jarrod): animated wavy seek line (like Android's media notification player), flattens smoothly when paused. */
+/** Test 317 / 362 (Jarrod): customisable animated seek line (10 styles + 14 colours/gradients), flattens/pauses cleanly when paused. */
 @Composable
 internal fun WavyProgressLine(
     frac: Float,
@@ -1032,68 +1032,15 @@ internal fun WavyProgressLine(
     strokeDp: Float = 3.5f,
     ampDp: Float = 3.2f,
 ) {
-    val amp by animateFloatAsState(if (playing) ampDp else 0f, tween(350), label = "waveAmp")
-    var phase by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(playing) {
-        if (!playing) return@LaunchedEffect
-        val t0 = System.nanoTime()
-        val p0 = phase
-        while (true) {
-            phase = p0 + ((System.nanoTime() - t0) / 1e9f) * 5.2f
-            delay(33)
-        }
-    }
-    androidx.compose.foundation.Canvas(modifier) {
-        val w = size.width
-        val cy = size.height / 2f
-        val stroke = strokeDp.dp.toPx()
-        val splitX = (w * frac.coerceIn(0f, 1f))
-        // unplayed straight track
-        if (splitX < w) {
-            drawLine(
-                color = trackColor,
-                start = androidx.compose.ui.geometry.Offset(splitX, cy),
-                end = androidx.compose.ui.geometry.Offset(w, cy),
-                strokeWidth = stroke,
-                cap = androidx.compose.ui.graphics.StrokeCap.Round,
-            )
-        }
-        // played wavy track
-        if (splitX > 1f) {
-            val a = amp.dp.toPx()
-            if (a < 0.2f) {
-                drawLine(
-                    color = color,
-                    start = androidx.compose.ui.geometry.Offset(0f, cy),
-                    end = androidx.compose.ui.geometry.Offset(splitX, cy),
-                    strokeWidth = stroke,
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                )
-            } else {
-                val path = androidx.compose.ui.graphics.Path()
-                val wavelength = 24.dp.toPx()
-                val step = 3.dp.toPx().coerceAtLeast(2f)
-                var x = 0f
-                var first = true
-                while (x <= splitX) {
-                    val edgeFade = minOf(1f, x / 8.dp.toPx(), (splitX - x) / 8.dp.toPx()).coerceAtLeast(0f)
-                    val y = cy + kotlin.math.sin((x / wavelength) * (2.0 * Math.PI) - phase).toFloat() * a * edgeFade
-                    if (first) { path.moveTo(x, y); first = false } else path.lineTo(x, y)
-                    x += step
-                }
-                path.lineTo(splitX, cy)
-                drawPath(
-                    path = path,
-                    color = color,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                        width = stroke,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                        join = androidx.compose.ui.graphics.StrokeJoin.Round,
-                    ),
-                )
-            }
-        }
-    }
+    StyledProgressLine(
+        frac = frac,
+        playing = playing,
+        modifier = modifier,
+        defaultColor = color,
+        trackColor = trackColor,
+        strokeDp = strokeDp,
+        ampDp = ampDp,
+    )
 }
 
 @Composable
@@ -1102,7 +1049,7 @@ private fun SeekBar(ui: PlayerUi) {
     val dur = ui.duration.coerceAtLeast(1)
     val frac = dragFrac ?: (ui.position.toFloat() / dur).coerceIn(0f, 1f)
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp)
+        BoxWithConstraints(Modifier.fillMaxWidth().height(30.dp)
             .pointerInput(dur) {
                 detectHorizontalDragGestures(
                     onDragStart = { o -> dragFrac = (o.x / size.width).coerceIn(0f, 1f) },
@@ -1115,12 +1062,13 @@ private fun SeekBar(ui: PlayerUi) {
             WavyProgressLine(
                 frac = frac,
                 playing = ui.playing && dragFrac == null,
-                modifier = Modifier.fillMaxWidth().height(16.dp),
+                modifier = Modifier.fillMaxWidth().height(22.dp),
                 strokeDp = if (dragFrac != null) 5f else 3.5f,
-                ampDp = 3.2f,
+                ampDp = 4.2f,
             )
             val thumb = if (dragFrac != null) 22.dp else 18.dp
-            Box(Modifier.offset(x = (maxWidth - thumb) * frac).size(thumb).clip(CircleShape).background(Color.White))
+            val thumbColor = TimelineStyles.accentColorAt(MusicSettings.timelineColor, Color.White, frac, 0f)
+            Box(Modifier.offset(x = (maxWidth - thumb) * frac).size(thumb).clip(CircleShape).background(thumbColor))
         }
         val shown = ((dragFrac ?: frac) * dur).toLong()
         Row(Modifier.fillMaxWidth()) {
