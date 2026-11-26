@@ -2,8 +2,8 @@
 
 - **Last updated:** 2026-11-27 by Gemini (Antigravity)
 - **Active branch:** `claude/podcasts-tab` (branched cleanly from `main` after PR #12 merged)
-- **Latest APK:** **test 370** (building via GitHub Actions → GitHub Pre-Release `test-370`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 371**
+- **Latest APK:** **test 371** (building via GitHub Actions → GitHub Pre-Release `test-371`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 372**
 
 ## Confirmed Working on S24 (23–24 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All

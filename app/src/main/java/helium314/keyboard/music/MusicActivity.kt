@@ -199,6 +199,8 @@ class PlayerUi {
     var liveTitle by mutableStateOf("")
     val isLiveStream: Boolean get() = current?.mediaId?.startsWith("radio:") == true
     val isPodcast: Boolean get() = current?.mediaId?.startsWith("pod:") == true
+    val isAudiobook: Boolean get() = current?.mediaId?.startsWith("book:") == true
+    val isLongForm: Boolean get() = isPodcast || isAudiobook
     var position by mutableLongStateOf(0L)
     /** when [position] was read (elapsedRealtime), so effects can move smoothly between reads */
     var positionAt = 0L
@@ -296,6 +298,37 @@ class PlayerUi {
         c.shuffleModeEnabled = false
         c.repeatMode = Player.REPEAT_MODE_OFF
         if (resumeMs > 5_000L) c.setMediaItem(item, resumeMs) else c.setMediaItem(item)
+        c.prepare()
+        c.play()
+    }
+
+    /** test 371 (Jarrod): queue all chapters of an audiobook seamlessly from [startIdx] (using offline files when downloaded). */
+    fun playAudiobook(ctx: Context, book: Audiobook, chapters: List<BookChapter>, startIdx: Int, resumeMs: Long) {
+        val c = controller ?: return
+        if (chapters.isEmpty()) return
+        Radio.stop()
+        Announcer.hush()
+        val items = chapters.mapIndexed { idx, ch ->
+            val offline = if (book.isLocal) null else AudiobookStore.downloadedFile(ctx, book.id, idx)
+            val uri = when {
+                offline != null -> android.net.Uri.fromFile(offline)
+                else -> android.net.Uri.parse(ch.audioUrl)
+            }
+            val md = androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(ch.title)
+                .setArtist(book.title)
+                .setAlbumTitle(book.author)
+                .build()
+            MediaItem.Builder()
+                .setMediaId("book:${book.id}:$idx")
+                .setUri(uri)
+                .setMediaMetadata(md)
+                .build()
+        }
+        val idx = startIdx.coerceIn(0, items.lastIndex)
+        c.shuffleModeEnabled = false
+        c.repeatMode = Player.REPEAT_MODE_OFF
+        c.setMediaItems(items, idx, if (resumeMs > 5_000L) resumeMs else 0L)
         c.prepare()
         c.play()
     }
@@ -1145,7 +1178,7 @@ private fun SeekBar(ui: PlayerUi) {
             Text(time(shown), color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
             Text(time(ui.duration), color = Color.White, fontSize = 14.sp)
         }
-        if (ui.isPodcast) {
+        if (ui.isLongForm) {
             val ctx = LocalContext.current
             val spd by Playback.speed.collectAsState()
             val speeds = listOf(1f, 1.25f, 1.5f, 1.75f, 2f)

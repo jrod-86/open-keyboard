@@ -233,6 +233,16 @@ class MusicService : MediaLibraryService() {
             PodcastStore.savePos(this, mid.removePrefix("pod:"), p.currentPosition, p.duration)
             return
         }
+        if (mid.startsWith("book:")) {
+            val rest = mid.removePrefix("book:")
+            val sep = rest.lastIndexOf(':')
+            if (sep > 0) {
+                val bookId = rest.substring(0, sep)
+                val chIdx = rest.substring(sep + 1).toIntOrNull() ?: 0
+                AudiobookStore.savePos(this, bookId, chIdx, p.currentPosition, p.duration)
+            }
+            return
+        }
         mid.toLongOrNull()?.let { if (p.duration > 0) Playback.saveSpot(this, it, p.currentPosition, p.duration) }
         if (p.mediaItemCount == 0) return
         val ids = (0 until p.mediaItemCount).joinToString(",") { p.getMediaItemAt(it).mediaId }
