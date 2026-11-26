@@ -340,11 +340,11 @@ object AudiobookStore {
     /** Finds any audiobooks stored locally on the phone (e.g. inside an Audiobooks folder or .m4b files). */
     fun localBooks(lib: Library): List<Pair<Audiobook, List<BookChapter>>> {
         val candidates = lib.songs.filter { s ->
-            val f = s.folder.lowercase()
-            f.contains("audiobook") || f.contains("books") || s.genre.contains("audiobook", true)
+            val p = s.path.lowercase()
+            p.contains("audiobook") || p.contains("/books/") || p.endsWith(".m4b") || s.genre.contains("audiobook", true)
         }
         if (candidates.isEmpty()) return emptyList()
-        return candidates.groupBy { it.album.ifBlank { it.folder } }.map { (name, tracks) ->
+        return candidates.groupBy { it.album.ifBlank { File(it.path).parentFile?.name ?: "Audiobook" } }.map { (name, tracks) ->
             val sorted = tracks.sortedWith(compareBy<Song> { if (it.track > 0) it.track else Int.MAX_VALUE }.thenBy { it.title.lowercase() })
             val totalMin = sorted.sumOf { it.durationMs } / 60_000L
             val book = Audiobook(
