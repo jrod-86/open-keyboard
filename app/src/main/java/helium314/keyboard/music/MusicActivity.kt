@@ -1150,16 +1150,16 @@ private fun SeekBar(ui: PlayerUi) {
             val spd by Playback.speed.collectAsState()
             val speeds = listOf(1f, 1.25f, 1.5f, 1.75f, 2f)
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton({ ui.seek((ui.now() - 15_000L).coerceAtLeast(0L)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                androidx.compose.material3.OutlinedButton({ ui.seek((ui.now() - 15_000L).coerceAtLeast(0L)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
                     Text("↺ 15s", color = Color.White, fontSize = 13.sp)
                 }
-                OutlinedButton({
+                androidx.compose.material3.OutlinedButton({
                     val next = speeds.firstOrNull { it > spd + 0.01f } ?: speeds.first()
                     Playback.setSpeed(ctx, next)
                 }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
                     Text("${if (spd == 1f) "1" else spd}×", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
-                OutlinedButton({ ui.seek((ui.now() + 30_000L).coerceAtMost(dur)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                androidx.compose.material3.OutlinedButton({ ui.seek((ui.now() + 30_000L).coerceAtMost(dur)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
                     Text("30s ↻", color = Color.White, fontSize = 13.sp)
                 }
             }
