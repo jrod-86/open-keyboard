@@ -198,6 +198,7 @@ class PlayerUi {
     /** test 369: live ICY song title broadcast by an internet radio stream, if available */
     var liveTitle by mutableStateOf("")
     val isLiveStream: Boolean get() = current?.mediaId?.startsWith("radio:") == true
+    val isPodcast: Boolean get() = current?.mediaId?.startsWith("pod:") == true
     var position by mutableLongStateOf(0L)
     /** when [position] was read (elapsedRealtime), so effects can move smoothly between reads */
     var positionAt = 0L
@@ -272,6 +273,29 @@ class PlayerUi {
         c.shuffleModeEnabled = false
         c.repeatMode = Player.REPEAT_MODE_OFF
         c.setMediaItem(item)
+        c.prepare()
+        c.play()
+    }
+
+    /** test 370 (Jarrod): play or resume a podcast episode (uses offline file if downloaded, otherwise streams). */
+    fun playPodcast(ep: PodcastEpisode, localFile: java.io.File?, resumeMs: Long) {
+        val c = controller ?: return
+        Radio.stop()
+        Announcer.hush()
+        val md = androidx.media3.common.MediaMetadata.Builder()
+            .setTitle(ep.title)
+            .setArtist(ep.showTitle)
+            .apply { if (ep.artworkUrl.startsWith("http")) setArtworkUri(android.net.Uri.parse(ep.artworkUrl)) }
+            .build()
+        val uri = if (localFile != null) android.net.Uri.fromFile(localFile) else android.net.Uri.parse(ep.audioUrl)
+        val item = MediaItem.Builder()
+            .setMediaId("pod:${ep.id}")
+            .setUri(uri)
+            .setMediaMetadata(md)
+            .build()
+        c.shuffleModeEnabled = false
+        c.repeatMode = Player.REPEAT_MODE_OFF
+        if (resumeMs > 5_000L) c.setMediaItem(item, resumeMs) else c.setMediaItem(item)
         c.prepare()
         c.play()
     }
@@ -1120,6 +1144,25 @@ private fun SeekBar(ui: PlayerUi) {
         Row(Modifier.fillMaxWidth()) {
             Text(time(shown), color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
             Text(time(ui.duration), color = Color.White, fontSize = 14.sp)
+        }
+        if (ui.isPodcast) {
+            val ctx = LocalContext.current
+            val spd by Playback.speed.collectAsState()
+            val speeds = listOf(1f, 1.25f, 1.5f, 1.75f, 2f)
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton({ ui.seek((ui.now() - 15_000L).coerceAtLeast(0L)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                    Text("↺ 15s", color = Color.White, fontSize = 13.sp)
+                }
+                OutlinedButton({
+                    val next = speeds.firstOrNull { it > spd + 0.01f } ?: speeds.first()
+                    Playback.setSpeed(ctx, next)
+                }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                    Text("${if (spd == 1f) "1" else spd}×", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton({ ui.seek((ui.now() + 30_000L).coerceAtMost(dur)) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                    Text("30s ↻", color = Color.White, fontSize = 13.sp)
+                }
+            }
         }
     }
 }

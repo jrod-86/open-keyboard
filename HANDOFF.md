@@ -1,9 +1,9 @@
 # Session Handoff (Relay Baton)
 
-- **Last updated:** 2026-11-25 by Gemini (Antigravity)
-- **Active branch:** `claude/project-thread-1y9nzr` ([PR #12](https://github.com/jrod-86/open-keyboard/pull/12))
-- **Latest APK:** **test 369** (building via GitHub Actions → GitHub Pre-Release `test-369`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 370**
+- **Last updated:** 2026-11-27 by Gemini (Antigravity)
+- **Active branch:** `claude/podcasts-tab` (branched cleanly from `main` after PR #12 merged)
+- **Latest APK:** **test 370** (building via GitHub Actions → GitHub Pre-Release `test-370`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 371**
 
 ## Confirmed Working on S24 (23–24 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All

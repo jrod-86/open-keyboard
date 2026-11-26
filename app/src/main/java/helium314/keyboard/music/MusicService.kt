@@ -228,7 +228,12 @@ class MusicService : MediaLibraryService() {
 
     private fun save() {
         val p = session?.player ?: return
-        p.currentMediaItem?.mediaId?.toLongOrNull()?.let { if (p.duration > 0) Playback.saveSpot(this, it, p.currentPosition, p.duration) }
+        val mid = p.currentMediaItem?.mediaId ?: ""
+        if (mid.startsWith("pod:")) {
+            PodcastStore.savePos(this, mid.removePrefix("pod:"), p.currentPosition, p.duration)
+            return
+        }
+        mid.toLongOrNull()?.let { if (p.duration > 0) Playback.saveSpot(this, it, p.currentPosition, p.duration) }
         if (p.mediaItemCount == 0) return
         val ids = (0 until p.mediaItemCount).joinToString(",") { p.getMediaItemAt(it).mediaId }
         prefs().edit()
