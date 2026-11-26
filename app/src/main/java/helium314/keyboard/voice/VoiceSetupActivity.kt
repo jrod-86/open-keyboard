@@ -60,6 +60,8 @@ class VoiceSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Open Keyboard: only two models now; free the space older test builds' extra models used
+        Thread { runCatching { VoiceModel.removeOldModels(applicationContext) } }.start()
         setContent { Theme { VoiceSetupScreen(onBack = { finish() }) } }
     }
 }
@@ -75,7 +77,6 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
     val progress = remember { mutableStateMapOf<VoiceModel, Float>() }
     val errors = remember { mutableStateMapOf<VoiceModel, String>() }
     var installedTick by remember { mutableStateOf(0) }
-    var accuracy by remember { mutableStateOf(VoicePrefs.accuracyModel(ctx)) }
     var noiseReduction by remember { mutableStateOf(VoicePrefs.noiseReduction(ctx)) }
     var region by remember { mutableStateOf(VoicePrefs.region(ctx)) }
 
@@ -101,71 +102,73 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 }
             }
 
-            Text("2. Download models", style = MaterialTheme.typography.titleMedium)
-            VoiceModel.entries.forEach { model ->
-                installedTick.let { } // recompose after install/delete
-                val installed = model.isInstalled(ctx)
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(model.title, style = MaterialTheme.typography.titleSmall)
-                        Text(model.description, style = MaterialTheme.typography.bodySmall)
-                        Text("About ${model.approxMb} MB · ${model.license}", style = MaterialTheme.typography.bodySmall)
-                        val p = progress[model]
-                        when {
-                            p != null -> LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
-                            installed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Installed")
-                                Spacer(Modifier.width(16.dp))
-                                OutlinedButton(onClick = {
-                                    VoiceEngine.release()
-                                    model.dir(ctx).deleteRecursively()
-                                    installedTick++
-                                }) { Text("Delete") }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    installedTick.let { } // recompose after install/delete
+                    val models = VoiceModel.entries
+                    val allInstalled = models.all { it.isInstalled(ctx) }
+                    Text("2. Download voice typing", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Voice typing uses two models that work together:",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "• Live words shows what you say while you're talking, so you can see it working.\n" +
+                                "• Clean-up listens to each sentence again when you pause and fixes any wrong " +
+                                "words. This is what makes the final text accurate, even in noisy places.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "About ${"%.1f".format(models.sumOf { it.approxMb } / 1000.0)} GB, downloaded once. Use Wi-Fi.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    models.forEach { model ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                model.title + if (model.isInstalled(ctx)) "  ✓" else "",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(model.description, style = MaterialTheme.typography.bodySmall)
+                            progress[model]?.let { p ->
+                                LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
                             }
-                            else -> Button(onClick = {
-                                errors.remove(model)
-                                progress[model] = 0f
-                                scope.launch {
+                            errors[model]?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                    when {
+                        progress.isNotEmpty() -> Text("Downloading… you can leave this screen open.", style = MaterialTheme.typography.bodySmall)
+                        allInstalled -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Ready to use")
+                            Spacer(Modifier.width(16.dp))
+                            OutlinedButton(onClick = {
+                                VoiceEngine.release()
+                                models.forEach { it.dir(ctx).deleteRecursively() }
+                                installedTick++
+                            }) { Text("Delete models") }
+                        }
+                        else -> Button(onClick = {
+                            errors.clear()
+                            scope.launch {
+                                for (model in models.filter { !it.isInstalled(ctx) }) {
+                                    progress[model] = 0f
                                     try {
                                         download(ctx, model) { progress[model] = it }
                                     } catch (e: CancellationException) {
                                         throw e
                                     } catch (e: Exception) {
-                                        errors[model] = "Download failed: ${e.message}"
+                                        errors[model] = "Download failed: ${e.message}. Tap Download to try again."
                                     } finally {
                                         progress.remove(model)
                                         installedTick++
                                     }
                                 }
-                            }) { Text("Download") }
-                        }
-                        errors[model]?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
+                        }) { Text(if (models.any { it.isInstalled(ctx) }) "Download the rest" else "Download") }
                     }
                 }
             }
 
-            Text("3. Accuracy check", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "When you pause, this model re-checks the sentence and adds punctuation and capitals. " +
-                        "Try both and keep the one that works best for your voice.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            (VoiceModel.accuracyModels + listOf<VoiceModel?>(null)).forEach { model ->
-                val label = model?.title ?: "None (fastest, no punctuation)"
-                Row(
-                    Modifier.fillMaxWidth().selectable(selected = accuracy == model, onClick = {
-                        accuracy = model
-                        VoicePrefs.setAccuracyModel(ctx, model)
-                    }),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = accuracy == model, onClick = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(label + if (model != null && !model.isInstalled(ctx)) " (not downloaded)" else "")
-                }
-            }
-
-            Text("4. Background noise", style = MaterialTheme.typography.titleMedium)
+            Text("3. Background noise", style = MaterialTheme.typography.titleMedium)
             Row(
                 Modifier.fillMaxWidth().selectable(selected = noiseReduction, onClick = {
                     noiseReduction = !noiseReduction
@@ -232,7 +235,7 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 }
             }) { Text("Share last recording") }
 
-            Text("5. Where you're from", style = MaterialTheme.typography.titleMedium)
+            Text("4. Where you're from", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Sets the spelling (colour or color, realise or realize). For strong accents, try Whisper " +
                         "large-v3-turbo as the accuracy check: it was trained on the widest range of accents.",
@@ -252,7 +255,7 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                 }
             }
 
-            Text("6. Type in another language", style = MaterialTheme.typography.titleMedium)
+            Text("5. Type in another language", style = MaterialTheme.typography.titleMedium)
             val target = helium314.keyboard.latin.MadladTranslator.voiceTarget(ctx)
             Text(
                 (if (target == null) "Off: voice typing types English. "
@@ -261,7 +264,7 @@ private fun VoiceSetupScreen(onBack: () -> Unit) {
                         "To choose a language, open the keyboard's grid menu and tap \"Voice translate\".",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Text("7. Use it", style = MaterialTheme.typography.titleMedium)
+            Text("6. Use it", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Tap the mic at the top right of the keyboard and start talking. Tap it again, " +
                         "or stay quiet for 30 seconds, to finish.",

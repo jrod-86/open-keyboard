@@ -114,13 +114,13 @@ object KokoroTts {
 
     /** Loads the engine for the voice's accent (British voices read with the British word list). Slow the first time. */
     @Synchronized
-    fun engine(ctx: Context, voice: Voice): OfflineTts {
+    fun engine(ctx: Context, voice: Voice, maxThreads: Int = 4): OfflineTts {
         tts?.let { if (loadedBritish == voice.british) return it }
         release()
         val d = dir(ctx)
         val extra = Pronounce.writeExtraLexicon(File(d, "extra-lexicon.txt"))
         val lexicon = File(d, if (voice.british) "lexicon-gb-en.txt" else "lexicon-us-en.txt").path + "," + extra.path
-        val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+        val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, maxThreads.coerceAtLeast(2))
         val config = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 kokoro = OfflineTtsKokoroModelConfig(

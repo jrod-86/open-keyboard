@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,6 +28,7 @@ import kotlinx.coroutines.withContext
 object SmartCompose {
     private const val TAG = "SmartCompose"
     private const val PAUSE_MS = 650L
+    private const val COLD_PAUSE_MS = 2500L
     private const val SYSTEM = "You are the autocomplete in a phone keyboard. The user is in the middle of typing a " +
         "message. Reply with only the next few words (2 to 6) that would most likely come next. Do not repeat " +
         "what they wrote. No quotes, no explanation."
@@ -34,9 +36,36 @@ object SmartCompose {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
+    /** For the lag log: true while a guess is being worked out. */
+    val busy: Boolean get() = job?.isActive == true
     private var pending: Runnable? = null
     @Volatile private var forText: String? = null
     @Volatile private var suggestion: String? = null
+
+    /**
+     * Voice sessions running. Open Keyboard: while the mic is on, smart compose stays quiet. Logs of
+     * 17 Nov: a guess started loading the writing model (1.1 GB) just before the mic was tapped, and
+     * the three models fighting over the processor held back the first words for 13 seconds instead of 3.
+     */
+    private val voiceSessions = java.util.concurrent.atomic.AtomicInteger(0)
+    private val quietForVoice get() = voiceSessions.get() > 0
+
+    /** The mic turned on: drop any guess being worked out, and don't start new ones. */
+    fun pauseForVoice() {
+        voiceSessions.incrementAndGet()
+        main.post {
+            pending?.let { main.removeCallbacks(it) }
+            pending = null
+        }
+        if (job?.isActive == true) Log.i(TAG, "voice typing started, stopping the guess")
+        job?.cancel()
+        forText = null; suggestion = null
+    }
+
+    /** A voice session has finished (its last sentence is written). */
+    fun resumeAfterVoice() {
+        voiceSessions.updateAndGet { (it - 1).coerceAtLeast(0) }
+    }
 
     /** Called whenever the text or cursor changes. */
     fun onTextChanged(ime: LatinIME) {
@@ -44,13 +73,19 @@ object SmartCompose {
         job?.cancel() // typing again: stop guessing for the old text
         val r = Runnable { start(ime) }
         pending = r
-        main.postDelayed(r, PAUSE_MS)
+        // Open Keyboard (test 217): loading the writing model (1.1 GB) takes the phone a few seconds of hard work. When it
+        // isn't in memory, wait for a longer pause first, so it never loads in the gap between two words you're typing.
+        main.postDelayed(r, if (WritingTools.loaded) PAUSE_MS else COLD_PAUSE_MS)
     }
 
     private fun allowed(ime: LatinIME): Boolean {
         if (!Plugins.isOn(ime, "compose") || !WritingTools.modelReady(ime)) return false
         val sv = Settings.getValues()
         if (sv.mIncognitoModeEnabled || !sv.mInputAttributes.mShouldShowSuggestions) return false
+        // Chat's message box: the chat keeps its conversation in the model, guessing here would wipe it
+        // nor in the keyboard's own screens (Chat, TTS, Sticker maker…)
+        if (ime.currentInputEditorInfo?.privateImeOptions?.startsWith(ChatActivity.CHAT_OPTION) == true ||
+            ime.currentInputEditorInfo?.packageName == ime.packageName) return false
         val type = ime.currentInputEditorInfo?.inputType ?: return false
         if (type and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
         return when (type and InputType.TYPE_MASK_VARIATION) {
@@ -70,7 +105,7 @@ object SmartCompose {
     }
 
     private fun start(ime: LatinIME) {
-        if (!allowed(ime)) return
+        if (quietForVoice || !allowed(ime)) return
         val before = textBefore(ime) ?: return
         if (before == forText) return // already guessed (or guessing) for this text
         forText = null; suggestion = null
@@ -79,18 +114,15 @@ object SmartCompose {
         if (after.isNotEmpty() && after[0] != '\n') return
         if (!before.endsWith(" ") || before.endsWith("  ")) return
         val line = before.substringAfterLast('\n')
-        if (line.trim().split(Regex("\\s+")).size < 2) return
+        if (line.trim().split(SPACES).size < 2) return
         if (SlashCommands.inCommand(before)) return
         forText = before
         job = scope.launch {
             try {
-                val out = WritingTools.withEngine(ime) { engine ->
-                    engine.startFresh()
-                    engine.setSystemPrompt(SYSTEM)
-                    val sb = StringBuilder()
-                    engine.sendUserPrompt(before.takeLast(300).trimEnd(), 16).collect { sb.append(it) }
-                    sb.toString()
-                } ?: return@launch
+                // Open Keyboard (test 221): the model runs in Chat's process; the keyboard only waits for the answer
+                if (quietForVoice) return@launch
+                val out = WritingTools.askIfIdle(ime, SYSTEM, before.takeLast(300).trimEnd(), 16) ?: return@launch
+                if (quietForVoice) return@launch
                 val guess = tidy(before, out) ?: return@launch
                 withContext(Dispatchers.Main) {
                     if (forText == before && textBefore(ime) == before) {
@@ -106,6 +138,7 @@ object SmartCompose {
         }
     }
 
+    private val SPACES = Regex("\\s+")
     private val commentary = Regex("^(it'?s likely|it is likely|it seems|it looks like|it appears|i think|i'm not sure|sure[,!]|here('s| is)|the word|the text|the sentence|you (seem|might|may|meant)|this (seems|looks|is a)|based on|as an ai|did you mean|i can|i'll|it sounds)", RegexOption.IGNORE_CASE)
 
     /** Turns the model's reply into a few clean words, or null if it's not usable. */
@@ -138,7 +171,12 @@ object SmartCompose {
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         val guess = suggestion ?: return null
         val before = forText ?: return null
-        if (textBefore(ime) != before) return null
+        // Open Keyboard (test 217): check against the keyboard's own copy of the text, not by asking the app again
+        // (this runs every time the top bar is redrawn, and asking a busy app can take a long time)
+        val conn = ime.mInputLogic.mConnection
+        if (conn.hasSelection()) return null
+        val now = conn.getTextBeforeCursor(64, 0)?.toString() ?: return null
+        if (now.isEmpty() || !before.endsWith(now)) return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
         textView.text = "→  $guess"

@@ -199,7 +199,10 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             button.setImageDrawable(b.icon)
             button.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
             setupKey(button, colors)
+            button.isActivated = true // full-brightness colour like the other bar keys (not activated = dimmer shade)
             if (!b.tint) button.clearColorFilter()
+            if (b.id == helium314.keyboard.latin.AiWriter.TILE_ID && helium314.keyboard.latin.AiWriter.writerOn)
+                button.setColorFilter(helium314.keyboard.latin.AiWriter.ON_COLOR) // writer mode is on
             button.setOnClickListener { b.action() }
             toolbar.addView(button, b.position.coerceIn(0, toolbar.childCount))
         }
@@ -227,6 +230,9 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         copy.setImageDrawable(last.drawable)
         copy.layoutParams = LinearLayout.LayoutParams(toolbarKeyLayoutParams)
         setupKey(copy, colors)
+        // the bar keys get their on/off shade a moment later; the right-hand copy follows the key it copies
+        copy.isActivated = last.isActivated || last.tag !is ToolbarKey
+        postDelayed({ copy.isActivated = last.isActivated }, 100)
         if (last.colorFilter == null) copy.clearColorFilter()
         copy.isVisible = last.isVisible
         copy.setOnClickListener { last.performClick() }
@@ -635,8 +641,8 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
 
     /** Open Keyboard: notes in the app's log who hid a chip, to chase paste-chip problems. */
     private fun chipLog(what: String) {
-        val by = Throwable().stackTrace.drop(2).take(4).joinToString(" < ") { "${it.fileName?.removeSuffix(".kt")?.removeSuffix(".java")}:${it.lineNumber}" }
-        helium314.keyboard.latin.utils.Log.i("SuggestionStripView", "chip $what by $by")
+        // (the paste chip problem this chased is fixed; walking the call stack on every word was wasted time)
+        helium314.keyboard.latin.utils.Log.i("SuggestionStripView", "chip $what")
     }
 
     private fun clear() {

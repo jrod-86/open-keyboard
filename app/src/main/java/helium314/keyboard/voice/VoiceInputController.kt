@@ -54,15 +54,63 @@ class VoiceInputController(
     private fun listening(on: Boolean) {
         onListeningChanged(on)
         runCatching {
-            if (on && !hasFocus) {
-                hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-                Log.i(TAG, "media paused for voice: $hasFocus")
-            } else if (!on && hasFocus) {
-                audioManager.abandonAudioFocusRequest(focusRequest)
-                hasFocus = false
-                Log.i(TAG, "media handed back")
+            if (on) {
+                main.removeCallbacks(handBack)
+                main.removeCallbacks(nudgePlayer)
+                if (!hasFocus) {
+                    mediaWasPlaying = audioManager.isMusicActive
+                    hasFocus = audioManager.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                    Log.i(TAG, "media paused for voice: $hasFocus (was playing: $mediaWasPlaying)")
+                }
+            } else if (hasFocus) {
+                // Open Keyboard: wait until the mic is fully closed and the off chime has played
+                // before handing the sound back. Handing it back while the mic was still open left
+                // podcasts frozen (Jarrod, 16 Nov).
+                main.removeCallbacks(handBack)
+                main.postDelayed(handBack, HAND_BACK_DELAY_MS)
             }
         }
+    }
+
+    private var mediaWasPlaying = false
+
+    private val handBack = Runnable {
+        if (running || !hasFocus) return@Runnable
+        runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }
+        hasFocus = false
+        Log.i(TAG, "media handed back")
+        if (mediaWasPlaying) { watchChecks = 0; presses = 0; wasActive = false; main.postDelayed(nudgePlayer, WATCH_STEP_MS) }
+    }
+
+    private var watchChecks = 0
+    private var presses = 0
+    private var wasActive = false
+
+    /**
+     * Open Keyboard: watches the media for a few seconds after the mic closes and presses play only when it isn't
+     * playing. Test 215 always pressed play, and some players take "play" as play/pause, so media that had already
+     * carried on by itself stopped again (Jarrod, 17 Nov). Before that, a player that started and then stopped a moment
+     * later was never pressed. Now: if it's not playing after 1.5 s, or it stops again within 5 s, press play (at most twice).
+     */
+    private val nudgePlayer: Runnable = Runnable {
+        if (running || hasFocus || !mediaWasPlaying) return@Runnable
+        val active = audioManager.isMusicActive
+        watchChecks++
+        val elapsed = watchChecks * WATCH_STEP_MS
+        val stoppedAgain = wasActive && !active
+        val neverStarted = !active && !wasActive && elapsed >= 1500
+        if (active != wasActive) Log.i(TAG, "media after mic: playing=$active at ${elapsed} ms")
+        if ((stoppedAgain || neverStarted) && presses < 2) {
+            presses++
+            Log.i(TAG, "media not playing ${if (stoppedAgain) "(stopped again)" else "(didn't start)"}, pressing play")
+            runCatching {
+                val now = android.os.SystemClock.uptimeMillis()
+                for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP))
+                    audioManager.dispatchMediaKeyEvent(android.view.KeyEvent(now, now, action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY, 0))
+            }
+            wasActive = true // give the player a moment before judging again
+        } else wasActive = active
+        if (elapsed < WATCH_FOR_MS) main.postDelayed(nudgePlayer, WATCH_STEP_MS) else mediaWasPlaying = false
     }
 
     @Volatile private var running = false
@@ -98,7 +146,7 @@ class VoiceInputController(
     fun start() {
         if (running) return
         val missingPermission = ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-        if (missingPermission || !VoiceModel.STREAMING_EN.isInstalled(ime)) {
+        if (missingPermission || VoicePrefs.liveModel(ime) == null) {
             Log.i(TAG, "mic not started: permission=${!missingPermission}")
             Toast.makeText(ime, "Set up voice typing first", Toast.LENGTH_SHORT).show()
             ime.startActivity(Intent(ime, VoiceSetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -121,7 +169,35 @@ class VoiceInputController(
         val session = ++sessionId
         listening(true) // pause other media first, so the chime isn't talked over
         click(true)
-        audioThread = thread(name = "voice-input") { listen(session) }
+        VoicePrefs.markUsed(ime)
+        helium314.keyboard.latin.SmartCompose.pauseForVoice() // keep the processor for voice (resumed in listen())
+        audioThread = thread(name = "voice-input") {
+            var handedOver = false
+            try { handedOver = listen(session) }
+            finally { if (!handedOver) helium314.keyboard.latin.SmartCompose.resumeAfterVoice() }
+        }
+    }
+
+    @Volatile private var preparing = false
+
+    /**
+     * The keyboard has opened: if voice typing has been used in the last week, load the live model now in the
+     * background, so the mic writes straight away when tapped. Freed again after 5 minutes without voice.
+     */
+    fun prepare() {
+        if (running || preparing) return
+        if (System.currentTimeMillis() - VoicePrefs.lastUsed(ime) > PREPARE_IF_USED_WITHIN_MS) return
+        if (VoicePrefs.liveModel(ime) == null) return
+        if (ContextCompat.checkSelfPermission(ime, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        preparing = true
+        thread(name = "voice-prepare", priority = Thread.MIN_PRIORITY) {
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                if (VoiceEngine.preloadLive(ime))
+                    main.postDelayed({ onFinal { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } },
+                        VoiceEngine.IDLE_RELEASE_MS + 1000)
+            } finally { preparing = false }
+        }
     }
 
     /** Stops listening. Text already heard is still finished off and committed. */
@@ -159,11 +235,24 @@ class VoiceInputController(
 
     fun release() {
         cancel()
+        main.removeCallbacks(handBack); main.removeCallbacks(nudgePlayer)
+        if (hasFocus) { runCatching { audioManager.abandonAudioFocusRequest(focusRequest) }; hasFocus = false }
         finalPass.shutdownNow()
         chimes.release()
     }
 
     private fun ic(): InputConnection? = ime.currentInputConnection
+
+    /**
+     * Runs [block] on the final-pass thread. Open Keyboard: once the keyboard is closed down
+     * ([release]) that thread is gone, and the voice thread finishing a moment later crashed the
+     * keyboard (crash report 2026-11-16, ChatGPT). Returns false if it couldn't run.
+     */
+    private fun onFinal(block: () -> Unit): Boolean = try {
+        finalPass.execute(block); true
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+        false
+    }
 
     private fun writeWav(file: java.io.File, pcm: ByteArray) {
         file.parentFile?.mkdirs()
@@ -175,8 +264,9 @@ class VoiceInputController(
         file.outputStream().use { it.write(h.array()); it.write(pcm) }
     }
 
+    /** Returns true if smart compose will be let back on by the final-pass thread (after the last sentence). */
     @SuppressLint("MissingPermission") // checked in start()
-    private fun listen(session: Int) {
+    private fun listen(session: Int): Boolean {
         val minBuffer = AudioRecord.getMinBufferSize(VoiceEngine.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         // "call" mic: the phone's call processing (several mics, strong noise cancelling) for loud places
         val source = if (VoicePrefs.callMic(ime)) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION
@@ -185,7 +275,7 @@ class VoiceInputController(
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             main.post { toast("Microphone is not available"); stop() }
             record.release()
-            return
+            return false
         }
         // the phone's own noise suppression, when turned on and the phone has it
         val suppressor = if (VoicePrefs.noiseReduction(ime) && android.media.audiofx.NoiseSuppressor.isAvailable())
@@ -195,18 +285,38 @@ class VoiceInputController(
         Thread.sleep(chimes.onLengthMs) // let the start chime finish so it isn't heard as speech
         record.startRecording()
         Log.i(TAG, "mic recording, loading streaming model")
+        val recordingAt = android.os.SystemClock.uptimeMillis()
+        val wasLoaded = VoiceEngine.liveLoaded
+        VoiceEngine.begin() // keeps the models loaded until this session's last sentence is checked
         val recognizer = try {
-            VoiceEngine.onlineRecognizer(ime)
+            VoiceEngine.onlineRecognizer(ime).also {
+                if (!wasLoaded) Log.i(TAG, "streaming model loaded in ${android.os.SystemClock.uptimeMillis() - recordingAt} ms")
+            }
         } catch (e: Throwable) {
             Log.e(TAG, "could not load streaming model", e)
             main.post { toast("Voice model could not be loaded"); stop() }
+            VoiceEngine.end()
             runCatching { record.stop() }
             suppressor?.release()
             record.release()
-            return
+            return false
         }
-        // warm up the accuracy model while the user starts talking
-        finalPass.execute { runCatching { VoiceEngine.offlineRecognizer(ime) } }
+        // Open Keyboard: warm up the accuracy model once the live model has caught up with the speech recorded
+        // while it loaded (or after 2 s), so the two don't fight for the processor and the first words show sooner
+        var accuracyWarming = false
+        fun warmAccuracyModel() {
+            if (accuracyWarming) return
+            accuracyWarming = true
+            onFinal {
+                val t = android.os.SystemClock.uptimeMillis()
+                val cold = !VoiceEngine.accuracyLoaded
+                runCatching { VoiceEngine.offlineRecognizer(ime) }
+                if (cold) Log.i(TAG, "accuracy model loaded in ${android.os.SystemClock.uptimeMillis() - t} ms")
+            }
+        }
+        var firstWordsLogged = false
+        var resumeHandedOver = false
+        val liveReadyAt = android.os.SystemClock.uptimeMillis()
 
         val stream = recognizer.createStream("")
         val chunk = ShortArray(VoiceEngine.SAMPLE_RATE / 10) // 100 ms
@@ -215,23 +325,80 @@ class VoiceInputController(
         var lastSpeechAt = android.os.SystemClock.uptimeMillis()
         // optional copy of the whole session for tuning (at most 3 minutes)
         val keep = if (VoicePrefs.keepRecording(ime)) java.io.ByteArrayOutputStream() else null
+        // Open Keyboard: the speech detector decides where sentences start and end (see VoiceEngine)
+        val vad = VoiceEngine.newSpeechDetector(ime)
+        val vadWindow = FloatArray(VoiceEngine.VAD_WINDOW)
+        var vadFill = 0
+        var fed = 0L // samples heard so far this session
+        var segmentStart = 0L // where [segment] starts, counted the same way
+        val pad = VoiceEngine.SAMPLE_RATE * 3 / 10 // keep 0.3 s either side of the speech
+
+        /** Hands every sentence the detector has finished to the accurate model. */
+        fun takeDetectedSentences(partial: String) {
+            if (vad == null) return
+            var text = partial
+            var lastEnd = segmentStart
+            while (!vad.empty()) {
+                val s = vad.front(); vad.pop()
+                val from = (s.start - pad - segmentStart).coerceIn(0L, segment.size.toLong()).toInt()
+                val to = (s.start + s.samples.size + pad - segmentStart).coerceIn(from.toLong(), segment.size.toLong()).toInt()
+                endSentence(session, text, segment.slice(from, to))
+                text = "" // the live text all goes with the first sentence
+                lastEnd = s.start + s.samples.size
+            }
+            recognizer.reset(stream)
+            // keep what came after the sentence, in case the next one has already begun
+            val keepFrom = (lastEnd - segmentStart).coerceIn(0L, segment.size.toLong()).toInt()
+            segment = SampleBuffer().also { it.add(segment.slice(keepFrom, segment.size)) }
+            segmentStart = fed - segment.size
+            lastPartial = ""
+        }
+
         try {
             while (running && session == sessionId) {
+                val readStart = android.os.SystemClock.uptimeMillis()
                 val n = record.read(chunk, 0, chunk.size)
                 if (n <= 0) continue
+                // a read that had to wait for the mic means the recorded backlog is used up
+                if (!accuracyWarming && (android.os.SystemClock.uptimeMillis() - readStart > 30 ||
+                        android.os.SystemClock.uptimeMillis() - liveReadyAt > 2000)) warmAccuracyModel()
                 val samples = FloatArray(n) { chunk[it] / 32768f }
                 if (keep != null && keep.size() < VoiceEngine.SAMPLE_RATE * 2 * 180)
                     for (i in 0 until n) { keep.write(chunk[i].toInt() and 0xff); keep.write(chunk[i].toInt() shr 8 and 0xff) }
                 stream.acceptWaveform(samples, VoiceEngine.SAMPLE_RATE)
                 segment.add(samples)
+                fed += n
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
                 val partial = recognizer.getResult(stream).text.trim()
                 if (partial.isNotEmpty()) lastSpeechAt = android.os.SystemClock.uptimeMillis()
                 if (partial != lastPartial) {
                     lastPartial = partial
+                    if (!firstWordsLogged && partial.isNotEmpty()) {
+                        firstWordsLogged = true
+                        Log.i(TAG, "first words after ${android.os.SystemClock.uptimeMillis() - recordingAt} ms")
+                    }
                     main.post { if (session == sessionId) showPartial(partial) }
                 }
-                if (recognizer.isEndpoint(stream)) {
+                if (vad != null) {
+                    var finished = false
+                    for (x in samples) {
+                        vadWindow[vadFill++] = x
+                        if (vadFill == vadWindow.size) {
+                            vad.acceptWaveform(vadWindow)
+                            vadFill = 0
+                            if (!vad.empty()) finished = true
+                        }
+                    }
+                    if (finished) takeDetectedSentences(partial)
+                    else if (!vad.isSpeechDetected() && segment.size > VoiceEngine.SAMPLE_RATE * 3) {
+                        // nobody talking: forget old background noise, but keep the last second
+                        // (the detector notices speech a little after it starts)
+                        val keepFrom = segment.size - VoiceEngine.SAMPLE_RATE
+                        segment = SampleBuffer().also { it.add(segment.slice(keepFrom, segment.size)) }
+                        segmentStart = fed - segment.size
+                        if (partial.isEmpty()) recognizer.reset(stream)
+                    }
+                } else if (recognizer.isEndpoint(stream)) {
                     if (partial.isNotEmpty()) endSentence(session, partial, segment.toArray())
                     recognizer.reset(stream)
                     segment = SampleBuffer()
@@ -247,7 +414,12 @@ class VoiceInputController(
             stream.inputFinished()
             while (recognizer.isReady(stream)) recognizer.decode(stream)
             val last = recognizer.getResult(stream).text.trim()
-            if (last.isNotEmpty() && session == sessionId) endSentence(session, last, segment.toArray())
+            if (vad != null && session == sessionId) {
+                if (vadFill > 0) vad.acceptWaveform(vadWindow.copyOf(vadFill))
+                vad.flush()
+                if (!vad.empty()) takeDetectedSentences(last)
+                else main.post { if (session == sessionId) showPartial("") } // only noise was heard
+            } else if (last.isNotEmpty() && session == sessionId) endSentence(session, last, segment.toArray())
             else main.post { if (session == sessionId) showPartial("") }
         } catch (e: Throwable) {
             Log.e(TAG, "voice input failed", e)
@@ -257,33 +429,66 @@ class VoiceInputController(
             suppressor?.release()
             record.release()
             stream.release()
+            vad?.release()
             if (keep != null) runCatching { writeWav(VoicePrefs.lastRecording(ime), keep.toByteArray()) }
-            finalPass.execute { main.post { if (session == sessionId) finishIfIdle() } }
+            val handedOver = onFinal {
+                VoiceEngine.end()
+                helium314.keyboard.latin.SmartCompose.resumeAfterVoice() // all sentences written: guesses may run again
+                main.post { if (session == sessionId) finishIfIdle() }
+                // free the models' memory if voice typing isn't used again for a few minutes
+                main.postDelayed({ onFinal { VoiceEngine.releaseIfIdle(VoiceEngine.IDLE_RELEASE_MS) } },
+                    VoiceEngine.IDLE_RELEASE_MS + 1000)
+            }
+            if (!handedOver) VoiceEngine.end() // keyboard closed down: still let the models go
+            resumeHandedOver = handedOver
         }
+        return resumeHandedOver
     }
 
     /** Moves the spoken sentence to the waiting list and asks the accuracy model for its version. */
     private fun endSentence(session: Int, streamingText: String, audio: FloatArray) {
+        // Chat's box (Hands-free): "how are you today, send" sends, even said without a pause before "send" (test 206)
+        val chatBox = helium314.keyboard.latin.ChatActivity.isChatBox(ime.currentInputEditorInfo)
+        val saidSend = chatBox && VoiceCommands.endsWithSend(streamingText)
+        if (saidSend && VoiceCommands.withoutSend(streamingText).isBlank()) {
+            main.post { if (session == sessionId) { current = ""; render() } }
+            onFinal { main.post { if (session == sessionId) runAction(VoiceCommands.Action.SEND) } }
+            return
+        }
+        // "change dinner to lunch" / "make that shorter" (test 219): edits what was already written
+        VoiceCommands.edit(streamingText)?.let { edit ->
+            main.post { if (session == sessionId) { current = ""; render() } }
+            onFinal { main.post { if (session == sessionId) runEdit(edit, streamingText) } }
+            return
+        }
         VoiceCommands.action(streamingText)?.let { action ->
             main.post { if (session == sessionId) { current = ""; render() } }
             // run after the sentences before it have been written
-            finalPass.execute { main.post { if (session == sessionId) runAction(action) } }
+            onFinal { main.post { if (session == sessionId) runAction(action) } }
             return
         }
-        val shown = formatStreaming(streamingText)
+        val shown = formatStreaming(if (saidSend) VoiceCommands.withoutSend(streamingText) else streamingText)
         main.post {
             if (session != sessionId) return@post
             pending.addLast(shown); current = ""
             render()
         }
-        finalPass.execute {
+        onFinal {
             val final = runCatching { VoiceEngine.transcribeFinal(ime, audio) }
                 .onFailure { Log.e(TAG, "accuracy model failed", it) }.getOrNull()
-            val english = VoiceCommands.punctuate(VoiceSpelling.apply(final?.takeIf { it.isNotBlank() } ?: shown, VoicePrefs.region(ime)))
+            var heard = final?.takeIf { it.isNotBlank() } ?: shown
+            // the accuracy model may hear the "send" the live one missed, or the other way round
+            val send = chatBox && (saidSend || VoiceCommands.endsWithSend(heard))
+            if (chatBox) heard = VoiceCommands.withoutSend(heard)
+            val english = VoiceCommands.punctuate(VoiceSpelling.apply(heard, VoicePrefs.region(ime)))
             val to = translateTo
             val text = if (to == null) english
                 else helium314.keyboard.latin.TranslatePanel.translateBlocking(ime, english, "en", to) ?: english
-            main.post { if (session == sessionId) commitOldest(text) }
+            main.post {
+                if (session != sessionId) return@post
+                commitOldest(text)
+                if (send) runAction(VoiceCommands.Action.SEND)
+            }
         }
     }
 
@@ -304,11 +509,18 @@ class VoiceInputController(
         if (pending.isEmpty()) return
         if (appClearedBox()) return
         pending.removeFirst()
+        if (finalText.isBlank()) { render(); return } // only noise in that sentence
+        // "write a birthday message for my wife": the AI writer writes it instead
+        if (helium314.keyboard.latin.AiWriter.fromVoice(ime, finalText)) { if (running) stop(); render(); return }
         val ic = ic() ?: return
         ic.beginBatchEdit()
         val noLead = finalText.isEmpty() || finalText[0] in ",.!?;:…)\n"
         val piece = (if (noLead) "" else lead()) + finalText
         ic.commitText(piece, 1)
+        // Open Keyboard: we just wrote into the box, so it can't have been emptied by the app. Asking the app
+        // inside this batch edit gets the text from before it (Claude app, 17 Nov logs): the first sentence into
+        // an empty box looked like "the app sent the message" and the mic turned itself off.
+        lastClearCheck = android.os.SystemClock.uptimeMillis()
         committed.addLast(piece)
         if (committed.size > 20) committed.removeFirst()
         needsLeadingSpace = !(finalText.endsWith("\n") || finalText.endsWith("("))
@@ -323,11 +535,18 @@ class VoiceInputController(
      */
     private fun appClearedBox(): Boolean {
         if (!wrote) return false
+        // Asking the app is a round trip to its screen thread, done for every live word update. When the app is busy
+        // (Chat loading its model, test 201 logs) each ask waited up to 2 s and froze the keyboard, so ask at most
+        // twice a second: a cleared box is still noticed within half a second.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastClearCheck < 500) return false
+        lastClearCheck = now
         val ic = ic() ?: return false
         val before = ic.getTextBeforeCursor(1, 0) ?: return false
         val after = ic.getTextAfterCursor(1, 0) ?: return false
         if (before.isNotEmpty() || after.isNotEmpty()) return false
         val wasRunning = running
+        Log.i(TAG, "voice stopped: the text box was emptied (app sent the message)")
         running = false
         sessionId++
         pending.clear(); current = ""; wrote = false; needsLeadingSpace = false
@@ -338,6 +557,7 @@ class VoiceInputController(
     }
 
     private val committed = ArrayDeque<String>()
+    private var lastClearCheck = 0L
 
     /** Spoken commands: "delete that", "send", "stop listening", "clear all". */
     private fun runAction(action: VoiceCommands.Action) {
@@ -362,16 +582,58 @@ class VoiceInputController(
             VoiceCommands.Action.STOP -> stop()
             VoiceCommands.Action.SEND -> {
                 stop()
-                val editorAction = (ime.currentInputEditorInfo?.imeOptions ?: 0) and android.view.inputmethod.EditorInfo.IME_MASK_ACTION
-                val sendLike = editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                val options = ime.currentInputEditorInfo?.imeOptions ?: 0
+                val editorAction = options and android.view.inputmethod.EditorInfo.IME_MASK_ACTION
+                // Open Keyboard (test 227, Jarrod: "send message closed the keyboard and didn't send"): Done only closes
+                // the keyboard, it never sends. Most messaging apps have their own send button that a keyboard can't
+                // press, so in those the text just stays for you to send.
+                val sendLike = options and android.view.inputmethod.EditorInfo.IME_FLAG_NO_ENTER_ACTION == 0 && (
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
                         editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
-                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
-                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                        editorAction == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH)
                 main.postDelayed({
                     ic()?.finishComposingText()
                     if (sendLike) ic()?.performEditorAction(editorAction)
-                    else toast("This app needs its own send button tapped")
+                    else toast("This app doesn't let keyboards send. Tap its send button.")
                 }, 300)
+            }
+        }
+    }
+
+    /**
+     * Runs a voice editing command. "change X to Y" swaps the last X in the text before the cursor (if X isn't there,
+     * it was a normal sentence after all and is typed as said). "make that shorter" runs that Writing help button.
+     */
+    private fun runEdit(edit: VoiceCommands.Edit, said: String) {
+        val ic = ic() ?: return
+        when (edit) {
+            is VoiceCommands.Edit.Replace -> {
+                val before = ic.getTextBeforeCursor(2000, 0)?.toString().orEmpty()
+                val at = before.lastIndexOf(edit.old, ignoreCase = true)
+                if (at < 0) {
+                    // not an edit after all: write it like any other sentence
+                    val text = formatStreaming(said)
+                    val noLead = text.isEmpty() || text[0] in ",.!?;:…)\n"
+                    ic.commitText((if (noLead) "" else lead()) + text, 1)
+                    needsLeadingSpace = true
+                    resync(); return
+                }
+                // keep a capital letter if the old word had one
+                val replacement = if (before[at].isUpperCase()) edit.new.replaceFirstChar { it.titlecase() } else edit.new
+                val after = before.length - (at + edit.old.length)
+                ic.beginBatchEdit()
+                ic.finishComposingText()
+                ic.deleteSurroundingText(before.length - at, 0)
+                ic.commitText(replacement + before.substring(at + edit.old.length), 1)
+                ic.endBatchEdit()
+                Log.i(TAG, "voice edit: replaced a word ($after characters after it kept)")
+                resync()
+            }
+            is VoiceCommands.Edit.Rewrite -> {
+                if (running) stop()
+                ic.finishComposingText()
+                resync()
+                if (!helium314.keyboard.latin.WritingTools.runNamed(ime, edit.label)) toast("Writing help needs its model downloaded first")
             }
         }
     }
@@ -393,27 +655,39 @@ class VoiceInputController(
 
     /** The streaming model writes in capitals without punctuation; make it readable. */
     private fun formatStreaming(text: String): String {
-        val lower = text.lowercase().replace(Regex("\\bi\\b"), "I")
+        if (VoiceEngine.liveWritesCapitals) return VoiceCommands.punctuate(VoiceSpelling.apply(text, region))
+        val lower = text.lowercase().replace(loneI, "I")
         return VoiceCommands.punctuate(VoiceSpelling.apply(lower.replaceFirstChar { it.titlecase() }, region))
     }
+
+    private val loneI = Regex("\\bi\\b")
 
     private fun toast(message: String) = Toast.makeText(ime, message, Toast.LENGTH_SHORT).show()
 
     /** Grows as audio arrives, so a whole sentence can be handed to the accuracy model. */
     private class SampleBuffer {
         private var data = FloatArray(VoiceEngine.SAMPLE_RATE * 5)
-        private var size = 0
+        private var count = 0
         fun add(samples: FloatArray) {
-            if (size + samples.size > data.size) data = data.copyOf(maxOf(data.size * 2, size + samples.size))
-            System.arraycopy(samples, 0, data, size, samples.size)
-            size += samples.size
+            if (count + samples.size > data.size) data = data.copyOf(maxOf(data.size * 2, count + samples.size))
+            System.arraycopy(samples, 0, data, count, samples.size)
+            count += samples.size
         }
-        fun toArray(): FloatArray = data.copyOf(size)
+        fun toArray(): FloatArray = data.copyOf(count)
+        val size get() = count
+        fun slice(from: Int, to: Int): FloatArray = data.copyOfRange(from, to)
     }
 
     companion object {
         private const val TAG = "VoiceInput"
         /** Voice typing turns itself off after this much silence. */
         private const val SILENCE_TIMEOUT_MS = 30_000L
+        /** Mic closed and off chime played (about 260 ms) before other sound carries on. */
+        private const val HAND_BACK_DELAY_MS = 600L
+        /** After the mic, check the media every half second for 5 seconds. */
+        private const val WATCH_STEP_MS = 500L
+        private const val WATCH_FOR_MS = 5000L
+        /** Only get voice ready ahead of time for people who used it in the last week. */
+        private const val PREPARE_IF_USED_WITHIN_MS = 7 * 24 * 3600_000L
     }
 }

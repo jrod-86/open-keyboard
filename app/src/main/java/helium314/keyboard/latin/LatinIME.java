@@ -496,6 +496,8 @@ public class LatinIME extends InputMethodService implements
     @Override
     public void onCreate() {
         helium314.keyboard.latin.utils.Log.i("LatinIME", "keyboard started (new process or restart)");
+        HomeShortcuts.refreshAll(this);
+        helium314.keyboard.music.OpenWavesIconWidget.refreshAll(this);
         Plugins.INSTANCE.init(this);
         helium314.keyboard.keyboard.FingerModel.INSTANCE.init(this);
         mVoiceInput = new VoiceInputController(this, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; },
@@ -527,9 +529,32 @@ public class LatinIME extends InputMethodService implements
         AutocorrectMemory.INSTANCE.removeSavedWords(this); // feature dropped (test 116): undo what it saved
         mHandler.onCreate();
         mReceiver.register(this);
+        androidx.core.content.ContextCompat.registerReceiver(this, mChatListenReceiver,
+                new android.content.IntentFilter(ChatActivity.LISTEN_ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
 
         StatsUtils.onCreate(mSettings.getCurrent(), mRichImm);
     }
+
+    /**
+     * Open Keyboard: Chat's Hands-free asks for the mic (Chat runs in its own process). If the keyboard is up on Chat's
+     * box the mic starts now, else the keyboard shows itself there and starts it when it opens (test 206: asking the
+     * phone to show the keyboard from Chat didn't work, so the mic never came on).
+     */
+    private final android.content.BroadcastReceiver mChatListenReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final EditorInfo ei = getCurrentInputEditorInfo();
+            if (!ChatActivity.Companion.isChatBox(ei)) { Log.i(TAG, "chat asked for the mic, but its box isn't focused"); return; }
+            ChatActivity.Companion.askListen();
+            if (isInputViewShown()) {
+                if (ChatActivity.Companion.takeAutoMic(ei) && mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
+                Log.i(TAG, "chat hands-free: mic on");
+            } else {
+                Log.i(TAG, "chat hands-free: showing the keyboard for the mic");
+                requestShowSelf(0);
+            }
+        }
+    };
 
     private void loadSettings() {
         final Locale locale = mRichImm.getCurrentSubtypeLocale();
@@ -641,6 +666,7 @@ public class LatinIME extends InputMethodService implements
 
     @Override
     public void onDestroy() {
+        try { unregisterReceiver(mChatListenReceiver); } catch (Exception ignored) { }
         mVoiceInput.release();
         VoiceEngine.INSTANCE.release();
         mClipboardHistoryManager.onDestroy();
@@ -822,6 +848,9 @@ public class LatinIME extends InputMethodService implements
 
     void onStartInputViewInternal(EditorInfo editorInfo, boolean restarting) {
         KeyboardMenu.INSTANCE.setKeepToolbar(false);
+        SpeedMeter.INSTANCE.openStarted(); // Open Keyboard: opening time for the speed meter (test 219)
+        LagWatch.INSTANCE.start(); // Open Keyboard: notes short freezes in the log (Bug report > logs)
+        if (mVoiceInput != null) mVoiceInput.prepare(); // Open Keyboard: voice model ready before the mic is tapped
         super.onStartInputView(editorInfo, restarting);
         mClipboardHistoryManager.refresh();
 
@@ -965,6 +994,13 @@ public class LatinIME extends InputMethodService implements
                 currentSettingsValues.mGestureTrailEnabled,
                 currentSettingsValues.mGestureFloatingPreviewTextEnabled);
 
+        AiWriter.INSTANCE.showIndicators(); // writer mode: glowing line and lit ✨ button
+        // Open Keyboard: the AI writer's talk box starts listening straight away
+        if (AiWriter.INSTANCE.takeAutoMic(editorInfo) || ChatActivity.Companion.takeAutoMic(editorInfo)) {
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (mVoiceInput != null && !mVoiceInput.isActive()) mVoiceInput.start();
+            }, 400);
+        }
         CommandPlugins.INSTANCE.refresh(this, false, null);
         McpServers.INSTANCE.refresh(this, false, null);
         // Open Keyboard: an app plugin's answer is typed over the text it was given
@@ -1009,6 +1045,7 @@ public class LatinIME extends InputMethodService implements
 
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
+        LagWatch.INSTANCE.stop();
         Log.i(TAG, "onFinishInputView");
         cleanupInternalStateForFinishInput();
     }
@@ -1339,6 +1376,10 @@ public class LatinIME extends InputMethodService implements
             mInputLogic.resyncAfterVoiceInput(st, en);
             return kotlin.Unit.INSTANCE;
         };
+        // Open Keyboard: writer mode, Enter turns the request in the box into the message
+        if (event.getKeyCode() != KeyCode.VOICE_INPUT && event.getCodePoint() == Constants.CODE_ENTER && AiWriter.INSTANCE.onEnter(this)) {
+            return;
+        }
         // Open Keyboard: fancy text styles letters as they're typed
         if (event.getKeyCode() != KeyCode.VOICE_INPUT && FancyText.INSTANCE.handle(getCurrentInputConnection(), event.getCodePoint(),
                 event.getKeyCode() == KeyCode.DELETE, () -> { mInputLogic.finishInput(); return kotlin.Unit.INSTANCE; }, shortcutResync)) {
@@ -1434,6 +1475,12 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         // Open Keyboard: "/" commands and "= sum" show their answer as a chip
+        final View writer = AiWriter.INSTANCE.chip(this, mSuggestionStripView);
+        if (writer != null) {
+            mSuggestionStripView.setExternalSuggestionView(writer, false);
+            mSuggestionStripView.setToolbarVisibility(false);
+            return;
+        }
         final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
         if (slash != null) {
             mSuggestionStripView.setExternalSuggestionView(slash, false);
@@ -1486,6 +1533,12 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(false);
             else if (isTextFieldEmpty()) mSuggestionStripView.setToolbarVisibility(true);
         }
+    }
+
+    /** Open Keyboard: text before the cursor from the keyboard's own copy, so the app isn't asked (slow when it's busy). */
+    @Nullable
+    public CharSequence cachedTextBeforeCursor(final int n) {
+        return mInputLogic.mConnection.getTextBeforeCursor(n, 0);
     }
 
     private boolean isTextFieldEmpty() {
@@ -1550,6 +1603,12 @@ public class LatinIME extends InputMethodService implements
     public void setNeutralSuggestionStrip() {
         final SettingsValues currentSettings = mSettings.getCurrent();
         if (hasSuggestionStripView() && onEvaluateInputViewShown()) {
+            final View writer = AiWriter.INSTANCE.chip(this, mSuggestionStripView);
+            if (writer != null) {
+                mSuggestionStripView.setExternalSuggestionView(writer, false);
+                mSuggestionStripView.setToolbarVisibility(false);
+                return;
+            }
             final View slash = SlashCommands.INSTANCE.chip(this, mSuggestionStripView);
             if (slash != null) {
                 mSuggestionStripView.setExternalSuggestionView(slash, false);
@@ -1813,8 +1872,25 @@ public class LatinIME extends InputMethodService implements
         if (level > TRIM_MEMORY_BACKGROUND) {
             KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
             mKeyboardSwitcher.trimMemory();
-            if (!mVoiceInput.isListening()) VoiceEngine.INSTANCE.release();
+            VoiceEngine.INSTANCE.releaseIfIdle(0); // Open Keyboard: never while a voice session still uses them
+            freeForLowMemory(level);
+        } else if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            // Open Keyboard: the keyboard stays "running" while hidden, so it rarely gets the level above;
+            // the phone is short of memory, so give back the voice models if they're resting
+            VoiceEngine.INSTANCE.releaseIfIdle(30_000);
+            freeForLowMemory(level);
         }
+    }
+
+    /**
+     * Open Keyboard (test 219): the phone is short of memory. AI plugins give their models back first (the writing model
+     * if nothing is using it), so Android doesn't close the keyboard itself, which made the next opening slow.
+     */
+    private void freeForLowMemory(int level) {
+        final boolean writing = WritingTools.INSTANCE.getLoaded();
+        WritingTools.INSTANCE.freeIfIdle(this);
+        SpeedMeter.INSTANCE.lowMemory("phone short of memory (level " + level + ")"
+                + (writing ? ": writing model freed" : "") + "; voice models freed if resting");
     }
 
     public void setGestureDataGatheringMode(EditorInfo editorInfo, boolean restarting) {

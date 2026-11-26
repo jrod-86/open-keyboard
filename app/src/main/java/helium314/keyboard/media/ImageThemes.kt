@@ -40,17 +40,100 @@ object ImageThemes {
         light("Paper", "#374151", "#6B7280", "#FAFAF9", "#F0EFEC", "#D6D3CE"),
     )
 
-    fun index(c: Context) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).getInt("theme", 0).coerceIn(0, ALL.size - 1)
-    fun set(c: Context, i: Int) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).edit().putInt("theme", i).apply()
+    /** Each screen keeps its own theme: [KEY_IMAGE] (Local Image), [KEY_STICKER], [KEY_TTS] (also Make a voice), [KEY_BUG]. */
+    const val KEY_IMAGE = "theme"
+    const val KEY_STICKER = "theme_sticker_maker"
+    const val KEY_TTS = "theme_tts"
+    const val KEY_BUG = "theme_bug_report"
+    const val KEY_CHAT = "theme_chat"
+
+    fun index(c: Context, key: String = KEY_IMAGE) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).getInt(key, 0).coerceIn(0, ALL.size - 1)
+    fun set(c: Context, i: Int, key: String = KEY_IMAGE) = c.getSharedPreferences("image_maker", Context.MODE_PRIVATE).edit().putInt(key, i).apply()
+
+    fun night(c: Context) = (c.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+        android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     /** The theme to use now, with "Phone default" resolved to the original purple-and-blue look in light or dark. */
-    fun current(c: Context, night: Boolean): ImageTheme {
-        val t = ALL[index(c)]
-        if (t.a1 != 0) return t
+    fun current(c: Context, night: Boolean, key: String = KEY_IMAGE): ImageTheme {
+        val t = ALL[index(c, key)]
+        return if (t.a1 != 0) t else phoneDefault(night)
+    }
+
+    /** "Phone default": the original purple-and-blue look, light or dark like the phone. */
+    fun phoneDefault(night: Boolean): ImageTheme {
         return if (night) ImageTheme("Phone default", c("#8E54E9"), c("#4285F4"), c("#121316"), c("#24252A"), c("#40424A"), c("#ECEDF2"))
         else ImageTheme("Phone default", c("#8E54E9"), c("#4285F4"), c("#FAFAFC"), c("#F2F3F7"), c("#D8DAE2"), c("#1D1E22"))
     }
+
+    private fun dp(c: Context, v: Float) = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_DIP, v, c.resources.displayMetrics).toInt()
+
+    /**
+     * 🎨 theme picker: a grid of tiles, each a tiny preview of the screen in that theme. The same picker for
+     * Local Image, Sticker maker, TTS and Bug report (Jarrod, test 191); picking one reopens the screen in it.
+     */
+    fun pick(a: android.app.Activity, key: String = KEY_IMAGE) {
+        val cur = index(a, key)
+        val night = night(a)
+        val grid = android.widget.LinearLayout(a).apply { orientation = android.widget.LinearLayout.VERTICAL; setPadding(dp(a, 14f), dp(a, 6f), dp(a, 14f), dp(a, 6f)) }
+        var dlg: android.app.AlertDialog? = null
+        ALL.indices.chunked(3).forEach { rowIdx ->
+            val row = android.widget.LinearLayout(a).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+            for (k in 0 until 3) {
+                val i = rowIdx.getOrNull(k)
+                val cell = android.widget.LinearLayout(a).apply { orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL }
+                if (i != null) {
+                    val t = if (i == 0) phoneDefault(night) else ALL[i]
+                    cell.addView(ThemePreview(a, t, i == cur), android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+                    cell.addView(android.widget.TextView(a).apply {
+                        text = (if (i == 0) "📱 " else "") + ALL[i].name; gravity = android.view.Gravity.CENTER
+                        setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setPadding(0, dp(a, 4f), 0, 0)
+                        if (i == cur) typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    })
+                    cell.setOnClickListener { dlg?.dismiss(); if (i != cur) { set(a, i, key); a.recreate() } }
+                }
+                row.addView(cell, android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(a, 5f); marginEnd = dp(a, 5f) })
+            }
+            grid.addView(row, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(a, 12f) })
+        }
+        dlg = android.app.AlertDialog.Builder(a)
+            .setTitle("🎨 Themes")
+            .setView(android.widget.ScrollView(a).apply { addView(grid) })
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** The 🎨 button for a screen's title row. */
+    fun button(a: android.app.Activity, key: String) = android.widget.TextView(a).apply {
+        text = "🎨"; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(a, 8f), dp(a, 8f), dp(a, 8f), dp(a, 4f))
+        contentDescription = "Themes"; setOnClickListener { pick(a, key) }
+    }
+
+    /** Paints a screen in [t]: page, status and navigation bars, and every text (shiny buttons keep their white). */
+    fun applyPage(a: android.app.Activity, root: android.view.View, t: ImageTheme) {
+        root.setBackgroundColor(t.bg)
+        a.window.decorView.setBackgroundColor(t.bg)
+        a.window.statusBarColor = t.bg; a.window.navigationBarColor = t.bg
+        if (android.os.Build.VERSION.SDK_INT >= 30) a.window.insetsController?.setSystemBarsAppearance(
+            if (t.dark) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+        tint(root, t)
+    }
+
+    fun tint(v: android.view.View, t: ImageTheme) {
+        // shiny (gradient) buttons and gradient titles keep their own colours
+        if ((v.background as? android.graphics.drawable.GradientDrawable)?.colors != null) return
+        when (v) {
+            is android.widget.CompoundButton -> { v.setTextColor(t.text); v.buttonTintList = android.content.res.ColorStateList.valueOf(t.a1) }
+            is android.widget.Button -> v.setTextColor(t.text)
+            is android.widget.EditText -> { v.setTextColor(t.text); v.setHintTextColor((t.text and 0x00FFFFFF) or 0x80000000.toInt()) }
+            is android.widget.TextView -> if (v.paint.shader == null) v.setTextColor(t.text)
+            is android.view.ViewGroup -> for (i in 0 until v.childCount) tint(v.getChildAt(i), t)
+        }
+    }
 }
+
+/** A screen painted in one of the 🎨 themes; [UiKit] reads it so its buttons and cards match. */
+interface Themed { val pageTheme: ImageTheme }
 
 /** A tiny drawing of the Local Image screen in a theme's colours, for the 🎨 theme picker tiles. */
 class ThemePreview(context: Context, private val t: ImageTheme, private val chosen: Boolean) : android.view.View(context) {

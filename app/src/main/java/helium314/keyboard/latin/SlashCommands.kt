@@ -45,6 +45,8 @@ object SlashCommands {
 
     init {
         register(Command("calc", "/calc 12*7") { a -> calc(a)?.let { format(it) } })
+        // AI writer: the request is written by the on-phone model (see AiWriter)
+        register(Command("write", "/write a birthday message for my wife", remote = "ai") { null })
         register(Command("date", "/date") { DateFormat.getDateInstance(DateFormat.FULL, Locale.getDefault()).format(Date()) })
         register(Command("time", "/time") { DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault()).format(Date()) })
         register(Command("convert", "/convert 5 km to mi") { a -> convert(a) })
@@ -88,6 +90,13 @@ object SlashCommands {
         val args = m.groupValues[3].trimEnd('`').replace('“', '"').replace('”', '"')
         val exact = commands.firstOrNull { it.name == name }
         if (exact != null && (args.isNotBlank() || exact.usage == "/${exact.name}" || exact.usage.contains("("))) {
+            if (exact.remote == "ai") {
+                val typed = args.trim()
+                if (typed.isEmpty()) return Match(0, exact.usage, null)
+                if (AiWriter.busy) return Match(0, "✨ Writing…", null)
+                val command = m.groupValues[1]
+                return Match(0, "✨ Write: $typed", null, ask = ime?.let { i -> { AiWriter.fromSlash(i, command, typed); kotlin.Unit } })
+            }
             if (exact.remote == "mcp") {
                 val typed = args.trim()
                 val out = McpServers.cached(name, typed)
@@ -115,8 +124,9 @@ object SlashCommands {
     /** The chip for the suggestion bar, or null if no command is being typed. */
     fun chip(ime: LatinIME, parent: ViewGroup): View? {
         if (!Plugins.isOn(ime, "slash")) return null
-        val ic = ime.currentInputConnection ?: return null
-        val match = match(ic.getTextBeforeCursor(200, 0), ime) ?: return null
+        if (ime.currentInputConnection == null) return null
+        // Open Keyboard: runs after every key press; the keyboard's own copy of the text avoids asking the app
+        val match = match(ime.mInputLogic.mConnection.getTextBeforeCursor(200, 0), ime) ?: return null
         val binding = ClipboardSuggestionBinding.inflate(LayoutInflater.from(ime), parent, false)
         val textView = binding.clipboardSuggestionText
         textView.text = if (match.insert != null) "↵  ${match.shown}" else match.shown

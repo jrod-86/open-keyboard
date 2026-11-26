@@ -26,3 +26,12 @@
     public static void onProgress(int, int);
     public static void onStage(java.lang.String, long, long);
 }
+
+# Open Keyboard Converter (test 233): jsoup can use re2j if present; it is not
+-dontwarn com.google.re2j.**
+
+# Open Waves (test 256): jaudiotagger writes song tags; its desktop-only image code is never used on Android
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn javax.swing.**
+-keep class org.jaudiotagger.** { *; }

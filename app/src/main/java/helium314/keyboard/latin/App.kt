@@ -33,7 +33,15 @@ class App : Application() {
         if (process.endsWith(":imagemaker")) return
         val ctx: Context = this
         DebugFlags.init(this) // needed by several other inits, so do it first
+        // Open Keyboard: the TTS screens (":tts") only need crash reports. Running the rest of the keyboard
+        // set-up there too meant two processes writing the same settings file, so a setting changed
+        // in the keyboard could be put back to its old value after using TTS.
+        // Chat (":chat", test 201) is the same: its model load stalled the keyboard for seconds when they shared a process
+        // Sticker maker and Scan text (":tools", test 217) run picture AI models (hundreds of MB): kept out of the keyboard's
+        // process so the keyboard's memory stays small and Android doesn't close and reopen it (a slow, laggy reopen)
+        if (process.endsWith(":tts") || process.endsWith(":chat") || process.endsWith(":tools") || process.endsWith(":music") || process.endsWith(":convert")) return
         NativeCrashes.collect(this)
+        KeyboardMcpServer.startIfEnabled(this) // test 226: only if switched on in Settings, Plugins
 
         val scope = CoroutineScope(Dispatchers.Default)
         // other inits can be in parallel, except what depends on SubtypeSettings

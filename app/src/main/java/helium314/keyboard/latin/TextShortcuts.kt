@@ -55,7 +55,8 @@ object TextShortcuts {
         if (!Plugins.isOn(ctx, "shortcuts")) return false
         val shortcuts = load(ctx)
         if (shortcuts.isEmpty()) return false
-        val before = ic.getTextBeforeCursor(64, 0)?.toString() ?: return false
+        // Open Keyboard: the keyboard's own copy of the text; asking the app on every space can stall typing
+        val before = ((ctx as? LatinIME)?.cachedTextBeforeCursor(64) ?: ic.getTextBeforeCursor(64, 0))?.toString() ?: return false
         val token = before.takeLastWhile { !it.isWhitespace() }
         if (token.isEmpty()) return false
         val match = shortcuts.firstOrNull { it.trigger.equals(token, ignoreCase = true) } ?: return false

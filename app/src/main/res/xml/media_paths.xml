@@ -6,4 +6,6 @@
     <cache-path name="voice" path="voice/" />
     <cache-path name="logs" path="logs/" />
     <cache-path name="tts" path="tts/" />
+    <!-- Converter (test 233) on Android 9: finished files -->
+    <external-files-path name="converted" path="Download/Converted/" />
 </paths>

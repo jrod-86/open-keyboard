@@ -108,6 +108,62 @@ object KeyboardMenu {
         view.startDragAndDrop(android.content.ClipData.newPlainText("open-keyboard-button", state), LiftedShadow(view), state, 0)
     }
 
+    // ---- holding a tile still: "Add to home screen" (test 230) ----
+    private var holdCheck: Runnable? = null
+    private var holdMoved = false
+    private var holdX = 0f
+    private var holdY = 0f
+
+    private fun watchHold(tile: View, id: String, label: String, icon: () -> android.graphics.drawable.Drawable?) {
+        holdCheck?.let { tile.removeCallbacks(it) }
+        holdMoved = false
+        val r = Runnable {
+            holdCheck = null
+            if (holdMoved) return@Runnable
+            tile.cancelDragAndDrop()
+            showHoldOption(tile, id, label, icon)
+        }
+        holdCheck = r
+        tile.postDelayed(r, 900) // after the 0.5 s long press: about a second and a half in all
+    }
+
+    private fun trackHold(event: android.view.DragEvent) {
+        when (event.action) {
+            android.view.DragEvent.ACTION_DRAG_STARTED -> { holdX = event.x; holdY = event.y }
+            android.view.DragEvent.ACTION_DRAG_LOCATION ->
+                if (Math.hypot((event.x - holdX).toDouble(), (event.y - holdY).toDouble()) > 40) holdMoved = true
+            android.view.DragEvent.ACTION_DRAG_EXITED, android.view.DragEvent.ACTION_DROP -> holdMoved = true
+        }
+    }
+
+    private fun showHoldOption(tile: View, id: String, label: String, icon: () -> android.graphics.drawable.Drawable?) {
+        val ctx = tile.context
+        tile.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val colors = Settings.getValues().mColors
+        val text = TextView(ctx).apply {
+            this.text = "📌  Add to home screen"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextColor(colors.get(ColorType.KEY_TEXT))
+            val p = dp(ctx, 14f).toInt()
+            setPadding(p, dp(ctx, 10f).toInt(), p, dp(ctx, 10f).toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(ctx, 18f)
+                setColor(ColorUtils.setAlphaComponent(colors.get(ColorType.MAIN_BACKGROUND), 255))
+                setStroke(dp(ctx, 1f).toInt(), ColorUtils.setAlphaComponent(colors.get(ColorType.KEY_TEXT), 90))
+            }
+            elevation = dp(ctx, 6f)
+        }
+        val popup = android.widget.PopupWindow(text, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false)
+        // not focusable: the keyboard must never take focus away from the app's text box
+        popup.isOutsideTouchable = true
+        text.setOnClickListener {
+            popup.dismiss()
+            hide()
+            HomeShortcuts.pin(ctx, id, label, icon())
+        }
+        runCatching { popup.showAsDropDown(tile, 0, -tile.height - dp(ctx, 48f).toInt()) }
+    }
+
     private fun draggedItem(event: android.view.DragEvent): String? =
         (event.localState as? String)?.takeIf { it.startsWith("item:") || it.startsWith("baritem:") }?.substringAfter(":")
 
@@ -394,6 +450,7 @@ object KeyboardMenu {
 
     /** Drops on the menu: take a button off the bar, or move a menu button to another spot. */
     private fun onMenuDrag(menu: View, event: android.view.DragEvent): Boolean {
+        trackHold(event)
         val itemId = draggedItem(event)
         val (from, key) = if (itemId != null) (if (draggedFromBar(event)) "bar" else "menu") to null else (dragged(event) ?: return false)
         val pager = currentGrid ?: return false
@@ -470,15 +527,15 @@ object KeyboardMenu {
                 icon = ownIcon(R.drawable.ic_menu_voice_translate), idOverride = "Voice translate") { TranslatePanel.show(context, forVoice = true) },
             Item(tr("This app", R.string.ok_tile_this_app), ownIcon(R.drawable.ic_menu_this_app)) { AppProfiles.show(context) },
             Item(tr("Language", R.string.ok_tile_language), ownIcon(R.drawable.ic_settings_languages), idOverride = "language") { LanguagePanel.show(context) },
-            Item(tr("Fancy text", R.string.ok_tile_fancy_text), ownIcon(R.drawable.ic_menu_fancy_text), idOverride = "fancy") { FancyText.show(context) },
-            Item(tr("Local Image", R.string.ok_tile_image_maker), ownIcon(R.drawable.ic_menu_image_maker), idOverride = "image maker") {
+            Item(tr("Fancy text", R.string.ok_tile_fancy_text), ownIcon(R.drawable.ic_menu_fancy_text), plugin = "app_fancy_text", idOverride = "fancy") { FancyText.show(context) },
+            Item(tr("Local Image", R.string.ok_tile_image_maker), ownIcon(R.drawable.ic_menu_image_maker), plugin = "app_image", idOverride = "image maker") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.ImageMakerActivity::class.java)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("TTS", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), idOverride = "text to speech") {
+            Item(tr("TTS", R.string.ok_tile_text_to_speech), ownIcon(R.drawable.ic_menu_tts), plugin = "app_tts", idOverride = "text to speech") {
                 // bring along what's selected, or everything written in the box
                 var c: Context? = context
                 while (c is android.content.ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -494,11 +551,36 @@ object KeyboardMenu {
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
-            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), idOverride = "sticker maker") {
+            Item(tr("Chat", R.string.ok_tile_chat), ownIcon(R.drawable.ic_menu_chat), plugin = "app_chat", idOverride = "chat") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, ChatActivity::class.java)
+                        // its own task, so Back goes to the app you were in (like Sticker maker, test 192)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Chat couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
+            },
+            Item(tr("Open Waves", R.string.ok_tile_music), ownIcon(R.drawable.open_waves_tile), plugin = "app_music", tint = false, idOverride = "music") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, helium314.keyboard.music.MusicActivity::class.java)
+                        // its own task (and process), so Back goes to the app you were in
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Music couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
+            },
+            Item(tr("Converter", R.string.ok_tile_converter), ownIcon(R.drawable.ic_menu_converter), plugin = "app_converter", idOverride = "converter") {
+                hide()
+                runCatching {
+                    context.startActivity(android.content.Intent(context, helium314.keyboard.convert.ConverterActivity::class.java)
+                        // its own task (and process), so Back goes to the app you were in
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "Converter couldn't open", android.widget.Toast.LENGTH_SHORT).show() }
+            },
+            Item(tr("Sticker maker", R.string.ok_tile_sticker_maker), ownIcon(R.drawable.ic_menu_sticker_maker), plugin = "app_sticker_maker", idOverride = "sticker maker") {
                 hide()
                 runCatching {
                     context.startActivity(android.content.Intent(context, helium314.keyboard.media.StickerMakerActivity::class.java)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        // its own task, so Back goes to the app you were in, not the keyboard's settings (test 192)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
                 }
             },
             Item(tr("My info", R.string.ok_tile_my_info), plugin = "shortcuts", icon = ownIcon(R.drawable.ic_menu_myinfo)) { MyInfo.show(context) },
@@ -514,7 +596,6 @@ object KeyboardMenu {
             keyItem(tr("Floating", R.string.ok_tile_floating), ToolbarKey.FLOATING),
             keyItem(tr("Text editing", R.string.ok_tile_text_editing), ToolbarKey.DPAD),
             keyItem(tr("Clipboard", R.string.ok_tile_clipboard), ToolbarKey.CLIPBOARD),
-            keyItem(tr("Emoji", R.string.ok_tile_emoji), ToolbarKey.EMOJI),
             keyItem(tr("Undo", R.string.ok_tile_undo), ToolbarKey.UNDO),
             keyItem(tr("Redo", R.string.ok_tile_redo), ToolbarKey.REDO),
             keyItem(tr("Numbers", R.string.ok_tile_numbers), ToolbarKey.NUMPAD),
@@ -524,7 +605,9 @@ object KeyboardMenu {
             Item(tr("Bug report", R.string.ok_tile_bug_report), ownIcon(R.drawable.ic_menu_feedback)) {
                 hide()
                 context.startActivity(android.content.Intent(context, FeedbackActivity::class.java)
-                    .putExtra(FeedbackActivity.EXTRA_BUG, true).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    .putExtra(FeedbackActivity.EXTRA_BUG, true)
+                    // its own task, so Back goes to the app you were in, not the keyboard's settings (test 192)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
             },
             Item(tr("Switch keyboard", R.string.ok_tile_switch_keyboard), ownIcon(R.drawable.ic_ime_switcher)) {
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showInputMethodPicker()
@@ -533,7 +616,7 @@ object KeyboardMenu {
             Plugins.enabledAppActions(context).map { app ->
                 // the app's logo as a one-colour outline, so it matches the other tiles
                 val mono = appOutline(context, app.component.packageName, app.icon)
-                Item(app.label, { mono?.first ?: app.icon?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
+                Item(app.label, { mono?.first ?: (app.icon?.constantState?.newDrawable() ?: app.icon)?.mutate() }, tint = mono != null, bigIcon = mono?.second == true) {
                     hide()
                     var c: Context = context
                     while (c is ContextWrapper && c !is LatinIME) c = c.baseContext
@@ -578,11 +661,16 @@ object KeyboardMenu {
                     if (item.label != "Resize") hide()
                     item.action()
                 }
-                setOnLongClickListener { if (item.key != null) startDrag(it, "menu", item.key) else startItemDrag(it, item.id); true }
+                setOnLongClickListener {
+                    if (item.key != null) startDrag(it, "menu", item.key) else startItemDrag(it, item.id)
+                    // test 230: keep holding without moving and "Add to home screen" comes up
+                    if (HomeShortcuts.canPin(item.id)) watchHold(it, item.id, item.label, item.icon)
+                    true
+                }
             }
             val icon = ImageView(context).apply {
                 setImageDrawable(item.icon())
-                if (item.tint) setColorFilter(textColor)
+                if (item.tint) setColorFilter(if (item.id == AiWriter.TILE_ID && AiWriter.writerOn) AiWriter.ON_COLOR else textColor)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
             if (item.bigIcon) {
@@ -628,7 +716,19 @@ object KeyboardMenu {
      * the logo layer of its adaptive icon. Second is true when it's a full-size adaptive layer.
      * Null when the icon has no separate logo, so the colour icon is kept.
      */
+    /** Open Keyboard (test 217): app outlines worked out once per app, not every time the bar or drawer is built. */
+    private val outlines = java.util.concurrent.ConcurrentHashMap<String, Pair<android.graphics.drawable.Drawable, Boolean>>()
+    private val noOutline = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private fun appOutline(context: Context, pkg: String, icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
+        if (pkg in noOutline) return null
+        outlines[pkg]?.let { (d, big) -> return (d.constantState?.newDrawable()?.mutate() ?: d) to big }
+        val found = findAppOutline(context, pkg, icon)
+        if (found == null) noOutline.add(pkg) else outlines[pkg] = found
+        return found?.let { (d, big) -> (d.constantState?.newDrawable()?.mutate() ?: d) to big }
+    }
+
+    private fun findAppOutline(context: Context, pkg: String, icon: android.graphics.drawable.Drawable?): Pair<android.graphics.drawable.Drawable, Boolean>? {
         // Samsung (and some launchers' icon packs) hand out finished pictures; read the app's own icon layers instead
         val raw = runCatching {
             val pm = context.packageManager

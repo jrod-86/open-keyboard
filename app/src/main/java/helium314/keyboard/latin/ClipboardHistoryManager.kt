@@ -47,6 +47,27 @@ class ClipboardHistoryManager(
     private var clipboardDao: ClipboardDao? = null
     private var tempPrimaryClip = false
 
+    // Open Keyboard: asking Android for the clipboard is a call to another process, and it was made
+    // after every word typed (to decide on the paste chip). Keep the answer until the clipboard
+    // changes or the keyboard opens again.
+    private var cachedClip: ClipData? = null
+    private var clipCached = false
+    private fun primaryClip(): ClipData? {
+        if (!clipCached) {
+            cachedClip = runCatching { clipboardManager.primaryClip }.getOrNull()
+            clipCached = true
+        }
+        return cachedClip
+    }
+    private fun forgetCachedClip() { clipCached = false; cachedClip = null }
+
+    /** The clip last added to the history, so opening the keyboard doesn't add (and for pictures, copy) it again. */
+    private var lastFetchedStamp = Long.MIN_VALUE
+
+    // the paste chip's picture, made small once instead of decoding the full picture on every word
+    private var thumbUri: Uri? = null
+    private var thumb: android.graphics.Bitmap? = null
+
     fun onCreate() {
         clipboardManager = latinIME.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager.addPrimaryClipChangedListener(this)
@@ -60,6 +81,7 @@ class ClipboardHistoryManager(
      * announced. Check the clipboard again whenever the keyboard or the clipboard panel opens.
      */
     fun refresh() {
+        forgetCachedClip()
         if (latinIME.mSettings.current.mClipboardHistoryEnabled) runCatching { fetchPrimaryClip() }
     }
 
@@ -68,6 +90,7 @@ class ClipboardHistoryManager(
     }
 
     override fun onPrimaryClipChanged() {
+        forgetCachedClip()
         // Make sure we read clipboard content only if history settings is set
         if (latinIME.mSettings.current.mClipboardHistoryEnabled) {
             fetchPrimaryClip()
@@ -80,11 +103,13 @@ class ClipboardHistoryManager(
     //  care about other clip items than first?
     private fun fetchPrimaryClip() {
         if (tempPrimaryClip) return // avoid updating history
-        val clipData = clipboardManager.primaryClip ?: return
+        val clipData = primaryClip() ?: return
         if (clipData.itemCount == 0) return
         val clipItem = clipData.getItemAt(0) ?: return
         val description = clipData.description ?: return
         val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)
+        if (timeStamp == lastFetchedStamp) return // already in the history
+        lastFetchedStamp = timeStamp
 
         if (description.hasMimeType("text/*")) {
             val content = clipItem.coerceToText(latinIME)
@@ -107,7 +132,7 @@ class ClipboardHistoryManager(
 
     fun getPrimaryClipIfText(): String? {
         if (tempPrimaryClip) return null // avoid updating history
-        val clipData = clipboardManager.primaryClip ?: return null
+        val clipData = primaryClip() ?: return null
         if (clipData.itemCount == 0) return null
         val clipItem = clipData.getItemAt(0) ?: return null
         return if (clipData.description?.hasMimeType("text/*") == true)
@@ -192,7 +217,7 @@ class ClipboardHistoryManager(
     }
 
     private fun isClipSensitive(inputType: Int): Boolean {
-        ClipboardManagerCompat.getClipSensitivity(clipboardManager.primaryClip?.description)?.let { return it }
+        ClipboardManagerCompat.getClipSensitivity(primaryClip()?.description)?.let { return it }
         return InputTypeUtils.isPasswordInputType(inputType)
     }
 
@@ -213,7 +238,7 @@ class ClipboardHistoryManager(
         if (!latinIME.mSettings.current.mSuggestClipboardContent) return no("2")
         if (dontShowCurrentSuggestion) return no("3")
         if (parent == null) return no("4")
-        val clipData = clipboardManager.primaryClip ?: return no("5")
+        val clipData = primaryClip() ?: return no("5")
         if (clipData.itemCount == 0) return no("6")
         val clipItem = clipData.getItemAt(0) ?: return no("7")
         val hasText = clipData.description?.hasMimeType("text/*") == true
@@ -223,8 +248,12 @@ class ClipboardHistoryManager(
         var content: CharSequence = clipItem.coerceToText(latinIME)
         // Open Keyboard: in a number field offer just the code, even if it was copied as "123 456"
         // or inside a sentence. Codes stay on offer a bit longer, since you switch apps to get them.
-        val code = if (hasText) codeIn(content) else null
+        // Open Keyboard (test 219): a copied phone number, email, link or address gets a small sign on the chip, and a
+        // phone / email / web address box gets just that part of what was copied. A phone number isn't a code.
+        val smart = if (hasText && !isClipSensitive(inputType)) SmartClip.of(content) else null
+        val code = if (hasText && smart?.kind != SmartClip.Kind.PHONE) codeIn(content) else null
         if (hasText && InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber() && code != null) content = code
+        if (code == null) smart?.forField(inputType)?.let { content = it }
         val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)
         val window = if (code != null && InputTypeUtils.isNumberInputType(inputType)) RECENT_CODE_MILLIS else RECENT_TIME_MILLIS
         if (System.currentTimeMillis() - timeStamp > window) return no("9")
@@ -240,7 +269,7 @@ class ClipboardHistoryManager(
             if (InputTypeUtils.isNumberInputType(inputType) && !content.isValidNumber()) return no("11")
             val shortenedContent = content.take(200) // for display only
             KeyboardTypeface.applyToTextView(textView)
-            textView.text = (if (isClipSensitive(inputType)) "*".repeat(shortenedContent.length) else shortenedContent)
+            textView.text = (if (isClipSensitive(inputType)) "*".repeat(shortenedContent.length) else (if (code == null) smart?.kind?.badge ?: "" else "") + shortenedContent)
         }
         val onClickListener = View.OnClickListener {
             dontShowCurrentSuggestion = true
@@ -257,7 +286,7 @@ class ClipboardHistoryManager(
             val imageView = binding.clipboardSuggestionImage
             imageView.isVisible = true
             try {
-                imageView.setImageURI(clipItem.uri)
+                imageView.setImageBitmap(thumbnail(clipItem.uri))
             } catch (e: Exception) {
                 Log.w(TAG, "error setting clipboard image", e) // happens with SecurityException: Permission Denial
                 return no("13")
@@ -283,6 +312,19 @@ class ClipboardHistoryManager(
 
         clipboardSuggestionView = binding.root
         return clipboardSuggestionView
+    }
+
+    private fun thumbnail(uri: Uri): android.graphics.Bitmap {
+        if (uri == thumbUri) thumb?.let { return it }
+        val max = (latinIME.resources.displayMetrics.density * 96).toInt().coerceAtLeast(64)
+        val source = android.graphics.ImageDecoder.createSource(latinIME.contentResolver, uri)
+        val bmp = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            val w = info.size.width; val h = info.size.height
+            val scale = maxOf(w, h).toFloat() / max
+            if (scale > 1f) decoder.setTargetSize((w / scale).toInt().coerceAtLeast(1), (h / scale).toInt().coerceAtLeast(1))
+        }
+        thumbUri = uri; thumb = bmp
+        return bmp
     }
 
     private fun codeSuggestionView(code: String, editorInfo: EditorInfo?, parent: ViewGroup): View? {

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- only to download a plugin the Open Keyboard plugin store asks for -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application android:label="APK Installer" android:icon="@android:drawable/stat_sys_download_done"
+        android:allowBackup="false">
+        <meta-data android:name="io.github.jrod86.openkeyboard.SOURCE_URL"
+            android:value="https://github.com/jrod-86/open-keyboard/tree/claude/project-thread-t657j2/installer-plugin" />
+
+        <activity android:name=".InstallActivity" android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight" android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Open with" on an APK file -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+            <!-- Open Keyboard's plugin store: "install the plugin at this address" -->
+            <intent-filter>
+                <action android:name="io.github.jrod86.openkeyboard.INSTALL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity>
+        <receiver android:name=".InstallResult" android:exported="false" />
+    </application>
+</manifest>

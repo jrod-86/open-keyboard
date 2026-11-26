@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Open Waves launcher icon (test 245): Jarrod's neon music note on dark navy -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/open_waves_icon_bg"/>
+    <foreground android:drawable="@drawable/open_waves_icon"/>
+</adaptive-icon>

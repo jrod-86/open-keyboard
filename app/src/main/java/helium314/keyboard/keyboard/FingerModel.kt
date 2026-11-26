@@ -55,7 +55,8 @@ object FingerModel {
             val letters = taps.joinToString("") { String(Character.toChars(it.first)) }
             // learn only if the word went in as typed (autocorrect didn't change it)
             main.post {
-                val before = ime?.get()?.currentInputConnection?.getTextBeforeCursor(64, 0)?.toString() ?: return@post
+                // the keyboard's own copy of the text: asking the app after every word can stall typing
+                val before = ime?.get()?.cachedTextBeforeCursor(64)?.toString() ?: return@post
                 val last = before.trimEnd { !it.isLetter() }.takeLastWhile { it.isLetter() }.lowercase()
                 if (last == letters) learn(taps)
             }

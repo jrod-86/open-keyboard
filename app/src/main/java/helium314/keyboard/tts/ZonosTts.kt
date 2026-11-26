@@ -135,18 +135,27 @@ object ZonosTts {
         stop()
         val exe = File(ctx.applicationInfo.nativeLibraryDir, "libzonos3_server.so")
         val work = File(ctx.cacheDir, "zonos3").apply { mkdirs() }
-        val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+        val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 4)
         val cmd = listOf(exe.path, File(dir(ctx), "backbone-ptq.gguf").path,
             "--zac", File(dir(ctx), "zac-keep2.gguf").path,
             "--host", "127.0.0.1", "--port", "0", "--cpu", "--batch", "1", "--zac-threads", "2",
             "--tts-default-voices-dir", "", "--studio-dir", work.path, "--python-src", work.path)
         Log.i(TAG, "starting engine: $cmd")
         val t0 = System.currentTimeMillis()
-        val p = ProcessBuilder(cmd).directory(work).redirectErrorStream(true).apply {
-            environment()["HOME"] = work.path
-            environment()["TMPDIR"] = work.path
-            environment()["ZAC_THREADS"] = threads.coerceAtMost(4).toString()
-        }.start()
+        // Lower thread nice priority before fork/spawn so libzonos3_server.so inherits lowest background priority
+        // and never starves ExoPlayer music playback (prevents audio stop/start stuttering during DJ prep).
+        val prevPrio = runCatching { android.os.Process.getThreadPriority(android.os.Process.myTid()) }.getOrDefault(0)
+        val p = try {
+            runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_LOWEST) }
+            ProcessBuilder(cmd).directory(work).redirectErrorStream(true).apply {
+                environment()["HOME"] = work.path
+                environment()["TMPDIR"] = work.path
+                environment()["ZAC_THREADS"] = "2"
+                environment()["OMP_NUM_THREADS"] = threads.toString()
+            }.start()
+        } finally {
+            runCatching { android.os.Process.setThreadPriority(prevPrio) }
+        }
         process = p
         // the engine prints "listening on http://127.0.0.1:PORT" once the model is loaded
         val found = java.util.concurrent.CompletableFuture<Int>()
