@@ -148,6 +148,7 @@ dependencies {
     implementation("androidx.viewpager2:viewpager2:1.1.0")
     // Open Keyboard Music (test 229): playback engine + lock screen / notification controls
     implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
     // Open Keyboard Converter (test 233): reading web pages / eBooks / Office XML (jsoup, MIT) and Markdown (commonmark, BSD-2)
     implementation("org.jsoup:jsoup:1.21.2")

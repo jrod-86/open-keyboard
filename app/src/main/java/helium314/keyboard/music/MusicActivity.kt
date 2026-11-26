@@ -195,6 +195,9 @@ class PlayerUi {
     var playing by mutableStateOf(false)
     var currentId by mutableLongStateOf(-1L)
     var current by mutableStateOf<MediaItem?>(null)
+    /** test 369: live ICY song title broadcast by an internet radio stream, if available */
+    var liveTitle by mutableStateOf("")
+    val isLiveStream: Boolean get() = current?.mediaId?.startsWith("radio:") == true
     var position by mutableLongStateOf(0L)
     /** when [position] was read (elapsedRealtime), so effects can move smoothly between reads */
     var positionAt = 0L
@@ -214,6 +217,9 @@ class PlayerUi {
         playing = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)
         current = c.currentMediaItem
         currentId = c.currentMediaItem?.mediaId?.toLongOrNull() ?: -1L
+        liveTitle = if (c.currentMediaItem?.mediaId?.startsWith("radio:") == true) {
+            c.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() && it != c.currentMediaItem?.mediaMetadata?.title?.toString() } ?: ""
+        } else ""
         position = c.currentPosition; positionAt = android.os.SystemClock.elapsedRealtime()
         duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
         shuffle = c.shuffleModeEnabled
@@ -246,6 +252,28 @@ class PlayerUi {
             c.setMediaItems(items, index, 0)
         }
         c.prepare(); c.play()
+    }
+
+    /** test 369 (Jarrod): stream a live internet radio station through the same player/service. */
+    fun playStream(name: String, subtitle: String, url: String, id: String, artworkUrl: String = "") {
+        val c = controller ?: return
+        Radio.stop()
+        Announcer.hush()
+        val md = androidx.media3.common.MediaMetadata.Builder()
+            .setTitle(name)
+            .setArtist(subtitle)
+            .apply { if (artworkUrl.startsWith("http")) setArtworkUri(android.net.Uri.parse(artworkUrl)) }
+            .build()
+        val item = MediaItem.Builder()
+            .setMediaId("radio:$id")
+            .setUri(url)
+            .setMediaMetadata(md)
+            .build()
+        c.shuffleModeEnabled = false
+        c.repeatMode = Player.REPEAT_MODE_OFF
+        c.setMediaItem(item)
+        c.prepare()
+        c.play()
     }
 
     fun playNext(song: Song) {
@@ -738,7 +766,8 @@ private fun ArtistPage(a: Artist, ui: PlayerUi, lib: Library, open: (Page) -> Un
 private fun SectionTitle(t: String) = Text(t, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 4.dp))
 
 internal fun songOf(ui: PlayerUi, lib: Library?): Song? = lib?.byId?.get(ui.currentId) ?: ui.current?.let { m ->
-    Song(ui.currentId, m.mediaMetadata.title?.toString() ?: "", m.mediaMetadata.artist?.toString() ?: "", m.mediaMetadata.albumTitle?.toString() ?: "",
+    val artist = if (ui.isLiveStream && ui.liveTitle.isNotBlank()) "LIVE · ${ui.liveTitle}" else m.mediaMetadata.artist?.toString() ?: ""
+    Song(ui.currentId, m.mediaMetadata.title?.toString() ?: "", artist, m.mediaMetadata.albumTitle?.toString() ?: "",
         -1, "", 0, 0, 0, 0, 0, "")
 }
 
@@ -1047,6 +1076,23 @@ internal fun WavyProgressLine(
 
 @Composable
 private fun SeekBar(ui: PlayerUi) {
+    if (ui.isLiveStream) {
+        Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
+            WavyProgressLine(
+                frac = 1f,
+                playing = ui.playing,
+                modifier = Modifier.fillMaxWidth().height(26.dp),
+                strokeDp = 3.5f,
+                ampDp = 4.2f,
+            )
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF3B30)))
+                Spacer(Modifier.width(6.dp))
+                Text("LIVE RADIO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        return
+    }
     var dragFrac by remember { mutableStateOf<Float?>(null) }
     val dur = ui.duration.coerceAtLeast(1)
     val frac = dragFrac ?: (ui.position.toFloat() / dur).coerceIn(0f, 1f)

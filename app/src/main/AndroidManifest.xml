@@ -37,6 +37,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:largeHeap="true"
+            android:usesCleartextTraffic="true"
             android:supportsRtl="true"
             android:allowBackup="true"
             android:defaultToDeviceProtectedStorage="true"
