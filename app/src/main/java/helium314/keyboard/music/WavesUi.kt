@@ -116,7 +116,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-internal val allTabs = listOf("Popular", "Moods", "Radio", "Podcasts", "Audiobooks", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 371: Audiobooks // test 370: Podcasts // test 369: Radio // test 300: Jarrod's order // test 297: Popular
+internal val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders", "Radio", "Podcasts", "Audiobooks") // test 372: Radio/Podcasts/Audiobooks grouped on far right // test 300: Jarrod's order
 /** test 298: the Popular tab goes when popularity features are turned off. Test 316 (Jarrod): any tab can be hidden; at least one always stays. */
 val WavesTabs: List<String> get() = allTabs.filter { t ->
     t !in MusicSettings.hiddenTabs && (t != "Popular" || MusicSettings.popularOn)
