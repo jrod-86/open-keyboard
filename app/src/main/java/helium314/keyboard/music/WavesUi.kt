@@ -116,7 +116,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Open Waves (test 238, Jarrod): the library laid out like Samsung Music, with swipeable tabs. */
-internal val allTabs = listOf("Popular", "Moods", "Radio", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders") // test 369: Radio // test 300: Jarrod's order // test 297: Popular
+internal val allTabs = listOf("Popular", "Moods", "Favourites", "Playlists", "Tracks", "Albums", "Artists", "Folders", "Radio", "Podcasts", "Audiobooks") // test 372: Radio/Podcasts/Audiobooks grouped on far right // test 300: Jarrod's order
 /** test 298: the Popular tab goes when popularity features are turned off. Test 316 (Jarrod): any tab can be hidden; at least one always stays. */
 val WavesTabs: List<String> get() = allTabs.filter { t ->
     t !in MusicSettings.hiddenTabs && (t != "Popular" || MusicSettings.popularOn)
@@ -132,6 +132,8 @@ object TabOpts {
 
 private val tabBlurbs = mapOf("Popular" to "Your songs ranked by how popular they are in the charts.", "Moods" to "Mixes for how you feel, made from your songs.",
     "Radio" to "Free live internet radio stations worldwide (New Zealand, Australia, UK, US and more).",
+    "Podcasts" to "Search, subscribe, stream, or download free open-RSS podcasts (including private RSS feeds).",
+    "Audiobooks" to "20,000+ free LibriVox public-domain audiobooks plus your own local Audiobooks folder.",
     "Favourites" to "Songs you hearted, and your most played.", "Playlists" to "Your playlists and smart playlists.", "Tracks" to "Every song.",
     "Albums" to "Your albums.", "Artists" to "Your artists.", "Folders" to "Songs by the folder they're in.")
 
@@ -275,6 +277,8 @@ internal fun WavesHome(lib: Library, ui: PlayerUi, pager: PagerState, open: (Pag
                 "Popular" -> PopularTab(lib, ui, open)
                 "Moods" -> MoodsTab(lib, ui, open)
                 "Radio" -> RadioTab(ui)
+                "Podcasts" -> PodcastsTab(ui)
+                "Audiobooks" -> AudiobooksTab(lib, ui)
                 "Albums" -> AlbumsTab(lib, open)
                 "Artists" -> ArtistsTab(lib, open)
                 else -> FoldersTab(lib, open)
