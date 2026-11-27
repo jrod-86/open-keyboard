@@ -32,33 +32,33 @@
       "version": 3
     },
     {
-      "id": "cheeky-dog-v2-part-1",
-      "name": "Cheeky Dog v2 - Part 1",
+      "id": "cheeky-dog",
+      "name": "Cheeky Dog",
       "author": "jrod",
       "license": "CC0",
       "source": "https://github.com/jrod-86/open-keyboard",
       "credit": "",
-      "count": 30,
+      "count": 55,
       "featured": true,
       "icon": "cheeky-dog-pilot-icon.png",
-      "zip": "cheeky-dog-v2-part-1-first55.zip",
-      "alt": "cheeky-dog-v2-part-1-first55-alt/",
-      "size": 90381749,
-      "version": 1
+      "zip": "cheeky-dog.zip",
+      "alt": "cheeky-dog-alt/",
+      "size": 73945801,
+      "version": 2
     },
     {
-      "id": "cheeky-dog-v2-part-2",
-      "name": "Cheeky Dog v2 - Part 2",
+      "id": "fennec-fox",
+      "name": "Fennec Fox",
       "author": "jrod",
       "license": "CC0",
       "source": "https://github.com/jrod-86/open-keyboard",
       "credit": "",
-      "count": 25,
+      "count": 100,
       "featured": true,
-      "icon": "cheeky-dog-pilot-icon.png",
-      "zip": "cheeky-dog-v2-part-2-first55.zip",
-      "alt": "cheeky-dog-v2-part-2-first55-alt/",
-      "size": 75268550,
+      "icon": "fennec-fox-icon.png",
+      "zip": "fennec-fox.zip",
+      "alt": "fennec-fox-alt/",
+      "size": 79718660,
       "version": 1
     }
   ]
