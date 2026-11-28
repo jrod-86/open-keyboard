@@ -1118,7 +1118,7 @@ Empties the box so you can start a new idea.
 🖼️ Your picture
 Tap the picture to see it full screen (pinch or double-tap to zoom). Then:
 • 📤 Send puts it into the chat you came from.
-• 💾 Save copies it to Pictures › Open Keyboard.
+• 💾 Save copies it to Pictures › O-Board.
 • ✂️ Sticker cuts it out to make a sticker.
 
 🖼️ Your pictures (gallery)
@@ -1201,7 +1201,7 @@ You can leave the screen or switch apps. A notification shows how it's going and
     private fun saveBitmap(bmp: Bitmap) {
         val ok = runCatching {
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, "OpenKeyboard_${System.currentTimeMillis()}.png")
+                put(MediaStore.Images.Media.DISPLAY_NAME, "OBoard_${System.currentTimeMillis()}.png")
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
                 if (android.os.Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/O-Board")
             }

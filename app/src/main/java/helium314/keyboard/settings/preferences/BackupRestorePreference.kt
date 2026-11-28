@@ -459,7 +459,7 @@ private fun WeeklyBackupPreference() {
         if (on) manage = true
         else {
             val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "OpenKeyboard_weekly_backup.okbackup")
+                .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "OBoard_weekly_backup.okbackup")
             picker.launch(intent)
         }
     })

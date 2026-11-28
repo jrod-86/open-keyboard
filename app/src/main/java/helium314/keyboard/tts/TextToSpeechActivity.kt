@@ -585,7 +585,7 @@ class TextToSpeechActivity : Activity(), Themed {
 
     // ---- share and save ----
 
-    private fun fileName() = "OpenKeyboard-${lastVoice.name}-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())}.wav"
+    private fun fileName() = "OBoard-${lastVoice.name}-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())}.wav"
 
     private fun share() {
         val a = lastAudio ?: return

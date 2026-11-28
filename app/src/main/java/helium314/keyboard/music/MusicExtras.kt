@@ -1075,6 +1075,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
             r.busy -> Text("Looking…", Modifier.padding(top = 6.dp, start = 60.dp), fontSize = 13.sp, color = dim)
             r.matches == null -> FlowRow(Modifier.padding(start = 54.dp, top = 2.dp)) {
                 LinkButton("Find info", Accent, onFind)
+                LinkButton("Edit tags", Accent) { TagEdit.asking.value = r.song }
                 LinkButton("Search…", Accent, onSearch)
                 LinkButton("Pick picture", Accent, onPick)
                 if (r.song.fixed) LinkButton("Undo fix", Accent, onUndo)
@@ -1084,6 +1085,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
             m == null -> Column(Modifier.padding(start = 60.dp)) { // message on its own line (test 257: it was squeezed into a column of letters)
                 Text(r.note ?: "No match found.", Modifier.padding(top = 6.dp), fontSize = 13.sp, color = dim)
                 FlowRow(Modifier.padding(start = 0.dp)) {
+                    LinkButton("Edit tags", Accent) { TagEdit.asking.value = r.song }
                     LinkButton("Search…", Accent, onSearch)
                     LinkButton("Pick picture", Accent, onPick)
                     LinkButton("Skip", dim, onSkip)
@@ -1123,6 +1125,11 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)) {
                             Text("Save artwork only", color = Accent, fontSize = 13.sp)
                         }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton({ TagEdit.asking.value = r.song }, Modifier.height(34.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)) {
+                        Text("Edit tags", color = Accent, fontSize = 13.sp)
                     }
                     if ((r.matches?.size ?: 0) > 1) LinkButton("Other (${r.pick + 1}/${r.matches!!.size})", Accent, onOther)
                     LinkButton("Search…", Accent, onSearch)
