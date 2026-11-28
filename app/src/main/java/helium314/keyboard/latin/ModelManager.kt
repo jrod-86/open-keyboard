@@ -29,7 +29,7 @@ object ModelManager {
         Known("tts-models/zonos3-clone", "Make a voice (cloning)", "TTS"),
         Known("tts-voices", "Voices you made", "TTS, Chat", userMade = true),
         Known("models/clap", "AI music listener (CLAP)", "Open Waves Moods"),
-        Known("stem-models/spleeter4", "Stem splitter (Spleeter)", "Open Waves Stem mode"),
+        Known("stem-models/spleeter4", "Stem splitter (Spleeter)", "Open Waves Stem & Sing mode"),
         Known("ocr", "Scan text (basic)", "Scan text"),
         Known("ocr-paddle", "Scan text", "Scan text"),
         Known("ocr-best", "Scan text (best)", "Scan text"),

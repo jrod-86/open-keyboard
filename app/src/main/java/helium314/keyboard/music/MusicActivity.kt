@@ -874,7 +874,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         else Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to tint)))
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
-            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it })
+            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it }, onSingOn = { mode = 1 })
             StemNowBanner(song)
             when (mode) {
                 0 -> {
@@ -950,7 +950,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
 
 /** Top row: close on the left; Stem indicator (when on), Smart View, DJ toggle, equaliser and more on the right. */
 @Composable
-private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false, onHint: (String) -> Unit = {}) {
+private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false, onHint: (String) -> Unit = {}, onSingOn: () -> Unit = {}) {
     val ctx = LocalContext.current
     val djOn = Announcer.enabled.value
     val stemOn = Stems.modeOn.value
@@ -988,8 +988,13 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
                 fontWeight = FontWeight.Bold,
             )
         }
+        if (Stems.singMode.value) {
+            IconButton({ Stems.setSingMode(ctx, false); onHint("Sing mode off") }) {
+                Icon(MusicIcons.singMic, "Sing mode", tint = Accent, modifier = Modifier.size(25.dp))
+            }
+        }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
-        MoreMenu(song, ui, open)
+        MoreMenu(song, ui, open, onSingOn)
     }
 }
 
@@ -1045,7 +1050,7 @@ private fun SmallHeader(song: Song?) {
 
 /** Now Playing ⋮ menu, Samsung's items plus our extras. */
 @Composable
-private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
+private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onSingOn: () -> Unit = {}) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var sleep by remember { mutableStateOf(false) }
@@ -1072,9 +1077,18 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
                 DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass" + if (Stems.modeOn.value) " (on)" else "") }, { menu = false; open(Page.Stems(s.id)) })
             }
-            DropdownMenuItem({ Text(if (Eq.sing) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
-                menu = false; Eq.sing = !Eq.sing
-                android.widget.Toast.makeText(ctx, if (Eq.sing) "Sing mode: the voice is taken out. Works best on studio songs." else "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
+            DropdownMenuItem({ Text(if (Stems.singMode.value) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
+                menu = false
+                if (Stems.singMode.value) {
+                    Stems.setSingMode(ctx, false)
+                    android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
+                } else if (Stems.setSingMode(ctx, true)) {
+                    onSingOn()
+                    android.widget.Toast.makeText(ctx, "Sing mode on — splitting vocals out…", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    real?.let { open(Page.Stems(it.id)) }
+                    android.widget.Toast.makeText(ctx, "Download the Stem Splitter model first to use Sing mode.", android.widget.Toast.LENGTH_LONG).show()
+                }
             })
             DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
@@ -1306,18 +1320,19 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             val state = rememberLazyListState()
             val cur = l.lineAt(ui.position)
             val viewH = remember { mutableIntStateOf(0) }
-            LaunchedEffect(cur) { if (cur >= 0) state.animateScrollToItem(cur, -(viewH.intValue / 3)) }
+            LaunchedEffect(cur) { if (cur >= 0) state.animateScrollToItem((cur - 1).coerceAtLeast(0), -(viewH.intValue / 6)) }
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 viewH.intValue = constraints.maxHeight
-                LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 40.dp)) {
+                LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 32.dp)) {
                     itemsIndexed(l.lines) { i, line ->
-                        val on = !l.synced || i == cur
-                        val a by animateFloatAsState(if (on) 1f else 0.32f, tween(300), label = "line")
-                        val s by animateFloatAsState(if (i == cur) 1.04f else 1f, tween(300), label = "lineScale")
-                        Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 28.sp else 20.sp, fontWeight = FontWeight.Bold,
-                            lineHeight = if (l.synced) 34.sp else 28.sp,
+                        // test 383 (Jarrod): highlight a 4-line window (1 behind, current, 2 ahead) so slightly off LRC timing is still easy to sing along with
+                        val on = !l.synced || (cur >= 0 && i in (cur - 1)..(cur + 2))
+                        val a by animateFloatAsState(if (on) 1f else 0.28f, tween(300), label = "line")
+                        val s by animateFloatAsState(if (i == cur) 1.03f else 1f, tween(300), label = "lineScale")
+                        Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 24.sp else 20.sp, fontWeight = FontWeight.Bold,
+                            lineHeight = if (l.synced) 30.sp else 28.sp,
                             modifier = Modifier.fillMaxWidth().alpha(a).graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
-                                .clickable(enabled = l.synced) { ui.seek(line.timeMs) }.padding(vertical = 10.dp))
+                                .clickable(enabled = l.synced) { ui.seek(line.timeMs) }.padding(vertical = 8.dp))
                     }
                     item {
                         Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {

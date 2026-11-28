@@ -221,6 +221,11 @@ internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: 
         Spacer(Modifier.width(6.dp))
         // test 288 (Jarrod): a CapCut-style text effect every 60 s while music plays, 10 of them in turn
         Box(Modifier.weight(1f)) { AnimatedTitle(playing) }
+        if (Stems.singMode.value) {
+            IconButton({ Stems.setSingMode(ctx, false); android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show() }) {
+                Icon(MusicIcons.singMic, "Sing mode", tint = Accent, modifier = Modifier.size(24.dp))
+            }
+        }
         extra?.invoke()
         IconButton({ open(Page.Search) }) { Icon(MusicIcons.search, "Search", Modifier.size(26.dp)) }
         Box {

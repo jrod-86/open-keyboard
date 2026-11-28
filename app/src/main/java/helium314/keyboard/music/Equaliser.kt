@@ -80,8 +80,6 @@ data class EqSet(val on: Boolean = false, val gains: List<Float> = List(10) { 0f
  * on (phone speaker, wired headphones, each Bluetooth device such as earbuds or the car); it switches by itself.
  */
 object Eq {
-    /** test 311: Sing mode, takes the voice in the middle out so you can sing along (bass and drums mostly stay) */
-    @Volatile var sing = false
     /** test 311: how loud the music is (1 = normal), lowered while the radio announcer talks */
     @Volatile var duck = 1f
     val FREQS = floatArrayOf(31f, 62f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
@@ -235,24 +233,20 @@ class EqProcessor : BaseAudioProcessor() {
     }
 
     private var gain = 1.0
-    // Sing mode: the middle's low end (bass, kick) is kept so the song doesn't go thin
-    private var lpA = 0.0; private var lpB = 0.0
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val n = inputBuffer.remaining()
         if (n == 0) return
         val out = replaceOutputBuffer(n)
         if (ver != Eq.version) refresh()
-        val sing = Eq.sing && ch == 2
         val duckTo = Eq.duck.toDouble().coerceIn(0.0, 1.0)
-        if (!on && !sing && duckTo >= 0.999 && gain >= 0.999) { gain = 1.0; out.put(inputBuffer); out.flip(); return }
+        if (!on && duckTo >= 0.999 && gain >= 0.999) { gain = 1.0; out.put(inputBuffer); out.flip(); return }
         val start = inputBuffer.position()
         val frames = n / (2 * ch)
         val cs = if (on) coefs else emptyList()
         val p = if (on) pre else 1.0
         val samples = DoubleArray(ch)
         val glide = 1.0 / (rate * 0.25) // about a quarter second to duck or come back
-        val lpK = 1.0 - kotlin.math.exp(-2.0 * PI * 160.0 / rate)
         for (f in 0 until frames) {
             for (c in 0 until ch) {
                 var x = inputBuffer.getShort(start + (f * ch + c) * 2) / 32768.0
@@ -269,11 +263,6 @@ class EqProcessor : BaseAudioProcessor() {
             if (ch == 2 && on && width != 1f) {
                 val mid = (samples[0] + samples[1]) / 2; val side = (samples[0] - samples[1]) / 2 * width
                 samples[0] = mid + side; samples[1] = mid - side
-            }
-            if (sing) {
-                val mid = (samples[0] + samples[1]) / 2; val side = (samples[0] - samples[1]) / 2
-                lpA += lpK * (mid - lpA); lpB += lpK * (lpA - lpB)
-                samples[0] = lpB + side * 1.4; samples[1] = lpB - side * 1.4
             }
             if (gain != duckTo) gain = if (gain < duckTo) minOf(duckTo, gain + glide) else maxOf(duckTo, gain - glide)
             for (c in 0 until ch) {
