@@ -128,7 +128,7 @@ object WritingTools {
         readyCache = null
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return
         val request = DownloadManager.Request(Uri.parse(m.url))
-            .setTitle("Open Keyboard writing model (${m.label})")
+            .setTitle("O-Board writing model (${m.label})")
             .setDescription("About ${m.sizeText}, needed once for offline writing help")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationUri(Uri.fromFile(file))

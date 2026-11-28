@@ -90,7 +90,7 @@ object MadladTranslator {
         val dm = ctx.getSystemService(DownloadManager::class.java) ?: return false
         val id = try {
             dm.enqueue(DownloadManager.Request(Uri.parse(MODEL_URL))
-                .setTitle("Open Keyboard Khmer translation")
+                .setTitle("O-Board Khmer translation")
                 .setDescription("About 1.9 GB, needed once for offline Khmer")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationUri(Uri.fromFile(f)))

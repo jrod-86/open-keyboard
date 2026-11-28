@@ -1203,12 +1203,12 @@ You can leave the screen or switch apps. A notification shows how it's going and
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, "OpenKeyboard_${System.currentTimeMillis()}.png")
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                if (android.os.Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Open Keyboard")
+                if (android.os.Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/O-Board")
             }
             val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
             contentResolver.openOutputStream(uri)!!.use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }.isSuccess
-        Toast.makeText(this, if (ok) "Saved to Pictures › Open Keyboard" else "Couldn't save it", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, if (ok) "Saved to Pictures › O-Board" else "Couldn't save it", Toast.LENGTH_SHORT).show()
     }
 
     private fun makeSticker() {

@@ -65,7 +65,7 @@ fun PluginsScreen(onClickBack: () -> Unit) {
         }
     }
 
-    SearchSettingsScreen(onClickBack = onClickBack, title = "Plugins", settings = emptyList()) {
+    SearchSettingsScreen(onClickBack = onClickBack, title = "Open Hub", settings = emptyList()) {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp)) {
             Text("Everything extra in the keyboard is a plugin. Switch off what you don't use and it " +
                     "disappears from the keyboard.", style = MaterialTheme.typography.bodyMedium)
@@ -336,14 +336,14 @@ private fun PluginStoreCard(onBack: () -> Unit) {
     }
     androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
-            Text("🛍️ Plugin store", style = MaterialTheme.typography.titleMedium)
-            Text("Free, open source apps that add to the keyboard. New ones start switched off.", style = MaterialTheme.typography.bodySmall)
-            if (!open) androidx.compose.material3.TextButton(onClick = { open = true }) { Text("Browse plugins") }
+            Text("🛍️ Open Hub Store", style = MaterialTheme.typography.titleMedium)
+            Text("Free, open source mini-apps & plugins for O-Board. New ones start switched off.", style = MaterialTheme.typography.bodySmall)
+            if (!open) androidx.compose.material3.TextButton(onClick = { open = true }) { Text("Browse Open Hub") }
             else {
                 val list = items
                 note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (list == null) Text("Loading…", style = MaterialTheme.typography.bodySmall)
-                else if (list.isEmpty() && note == null) Text("No plugins in the store yet.", style = MaterialTheme.typography.bodySmall)
+                else if (list.isEmpty() && note == null) Text("No apps in Open Hub yet.", style = MaterialTheme.typography.bodySmall)
                 list?.forEach { item ->
                     val installed = remember(tick, item.packageName) { store.isInstalled(ctx, item) }
                     Spacer(Modifier.height(8.dp))

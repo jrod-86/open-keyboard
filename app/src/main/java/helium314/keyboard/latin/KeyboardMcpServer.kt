@@ -107,7 +107,7 @@ object KeyboardMcpServer {
         }
         if (path.substringBefore('?') != "/mcp") return reply(404, "Not Found")
         // only apps that know the key
-        if (headers["authorization"] != "Bearer ${key(ctx)}") return reply(401, "Unauthorized", """{"error":"Wrong or missing key. Copy it from Open Keyboard's Settings, Plugins."}""")
+        if (headers["authorization"] != "Bearer ${key(ctx)}") return reply(401, "Unauthorized", """{"error":"Wrong or missing key. Copy it from O-Board's Settings, Open Hub."}""")
         if (method == "GET") return reply(405, "Method Not Allowed") // no server-sent events
         if (method == "DELETE") return reply(200, "OK")
         if (method != "POST") return reply(405, "Method Not Allowed")
@@ -139,7 +139,7 @@ object KeyboardMcpServer {
                 .put("protocolVersion", PROTOCOL)
                 .put("capabilities", JSONObject().put("tools", JSONObject()))
                 .put("serverInfo", JSONObject().put("name", "open-keyboard").put("version", "1"))
-                .put("instructions", "Open Keyboard's on-phone AI. Everything runs on this phone; nothing is sent anywhere."))
+                .put("instructions", "O-Board's on-phone AI. Everything runs on this phone; nothing is sent anywhere."))
             "ping" -> result(id, JSONObject())
             "tools/list" -> result(id, JSONObject().put("tools", tools()))
             "tools/call" -> {
@@ -178,7 +178,7 @@ object KeyboardMcpServer {
             "write" -> {
                 val request = args.optString("request").trim()
                 if (request.isEmpty()) return "Say what to write in \"request\"." to true
-                if (!WritingTools.anyDownloaded(ctx)) return "No writing model is downloaded. Get the Writing pack in Open Keyboard's Settings, Plugins." to true
+                if (!WritingTools.anyDownloaded(ctx)) return "No writing model is downloaded. Get the Writing pack in O-Board's Settings, Open Hub." to true
                 val out = runBlocking { withTimeoutOrNull(180_000) { AiWriter.write(ctx, request) } }
                 (out ?: "Couldn't write that, please try again.") to (out == null)
             }
@@ -187,7 +187,7 @@ object KeyboardMcpServer {
                 val style = args.optString("style").trim()
                 if (text.isEmpty()) return "Give the text to rewrite in \"text\"." to true
                 if (WritingTools.styleNames.none { it.equals(style, true) }) return "Unknown style. Use one of: " + WritingTools.styleNames.joinToString(", ") to true
-                if (!WritingTools.anyDownloaded(ctx)) return "No writing model is downloaded. Get the Writing pack in Open Keyboard's Settings, Plugins." to true
+                if (!WritingTools.anyDownloaded(ctx)) return "No writing model is downloaded. Get the Writing pack in O-Board's Settings, Open Hub." to true
                 val out = runBlocking { withTimeoutOrNull(180_000) { WritingTools.rewrite(ctx, text, style) } }
                 (out ?: "Couldn't rewrite that, please try again.") to (out == null)
             }

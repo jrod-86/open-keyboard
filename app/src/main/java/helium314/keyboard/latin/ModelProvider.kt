@@ -28,7 +28,7 @@ class ModelProvider : ContentProvider() {
     private fun callerLabel(): String? {
         val ctx = context ?: return null
         val uid = Binder.getCallingUid()
-        if (uid == android.os.Process.myUid()) return "Open Keyboard"
+        if (uid == android.os.Process.myUid()) return "O-Board"
         val pm = ctx.packageManager
         val pkgs = pm.getPackagesForUid(uid).orEmpty()
         val allowed = pkgs.any { pkg ->
@@ -52,7 +52,7 @@ class ModelProvider : ContentProvider() {
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         if (method != "models") return null
         // asking for the list is allowed for switched-on plugins only, like reading
-        callerLabel() ?: return Bundle().apply { putString("error", "Switch this app on in Open Keyboard's Settings, Plugins first") }
+        callerLabel() ?: return Bundle().apply { putString("error", "Switch this app on in O-Board's Settings, Open Hub first") }
         // a command plugin can only be known after the keyboard has looked; make sure it has
         if (CommandPlugins.providers.isEmpty()) context?.let { CommandPlugins.refresh(it) }
         val list = shared()
@@ -67,7 +67,7 @@ class ModelProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
         if (mode != "r") throw SecurityException("Models are read only")
-        val who = callerLabel() ?: throw SecurityException("Switch this app on in Open Keyboard's Settings, Plugins first")
+        val who = callerLabel() ?: throw SecurityException("Switch this app on in O-Board's Settings, Open Hub first")
         val segments = uri.pathSegments
         if (segments.size < 2) throw java.io.FileNotFoundException(uri.toString())
         val entry = shared().firstOrNull { it.id == segments[0] } ?: throw java.io.FileNotFoundException("No model ${segments[0]}")

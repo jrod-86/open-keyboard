@@ -392,7 +392,7 @@ object DocxWriter {
         z.put("_rels/.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>""")
         z.put("docProps/core.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${esc(doc.title)}</dc:title><dc:creator>Open Keyboard Converter</dc:creator></cp:coreProperties>""")
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${esc(doc.title)}</dc:title><dc:creator>O-Board Converter</dc:creator></cp:coreProperties>""")
         z.put("word/_rels/document.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>$rels</Relationships>""")
         z.put("word/styles.xml", stylesXml())
@@ -494,7 +494,7 @@ object OdtWriter {
         z.stored("mimetype", Fmt.ODT.mime.toByteArray())
         z.put("META-INF/manifest.xml", manifest(Fmt.ODT.mime, pics.map { it.first }))
         z.put("styles.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document-styles $ns office:version=\"1.3\"><office:styles><style:default-style style:family=\"paragraph\"><style:paragraph-properties fo:margin-bottom=\"0.2cm\"/><style:text-properties fo:font-size=\"11pt\" fo:language=\"en\" fo:country=\"AU\"/></style:default-style><style:style style:name=\"Standard\" style:family=\"paragraph\"/></office:styles><office:automatic-styles><style:page-layout style:name=\"pm1\"><style:page-layout-properties fo:page-width=\"21cm\" fo:page-height=\"29.7cm\" fo:margin-top=\"2cm\" fo:margin-bottom=\"2cm\" fo:margin-left=\"2cm\" fo:margin-right=\"2cm\"/></style:page-layout></office:automatic-styles><office:master-styles><style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/></office:master-styles></office:document-styles>")
-        z.put("meta.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document-meta $ns office:version=\"1.3\"><office:meta><dc:title>${esc(doc.title)}</dc:title><meta:generator>Open Keyboard Converter</meta:generator></office:meta></office:document-meta>")
+        z.put("meta.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document-meta $ns office:version=\"1.3\"><office:meta><dc:title>${esc(doc.title)}</dc:title><meta:generator>O-Board Converter</meta:generator></office:meta></office:document-meta>")
         z.put("content.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document-content $ns office:version=\"1.3\"><office:automatic-styles>$textStyles$paraStyles</office:automatic-styles><office:body><office:text>$body</office:text></office:body></office:document-content>")
         for ((n, bytes) in pics) z.put(n, bytes)
         z.close()

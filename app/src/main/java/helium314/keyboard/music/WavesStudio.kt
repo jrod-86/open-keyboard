@@ -130,7 +130,7 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             }
             if (MusicSettings.floatOn && !allowed) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))
                 .background(Color(0x33FFB300)).clickable { askFloat(ctx) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Android needs your OK first. Tap here, then turn on \"Appear on top\" (or \"Allow display over other apps\") for Open Keyboard.",
+                Text("Android needs your OK first. Tap here, then turn on \"Appear on top\" (or \"Allow display over other apps\") for O-Board.",
                     Modifier.weight(1f), fontSize = 13.sp)
             }
         }
