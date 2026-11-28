@@ -874,7 +874,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         else Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to tint)))
         BeatBackground(beatMap, clock, tint, if (mode == 0) 0.36f else 0.12f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
-            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it })
+            NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it }, onSingOn = { mode = 1 })
             StemNowBanner(song)
             when (mode) {
                 0 -> {
@@ -950,7 +950,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
 
 /** Top row: close on the left; Stem indicator (when on), Smart View, DJ toggle, equaliser and more on the right. */
 @Composable
-private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false, onHint: (String) -> Unit = {}) {
+private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: () -> Unit, back: Boolean = false, onHint: (String) -> Unit = {}, onSingOn: () -> Unit = {}) {
     val ctx = LocalContext.current
     val djOn = Announcer.enabled.value
     val stemOn = Stems.modeOn.value
@@ -990,11 +990,11 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
         }
         if (Stems.singMode.value) {
             IconButton({ Stems.setSingMode(ctx, false); onHint("Sing mode off") }) {
-                Text("🎤", fontSize = 20.sp)
+                Icon(MusicIcons.mic, "Sing mode", tint = Accent, modifier = Modifier.size(25.dp))
             }
         }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
-        MoreMenu(song, ui, open)
+        MoreMenu(song, ui, open, onSingOn)
     }
 }
 
@@ -1050,7 +1050,7 @@ private fun SmallHeader(song: Song?) {
 
 /** Now Playing ⋮ menu, Samsung's items plus our extras. */
 @Composable
-private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
+private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onSingOn: () -> Unit = {}) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var sleep by remember { mutableStateOf(false) }
@@ -1083,6 +1083,7 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                     Stems.setSingMode(ctx, false)
                     android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
                 } else if (Stems.setSingMode(ctx, true)) {
+                    onSingOn()
                     android.widget.Toast.makeText(ctx, "Sing mode on — splitting vocals out…", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     real?.let { open(Page.Stems(it.id)) }

@@ -223,7 +223,7 @@ internal fun WavesTopBar(open: (Page) -> Unit, playing: Boolean = false, extra: 
         Box(Modifier.weight(1f)) { AnimatedTitle(playing) }
         if (Stems.singMode.value) {
             IconButton({ Stems.setSingMode(ctx, false); android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show() }) {
-                Text("🎤", fontSize = 20.sp)
+                Icon(MusicIcons.mic, "Sing mode", tint = Accent, modifier = Modifier.size(24.dp))
             }
         }
         extra?.invoke()
