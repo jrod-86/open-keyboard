@@ -95,24 +95,36 @@ internal fun RateDialog() {
 data class SmartList(
     val id: Long, val name: String, val minStars: Int = 0, val minPlays: Int = 0, val maxPlays: Int = -1, val notPlayedDays: Int = 0,
     val addedDays: Int = 0, val genre: String = "", val yearFrom: Int = 0, val yearTo: Int = 0, val favsOnly: Boolean = false,
-    val sort: String = "most", val limit: Int = 100,
+    val sort: String = "random", val limit: Int = 60,
+    val chart: String = "", val decades: List<String> = emptyList(), val genres: List<String> = emptyList(),
 ) {
     fun json() = JSONObject().put("id", id).put("name", name).put("stars", minStars).put("minPlays", minPlays).put("maxPlays", maxPlays)
         .put("notPlayed", notPlayedDays).put("added", addedDays).put("genre", genre).put("y1", yearFrom).put("y2", yearTo).put("favs", favsOnly)
         .put("sort", sort).put("limit", limit)
-    fun summary(): String = listOfNotNull(
-        if (minStars > 0) "$minStars★ or more" else null,
-        if (favsOnly) "favourites" else null,
-        if (minPlays > 0) "played $minPlays+ times" else null,
-        if (maxPlays >= 0) "played at most $maxPlays times" else null,
-        if (notPlayedDays > 0) "not played for $notPlayedDays days" else null,
-        if (addedDays > 0) "added in the last $addedDays days" else null,
-        genre.takeIf { it.isNotBlank() }?.let { "genre “$it”" },
-        if (yearFrom > 0 || yearTo > 0) "from ${if (yearFrom > 0) yearFrom else "any"} to ${if (yearTo > 0) yearTo else "now"}" else null,
-    ).joinToString(", ").ifEmpty { "every song" }
+        .put("chart", chart).put("decades", JSONArray(decades)).put("genres", JSONArray(genres))
+    fun summary(): String {
+        val allGenres = (genres + listOfNotNull(genre.takeIf { it.isNotBlank() })).distinct()
+        return listOfNotNull(
+            chart.takeIf { it.isNotBlank() },
+            decades.takeIf { it.isNotEmpty() }?.joinToString(" / "),
+            allGenres.takeIf { it.isNotEmpty() }?.joinToString(" / "),
+            if (favsOnly) "favourites" else null,
+            if (minStars > 0) "$minStars★+" else null,
+            if (minPlays > 0) "played $minPlays+ times" else null,
+            if (maxPlays >= 0) "played at most $maxPlays times" else null,
+            if (notPlayedDays > 0) "not played for ${notPlayedDays}d" else null,
+            if (addedDays > 0) "added in last ${addedDays}d" else null,
+            if (yearFrom > 0 || yearTo > 0) "from ${if (yearFrom > 0) yearFrom else "any"} to ${if (yearTo > 0) yearTo else "now"}" else null,
+        ).joinToString(" · ").ifEmpty { "every song" }
+    }
     companion object {
-        fun from(o: JSONObject) = SmartList(o.getLong("id"), o.optString("name", "Smart playlist"), o.optInt("stars"), o.optInt("minPlays"), o.optInt("maxPlays", -1),
-            o.optInt("notPlayed"), o.optInt("added"), o.optString("genre"), o.optInt("y1"), o.optInt("y2"), o.optBoolean("favs"), o.optString("sort", "most"), o.optInt("limit", 100))
+        private fun strList(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { a.optString(it) }.filter { it.isNotBlank() }
+        fun from(o: JSONObject) = SmartList(
+            o.getLong("id"), o.optString("name", "Smart playlist"), o.optInt("stars"), o.optInt("minPlays"), o.optInt("maxPlays", -1),
+            o.optInt("notPlayed"), o.optInt("added"), o.optString("genre"), o.optInt("y1"), o.optInt("y2"), o.optBoolean("favs"),
+            o.optString("sort", "most"), o.optInt("limit", 100),
+            o.optString("chart", ""), strList(o.optJSONArray("decades")), strList(o.optJSONArray("genres")),
+        )
     }
 }
 
@@ -131,24 +143,51 @@ object SmartLists {
 
     fun songs(ctx: Context, lib: Library, s: SmartList): List<Song> {
         val now = System.currentTimeMillis(); val day = 86_400_000L
-        val ratings = Ratings.all(ctx)
-        val genres = if (s.genre.isNotBlank()) Moods.genres(ctx, lib.songs) else emptyMap()
-        val g = s.genre.trim().lowercase()
+        val ratings = if (s.minStars > 0 || s.sort == "rating") Ratings.all(ctx) else emptyMap()
+        val wantedGenres = (s.genres + listOfNotNull(s.genre.takeIf { it.isNotBlank() })).map { it.trim().lowercase() }.distinct()
+        val genreMap = if (wantedGenres.isNotEmpty()) Moods.genres(ctx, lib.uniqueSongs) else emptyMap()
+        val needPop = s.chart.isNotEmpty() || s.decades.isNotEmpty() || s.sort == "popular" || s.sort == "oldest" || s.sort == "newest"
+        val popMap = if (needPop) lib.uniqueSongs.associate { it.id to Popularity.known(ctx, it)?.takeIf { p -> p.found } } else emptyMap()
         val list = lib.uniqueSongs.filter { song ->
-            (s.minStars == 0 || (ratings[song.id] ?: 0) >= s.minStars) &&
+            val pop = popMap[song.id]
+            val best = pop?.let { p -> listOf(p.us, p.au, p.uk).filter { it > 0 }.minOrNull() ?: 0 } ?: 0
+            val year = pop?.year?.takeIf { it > 0 } ?: song.year
+            val chartOk = when (s.chart) {
+                "Chart hits" -> best > 0
+                "#1s" -> best == 1
+                "Top 20s" -> best in 1..20
+                "Top 20–50" -> best in 20..50
+                "Hidden gems" -> pop != null && pop.plays > 0
+                else -> true
+            }
+            val decadeOk = s.decades.isEmpty() || s.decades.any { d ->
+                if (d == "Before 1970s") year in 1..1969
+                else d.removeSuffix("s").toIntOrNull()?.let { dec -> year / 10 * 10 == dec } ?: false
+            }
+            val sg = genreMap[song.id].orEmpty().lowercase()
+            val rg = song.genre.lowercase()
+            val genreOk = wantedGenres.isEmpty() || wantedGenres.any { g -> sg == g || sg.contains(g) || rg.contains(g) }
+            chartOk && decadeOk && genreOk &&
+                (s.minStars == 0 || (ratings[song.id] ?: 0) >= s.minStars) &&
                 (!s.favsOnly || song.id in Favourites.ids.value) &&
                 (s.minPlays == 0 || PlayStats.count(song.id) >= s.minPlays) &&
                 (s.maxPlays < 0 || PlayStats.count(song.id) <= s.maxPlays) &&
                 (s.notPlayedDays == 0 || now - PlayStats.lastPlayed(song.id) > s.notPlayedDays * day) &&
                 (s.addedDays == 0 || now - song.dateAdded * 1000 < s.addedDays * day) &&
-                (g.isEmpty() || song.genre.lowercase().contains(g) || (genres[song.id] ?: "").lowercase().contains(g)) &&
-                (s.yearFrom == 0 || song.year >= s.yearFrom) && (s.yearTo == 0 || (song.year in 1..s.yearTo))
+                (s.yearFrom == 0 || year >= s.yearFrom) && (s.yearTo == 0 || (year in 1..s.yearTo))
         }
         val sorted = when (s.sort) {
+            "popular" -> if (s.chart == "Hidden gems") list.sortedBy { popMap[it.id]?.plays ?: Long.MAX_VALUE }
+                else list.sortedWith(compareBy<Song>(
+                    { if ((popMap[it.id]?.plays ?: 0L) > 0L) 0 else 1 },
+                    { -(popMap[it.id]?.plays ?: 0L) },
+                    { popMap[it.id]?.let { p -> listOf(p.us, p.au, p.uk).filter { c -> c > 0 }.minOrNull() } ?: Int.MAX_VALUE },
+                ))
             "most" -> list.sortedByDescending { PlayStats.count(it.id) }
             "least" -> list.sortedBy { PlayStats.count(it.id) }
             "rating" -> list.sortedByDescending { ratings[it.id] ?: 0 }
-            "newest" -> list.sortedByDescending { it.dateAdded }
+            "newest" -> list.sortedWith(compareByDescending<Song> { popMap[it.id]?.year?.takeIf { y -> y > 0 } ?: it.year }.thenByDescending { it.dateAdded })
+            "oldest" -> list.sortedWith(compareBy<Song> { (popMap[it.id]?.year?.takeIf { y -> y > 0 } ?: it.year).let { y -> if (y > 0) y else Int.MAX_VALUE } }.thenBy { it.dateAdded })
             "az" -> list.sortedBy { it.title.lowercase() }
             else -> list.shuffled(java.util.Random(now / day)) // "random": a new mix each day
         }
@@ -182,40 +221,127 @@ internal fun SmartListPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) ->
 internal fun SmartListDialog() {
     val ctx = LocalContext.current
     val start = SmartLists.editing.value ?: return
-    var s by remember(start.id) { mutableStateOf(start) }
+    val lib = Library.cached
+    var s by remember(start.id) {
+        val mergedGenres = (start.genres + listOfNotNull(start.genre.takeIf { it.isNotBlank() })).distinct()
+        mutableStateOf(start.copy(genres = mergedGenres, genre = ""))
+    }
+    var moreOpen by remember(start.id) { mutableStateOf(start.minPlays > 0 || start.notPlayedDays > 0 || start.addedDays > 0 || start.minStars > 0) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    val chipColors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f))
+    val hasRatings = remember(start.id) { Ratings.all(ctx).isNotEmpty() }
+    val availGenres = remember(lib) {
+        lib?.let {
+            Moods.genres(ctx, it.uniqueSongs).values.filter { g -> g.isNotEmpty() }
+                .groupingBy { g -> g }.eachCount().entries.sortedByDescending { e -> e.value }.map { e -> e.key }
+        }.orEmpty()
+    }
+    val availDecades = remember(lib) {
+        if (lib == null) listOf("Before 1970s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s")
+        else {
+            val yrs = lib.uniqueSongs.map { song -> Popularity.known(ctx, song)?.year?.takeIf { it > 0 } ?: song.year }.filter { it > 0 }
+            val pre = if (yrs.any { it < 1970 }) listOf("Before 1970s") else emptyList()
+            pre + yrs.map { it / 10 * 10 }.filter { it >= 1970 }.distinct().sorted().map { "${it}s" }
+        }
+    }
+    val matchCount = remember(s, lib) { lib?.let { SmartLists.songs(ctx, it, s.copy(limit = 0)).size } }
+    val chartChoices = listOf("" to "Any", "Chart hits" to "Chart hits", "#1s" to "#1s", "Top 20s" to "Top 20s", "Top 20–50" to "Top 20–50", "Hidden gems" to "Hidden gems")
+    val limitChoices = listOf(15 to "15", 30 to "30", 60 to "60", 100 to "100", 250 to "250", 0 to "All")
+    val sortChoices = listOf("popular" to "Popular", "random" to "Mixed up", "most" to "Most played", "least" to "Least played", "newest" to "Newest", "oldest" to "Oldest", "az" to "A–Z") +
+        (if (hasRatings) listOf("rating" to "Top rated") else emptyList())
+
     @Composable fun num(label: String, value: Int, range: IntRange, step: Int, show: (Int) -> String, set: (Int) -> Unit) {
-        Text("$label: ${show(value)}", fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+        Text("$label: ${show(value)}", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
         Slider(value.toFloat(), { set(((it / step).toInt() * step).coerceIn(range)) }, valueRange = range.first.toFloat()..range.last.toFloat(),
             colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent))
     }
+
     AlertDialog(onDismissRequest = { SmartLists.editing.value = null },
         title = { Text(if (SmartLists.all.value.any { it.id == start.id }) "Edit smart playlist" else "New smart playlist") },
         text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                 OutlinedTextField(s.name, { s = s.copy(name = it) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Updates by itself as you play, rate and add songs.", fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
-                num("Stars", s.minStars, 0..5, 1, { if (it == 0) "any" else "$it★ or more" }) { s = s.copy(minStars = it) }
-                num("Played at least", s.minPlays, 0..50, 1, { if (it == 0) "any" else "$it times" }) { s = s.copy(minPlays = it) }
-                num("Not played for", s.notPlayedDays, 0..365, 5, { if (it == 0) "any" else "$it days" }) { s = s.copy(notPlayedDays = it) }
-                num("Added in the last", s.addedDays, 0..365, 5, { if (it == 0) "any time" else "$it days" }) { s = s.copy(addedDays = it) }
-                num("From year", s.yearFrom, 0..2030, 1, { if (it < 1950) "any" else "$it" }) { s = s.copy(yearFrom = if (it < 1950) 0 else it) }
-                num("To year", s.yearTo, 0..2030, 1, { if (it < 1950) "any" else "$it" }) { s = s.copy(yearTo = if (it < 1950) 0 else it) }
-                OutlinedTextField(s.genre, { s = s.copy(genre = it) }, label = { Text("Genre (optional, e.g. rock)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (matchCount != null) {
+                    Text("⚡ $matchCount song" + (if (matchCount == 1) "" else "s") + " match" + (if (s.limit in 1 until matchCount) " (capped at ${s.limit})" else ""),
+                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent, modifier = Modifier.padding(top = 6.dp))
+                } else {
+                    Text("Updates by itself as you play and add songs.", fontSize = 12.sp, color = dim, modifier = Modifier.padding(top = 4.dp))
+                }
+
+                Text("Chart & popularity", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chartChoices.forEach { (k, label) ->
+                        FilterChip(s.chart == k, { s = s.copy(chart = k) }, { Text(label) }, colors = chipColors)
+                    }
+                }
+
+                if (availDecades.isNotEmpty()) {
+                    Text("Decades", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(s.decades.isEmpty(), { s = s.copy(decades = emptyList(), yearFrom = 0, yearTo = 0) }, { Text("Any") }, colors = chipColors)
+                        availDecades.forEach { d ->
+                            val picked = d in s.decades
+                            val label = if (d.length == 5 && d[0].isDigit()) "'" + d.substring(2) else d
+                            FilterChip(picked, {
+                                val next = if (picked) s.decades - d else s.decades + d
+                                s = s.copy(decades = next, yearFrom = 0, yearTo = 0)
+                            }, { Text(label) }, colors = chipColors)
+                        }
+                    }
+                }
+
+                if (availGenres.isNotEmpty()) {
+                    Text("Genres", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(s.genres.isEmpty(), { s = s.copy(genres = emptyList()) }, { Text("All genres") }, colors = chipColors)
+                        availGenres.forEach { g ->
+                            val picked = g in s.genres
+                            FilterChip(picked, {
+                                s = s.copy(genres = if (picked) s.genres - g else s.genres + g)
+                            }, { Text(g) }, colors = chipColors)
+                        }
+                    }
+                }
+
+                Text("Order", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    sortChoices.forEach { (k, n) ->
+                        FilterChip(s.sort == k, { s = s.copy(sort = k) }, { Text(n) }, colors = chipColors)
+                    }
+                }
+
+                Text("How many songs", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    limitChoices.forEach { (n, label) ->
+                        FilterChip(s.limit == n, { s = s.copy(limit = n) }, { Text(label) }, colors = chipColors)
+                    }
+                }
+
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Favourites only", Modifier.weight(1f), fontSize = 14.sp)
                     Switch(s.favsOnly, { s = s.copy(favsOnly = it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
                 }
-                Text("Order", fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
-                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("most" to "Most played", "least" to "Least played", "rating" to "Top rated", "newest" to "Newest", "az" to "A–Z", "random" to "Random").forEach { (k, n) ->
-                        FilterChip(s.sort == k, { s = s.copy(sort = k) }, { Text(n) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f)))
+
+                TextButton({ moreOpen = !moreOpen }, modifier = Modifier.padding(top = 2.dp)) {
+                    Text(if (moreOpen) "Hide extra rules ▴" else "Play history & extra rules ▾", color = Accent, fontSize = 13.sp)
+                }
+                if (moreOpen) {
+                    num("Played at least", s.minPlays, 0..50, 1, { if (it == 0) "any" else "$it times" }) { s = s.copy(minPlays = it) }
+                    num("Not played for", s.notPlayedDays, 0..365, 5, { if (it == 0) "any" else "$it days" }) { s = s.copy(notPlayedDays = it) }
+                    num("Added in the last", s.addedDays, 0..365, 5, { if (it == 0) "any time" else "$it days" }) { s = s.copy(addedDays = it) }
+                    if (hasRatings || s.minStars > 0) {
+                        num("Stars", s.minStars, 0..5, 1, { if (it == 0) "any" else "$it★ or more" }) { s = s.copy(minStars = it) }
                     }
                 }
-                num("Up to", s.limit, 0..500, 25, { if (it == 0) "every match" else "$it songs" }) { s = s.copy(limit = it) }
             }
         },
-        confirmButton = { TextButton({ SmartLists.put(ctx, s.copy(name = s.name.ifBlank { "Smart playlist" })); SmartLists.editing.value = null }) { Text("Save", color = Accent) } },
+        confirmButton = {
+            TextButton({
+                val autoName = s.name.trim().ifBlank { s.summary().replaceFirstChar { it.uppercase() }.take(40) }
+                SmartLists.put(ctx, s.copy(name = autoName))
+                SmartLists.editing.value = null
+            }) { Text("Save", color = Accent) }
+        },
         dismissButton = { TextButton({ SmartLists.editing.value = null }) { Text("Cancel") } })
 }
 
