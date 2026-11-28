@@ -1320,18 +1320,19 @@ private fun LyricsView(song: Song?, ui: PlayerUi, modifier: Modifier) {
             val state = rememberLazyListState()
             val cur = l.lineAt(ui.position)
             val viewH = remember { mutableIntStateOf(0) }
-            LaunchedEffect(cur) { if (cur >= 0) state.animateScrollToItem(cur, -(viewH.intValue / 3)) }
+            LaunchedEffect(cur) { if (cur >= 0) state.animateScrollToItem((cur - 1).coerceAtLeast(0), -(viewH.intValue / 6)) }
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 viewH.intValue = constraints.maxHeight
-                LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 40.dp)) {
+                LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 32.dp)) {
                     itemsIndexed(l.lines) { i, line ->
-                        val on = !l.synced || i == cur
-                        val a by animateFloatAsState(if (on) 1f else 0.32f, tween(300), label = "line")
-                        val s by animateFloatAsState(if (i == cur) 1.04f else 1f, tween(300), label = "lineScale")
-                        Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 28.sp else 20.sp, fontWeight = FontWeight.Bold,
-                            lineHeight = if (l.synced) 34.sp else 28.sp,
+                        // test 383 (Jarrod): highlight a 4-line window (1 behind, current, 2 ahead) so slightly off LRC timing is still easy to sing along with
+                        val on = !l.synced || (cur >= 0 && i in (cur - 1)..(cur + 2))
+                        val a by animateFloatAsState(if (on) 1f else 0.28f, tween(300), label = "line")
+                        val s by animateFloatAsState(if (i == cur) 1.03f else 1f, tween(300), label = "lineScale")
+                        Text(line.text.ifBlank { "♪" }, color = Color.White, fontSize = if (l.synced) 24.sp else 20.sp, fontWeight = FontWeight.Bold,
+                            lineHeight = if (l.synced) 30.sp else 28.sp,
                             modifier = Modifier.fillMaxWidth().alpha(a).graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
-                                .clickable(enabled = l.synced) { ui.seek(line.timeMs) }.padding(vertical = 10.dp))
+                                .clickable(enabled = l.synced) { ui.seek(line.timeMs) }.padding(vertical = 8.dp))
                     }
                     item {
                         Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {

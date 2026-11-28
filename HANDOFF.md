@@ -3,8 +3,8 @@
 - **Last updated:** 2026-11-28 by Gemini (Antigravity)
 - **Brand suite:** **O-Board** (keyboard) + **Open Hub** (built-in mini app store / plugins) + **Open Waves** (music player)
 - **Active branch:** `claude/sing-mode-upgrade` (branched cleanly from `main` after PR #17 merged)
-- **Latest APK:** **test 382** (building via GitHub Actions → GitHub Pre-Release `test-382`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 383**
+- **Latest APK:** **test 383** (building via GitHub Actions → GitHub Pre-Release `test-383`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 384**
 
 ## Confirmed Working on S24 (23–28 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All
