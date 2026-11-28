@@ -190,6 +190,13 @@ internal fun StudioPage(open: (Page) -> Unit, onBack: () -> Unit) {
             MovePreview(MusicSettings.cover, round = false)
         }
         item {
+            Text("Album cover border animation", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CoverBorders.names.forEachIndexed { i, name -> Chip(name, MusicSettings.coverBorder == i) { MusicSettings.coverBorder = i; changed() } }
+            }
+            CoverBorderPreview(MusicSettings.coverBorder)
+        }
+        item {
             Text("Mini player cover moves to the beat", Modifier.padding(start = 16.dp, top = 12.dp), fontWeight = FontWeight.SemiBold)
             FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MusicSettings.coverEffects.forEachIndexed { i, name -> Chip(name, MusicSettings.miniCover == i) { MusicSettings.miniCover = i; changed() } }

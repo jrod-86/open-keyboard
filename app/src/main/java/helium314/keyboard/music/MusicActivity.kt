@@ -890,6 +890,21 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
                                     val m = coverMove(beatMap, clock.ms)
                                     alpha = m.glow; scaleX = scale * (1.04f + 0.14f * m.glow); scaleY = scaleX
                                 }.blur(36.dp).clip(RoundedCornerShape(24.dp)).background(tint.copy(alpha = 1f)))
+                                if (MusicSettings.coverBorder > 0) {
+                                    val pulse = if (MusicSettings.effectsOn && beatMap != null) (beatMap.pulse(clock.ms) * MusicSettings.strength).coerceIn(0f, 1.3f) else 0f
+                                    CoverBorders.Overlay(
+                                        style = MusicSettings.coverBorder,
+                                        side = side,
+                                        corner = 22.dp,
+                                        playing = ui.playing,
+                                        beatPulse = pulse,
+                                        modifier = Modifier.graphicsLayer {
+                                            val m = coverMove(beatMap, clock.ms)
+                                            scaleX = scale * m.scale; scaleY = scale * m.scale
+                                            rotationZ = m.rotation; translationY = m.lift * liftPx
+                                        },
+                                    )
+                                }
                                 Cover(song, 600, Modifier.requiredSize(side).graphicsLayer {
                                     val m = coverMove(beatMap, clock.ms)
                                     scaleX = scale * m.scale; scaleY = scale * m.scale

@@ -137,6 +137,8 @@ object MusicSettings {
     /** test 362 (Jarrod): custom timeline animation style (0..9) and colour/gradient mode (0..13) on Now Playing & Mini Player */
     var timelineStyle by mutableIntStateOf(0)
     var timelineColor by mutableIntStateOf(0)
+    /** test 388 (Jarrod): animated perimeter border around the Now Playing album cover (0..5) */
+    var coverBorder by mutableIntStateOf(0)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("music", Context.MODE_PRIVATE)
     fun load(ctx: Context) {
@@ -157,6 +159,7 @@ object MusicSettings {
         blendOn = p.getBoolean("blend_on", false); blendSec = p.getFloat("blend_sec", 6f)
         timelineStyle = p.getInt("seek_style", 0).coerceIn(0, TimelineStyles.styles.lastIndex)
         timelineColor = p.getInt("seek_color", 0).coerceIn(0, TimelineStyles.colors.lastIndex)
+        coverBorder = p.getInt("cover_border", 0).coerceIn(0, CoverBorders.names.lastIndex)
         if (background == 2) background = 0 // Particles removed (test 240, Jarrod didn't like it)
     }
     fun save(ctx: Context) {
@@ -167,7 +170,7 @@ object MusicSettings {
             .putInt("mini_theme", miniTheme).putInt("mini_cover", miniCover)
             .putBoolean("float_on", floatOn).putInt("float_style", floatStyle).putInt("float_theme", floatTheme)
             .putFloat("float_size", floatSize).putInt("float_cover", floatCover).putBoolean("pop_on", popularOn).putStringSet("hidden_tabs", HashSet(hiddenTabs)).putString("start_tab", startTab).putBoolean("blend_on", blendOn).putFloat("blend_sec", blendSec)
-            .putInt("seek_style", timelineStyle).putInt("seek_color", timelineColor).apply()
+            .putInt("seek_style", timelineStyle).putInt("seek_color", timelineColor).putInt("cover_border", coverBorder).apply()
     }
 }
 

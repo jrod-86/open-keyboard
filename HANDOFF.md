@@ -2,9 +2,9 @@
 
 - **Last updated:** 2026-11-28 by Gemini (Antigravity)
 - **Brand suite:** **O-Board** (keyboard) + **Open Hub** (built-in mini app store / plugins) + **Open Waves** (music player)
-- **Active branch:** `claude/lyrics-editor-ime-fix` (branched cleanly from `main` after PR #18 merged)
-- **Latest APK:** **test 387** (building via GitHub Actions → GitHub Pre-Release `test-387`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 388**
+- **Active branch:** `claude/cover-borders` (branched from `claude/lyrics-editor-ime-fix`)
+- **Latest APK:** **test 388** (building via GitHub Actions → GitHub Pre-Release `test-388`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 389**
 
 ## Confirmed Working on S24 (23–28 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All
