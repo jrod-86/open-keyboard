@@ -640,7 +640,7 @@ private fun MusicApp(ui: PlayerUi) {
         NotMusicDialog(ui)
         TagEditDialog()
         LyricsEditDialog(ui)
-        SmartListDialog(); SpeedDialog(); SupportArtistDialogHost()
+        SmartListDialog(); SpeedDialog(); SupportArtistDialogHost(); SingDownloadDialog()
     }
 }
 
@@ -876,6 +876,7 @@ private fun NowPlaying(ui: PlayerUi, lib: Library?, startMode: Int, progress: ()
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
             NowTopBar(song, ui, open, if (mode != 0) ({ mode = 0 }) else onClose, back = mode != 0, onHint = { hint = it }, onSingOn = { mode = 1 })
             StemNowBanner(song)
+            SingNowBanner(song)
             when (mode) {
                 0 -> {
                     val scale by animateFloatAsState(if (ui.playing) 1f else 0.94f, spring(dampingRatio = 0.6f, stiffness = 300f), label = "cover")
@@ -988,9 +989,9 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
                 fontWeight = FontWeight.Bold,
             )
         }
-        if (Stems.singMode.value) {
-            IconButton({ Stems.setSingMode(ctx, false); onHint("Sing mode off") }) {
-                Icon(MusicIcons.mic, "Sing mode", tint = Accent, modifier = Modifier.size(25.dp))
+        if (SingMode.on.value) {
+            IconButton({ SingMode.setOn(ctx, false); onHint("Sing mode off") }) {
+                Icon(MusicIcons.singMic, "Sing mode", tint = Accent, modifier = Modifier.size(25.dp))
             }
         }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
@@ -1077,17 +1078,15 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onSingOn: 
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
                 DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass" + if (Stems.modeOn.value) " (on)" else "") }, { menu = false; open(Page.Stems(s.id)) })
             }
-            DropdownMenuItem({ Text(if (Stems.singMode.value) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
+            DropdownMenuItem({ Text(if (SingMode.on.value) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
                 menu = false
-                if (Stems.singMode.value) {
-                    Stems.setSingMode(ctx, false)
+                SingMode.onReadyForLyrics = onSingOn
+                if (SingMode.on.value) {
+                    SingMode.setOn(ctx, false)
                     android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
-                } else if (Stems.setSingMode(ctx, true)) {
+                } else if (SingMode.setOn(ctx, true)) {
                     onSingOn()
-                    android.widget.Toast.makeText(ctx, "Sing mode on — splitting vocals out…", android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    real?.let { open(Page.Stems(it.id)) }
-                    android.widget.Toast.makeText(ctx, "Download the Stem Splitter model first to use Sing mode.", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(ctx, "Sing mode on — removing vocals (HQ)…", android.widget.Toast.LENGTH_SHORT).show()
                 }
             })
             DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })

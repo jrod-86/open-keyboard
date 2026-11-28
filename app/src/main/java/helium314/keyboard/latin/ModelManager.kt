@@ -30,6 +30,7 @@ object ModelManager {
         Known("tts-voices", "Voices you made", "TTS, Chat", userMade = true),
         Known("models/clap", "AI music listener (CLAP)", "Open Waves Moods"),
         Known("stem-models/spleeter4", "Stem splitter (Spleeter)", "Open Waves Stem mode"),
+        Known("sing-model", "HQ vocal remover (UVR-MDX)", "Open Waves Sing mode"),
         Known("ocr", "Scan text (basic)", "Scan text"),
         Known("ocr-paddle", "Scan text", "Scan text"),
         Known("ocr-best", "Scan text (best)", "Scan text"),

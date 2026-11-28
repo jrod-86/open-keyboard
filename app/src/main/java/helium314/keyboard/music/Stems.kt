@@ -91,8 +91,6 @@ object Stems {
      * the playing one first, then the next one, so it keeps ahead. Your music files are never changed.
      */
     val modeOn = mutableStateOf(false)
-    /** test 381 (Jarrod): Sing mode powered by real AI 4-stem separation (Vocals 0%, Drums/Bass/Other 100%) */
-    val singMode = mutableStateOf(false)
     /** songs waiting to be split, first = next to do */
     private val waiting = java.util.ArrayDeque<Long>()
     val waitingCount = mutableStateOf(0)
@@ -119,26 +117,11 @@ object Stems {
     /** Turns stem mode on or off for everything you play. */
     fun setMode(ctx: Context, on: Boolean) {
         appCtx = ctx.applicationContext
+        if (on && SingMode.on.value) SingMode.setOn(ctx, false)
         modeOn.value = on
-        if (!on) singMode.value = false
         prefs(ctx).edit().putBoolean("stem_mode", on).apply()
         if (on) songChanged(ctx) else { synchronized(waiting) { waiting.clear(); waitingCount.value = 0 }; if (autoJob) job?.cancel() }
         swapAll(ctx)
-    }
-
-    /** Test 381: Sing mode — splits stems with AI and mutes Vocals while keeping Drums, Bass and Other at 100%. */
-    fun setSingMode(ctx: Context, on: Boolean): Boolean {
-        if (on) {
-            if (!installed(ctx)) return false
-            singMode.value = true
-            setAll(0f, 1f, 1f, 1f)
-            setMode(ctx, true)
-            return true
-        }
-        singMode.value = false
-        setAll(1f, 1f, 1f, 1f)
-        setMode(ctx, false)
-        return true
     }
 
     /** Called by the music service when a new song starts (and by stem mode turning on): gets this song and the next one ready. */
@@ -308,7 +291,7 @@ object Stems {
     fun usedMb(ctx: Context) = (File(ctx.filesDir, "stems").listFiles()?.sumOf { it.length() } ?: 0L) / 1_000_000
 
     /** The whole song as 44.1 kHz stereo floats. */
-    private suspend fun decode(ctx: Context, uri: Uri): Pair<FloatArray, FloatArray> {
+    internal suspend fun decode(ctx: Context, uri: Uri): Pair<FloatArray, FloatArray> {
         val ex = MediaExtractor()
         var codec: MediaCodec? = null
         try {
