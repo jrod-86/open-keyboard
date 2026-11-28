@@ -226,7 +226,7 @@ object Backup {
                 }
             }
         }
-        "Saved: ${lib.songs.size} songs' playlists, plays, ratings and settings"
+        "Saved: ${lib.songs.size} songs' playlists, plays, favourites and settings"
     }
 
     suspend fun read(ctx: Context, from: Uri): String = withContext(Dispatchers.IO) {
@@ -327,7 +327,7 @@ internal fun BackupSettings() {
     }
     Column {
         Section("Backup")
-        Text("Saves your playlists, smart playlists, ratings, favourites, plays and history, Moods, song fixes, lyrics, equaliser and settings into one file. " +
+        Text("Saves your playlists, smart playlists, favourites, plays and history, Moods, song fixes, lyrics, equaliser and settings into one file. " +
             "Restore it on a new phone: songs are matched by file name and length, or name and artist.", Modifier.padding(horizontal = 16.dp), fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -262,7 +262,7 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button({ ui.play(shown.map { it.song }, 0) }, enabled = shown.isNotEmpty(), colors = ButtonDefaults.buttonColors(containerColor = Accent)) {
                         Text("Play")
                     }
@@ -281,6 +281,25 @@ internal fun PopularTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         Playlists.create(ctx, name, shown.map { it.song.id })
                         saved = "Saved as playlist “$name”"
                     }, enabled = shown.isNotEmpty()) { Text("Save", color = Accent) }
+                    OutlinedButton({
+                        val label = when {
+                            genreFilter.isEmpty() -> if (filter == "All") "Popular mix" else filter
+                            filter == "All" -> genreFilter
+                            else -> "$filter · $genreFilter"
+                        }
+                        val chart = if (filter in listOf("Chart hits", "#1s", "Top 20s", "Top 20–50", "Hidden gems")) filter else ""
+                        val decs = if (filter == "Before 1970s" || (filter.endsWith("s") && filter.removeSuffix("s").toIntOrNull() != null)) listOf(filter) else emptyList()
+                        val gens = if (genreFilter.isNotEmpty()) listOf(genreFilter) else emptyList()
+                        SmartLists.editing.value = SmartList(
+                            id = System.currentTimeMillis(),
+                            name = label,
+                            chart = chart,
+                            decades = decs,
+                            genres = gens,
+                            sort = popSort,
+                            limit = if (popLen > 0) popLen else 0,
+                        )
+                    }, enabled = filtered.isNotEmpty()) { Text("⚡ Smart", color = Accent) }
                 }
                 if (saved.isNotEmpty()) Text(saved, Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = Accent)
                 Text("How long", Modifier.padding(start = 16.dp, top = 6.dp), fontSize = 13.sp, color = dim)

@@ -2,9 +2,9 @@
 
 - **Last updated:** 2026-11-28 by Gemini (Antigravity)
 - **Brand suite:** **O-Board** (keyboard) + **Open Hub** (built-in mini app store / plugins) + **Open Waves** (music player)
-- **Active branch:** `claude/widget-and-metadata-fix` (branched cleanly from `main` after PR #14 merged)
-- **Latest APK:** **test 375** (building via GitHub Actions → GitHub Pre-Release `test-375`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 376**
+- **Active branch:** `claude/smart-playlists-upgrade` (branched cleanly from `main` after PR #15 merged)
+- **Latest APK:** **test 378** (building via GitHub Actions → GitHub Pre-Release `test-378`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 379**
 
 ## Confirmed Working on S24 (23–28 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All
@@ -29,8 +29,9 @@
 - ✅ Home screen player widget (Play/Pause, Previous, Next) (Test 374)
 - ✅ Metadata / artwork (`Save info & artwork`, `Save artwork only`, `Edit tags`) (Test 374–375)
 - ✅ Backup / Restore
+- ✅ Smart playlists (Popular-style chips, one-tap `⚡ Smart` in Popular, long-press delete/edit) + Star ratings removed (Tests 376–378)
 - ✅ Old superseded GitHub PRs (#2–#9) cleaned up
 
 ## Outstanding S24 Phone Testing
-- [ ] **Open Waves optional extras (if desired):** Smart playlists, Star ratings, Playback speed slider, Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now — car head unit connection issues.)*
+- [ ] **Open Waves optional extras (if desired):** Playback speed slider, Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now — car head unit connection issues.)*
 - [ ] **Keyboard remaining items:** Khmer tile names (native-speaker check), full animated sticker packs (PC pipeline).
