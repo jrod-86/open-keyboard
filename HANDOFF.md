@@ -2,9 +2,9 @@
 
 - **Last updated:** 2026-11-28 by Gemini (Antigravity)
 - **Brand suite:** **O-Board** (keyboard) + **Open Hub** (built-in mini app store / plugins) + **Open Waves** (music player)
-- **Active branch:** `claude/oboard-open-hub` (branched cleanly from `main` after PR #13 merged)
-- **Latest APK:** **test 373** (building via GitHub Actions → GitHub Pre-Release `test-373`, signed with shared `app/debug.keystore`)
-- **Next build number:** **test 374**
+- **Active branch:** `claude/widget-and-metadata-fix` (branched cleanly from `main` after PR #14 merged)
+- **Latest APK:** **test 375** (building via GitHub Actions → GitHub Pre-Release `test-375`, signed with shared `app/debug.keystore`)
+- **Next build number:** **test 376**
 
 ## Confirmed Working on S24 (23–28 Nov)
 - ✅ Custom volume level, Hide any tab, Measure All

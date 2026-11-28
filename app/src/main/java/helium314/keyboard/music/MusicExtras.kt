@@ -603,9 +603,10 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showAll by remember { mutableStateOf(false) }
-    // test 252 (Jarrod): find covers only, leave names alone. Test 267: [only] = one song from Now Playing's
-    // "Add artwork" menu, straight into artwork mode for that song.
-    var artOnly by remember { mutableStateOf(only != null) }
+    // test 252 (Jarrod): find covers only, leave names alone.
+    // test 374 (Jarrod): single-song "Metadata / artwork" defaults to saving BOTH metadata & artwork
+    // (with an optional "Artwork only" button right next to it).
+    var artOnly by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf<List<FixRow>?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var progress by remember { mutableStateOf("") }
@@ -671,14 +672,14 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         }
     }
 
-    fun saveRows(chosen: List<FixRow>) {
+    fun saveRows(chosen: List<FixRow>, coverOnly: Boolean = artOnly) {
         if (chosen.isEmpty()) return
         scope.launch {
             val out = HashMap<Long, SongFix>()
             withContext(Dispatchers.IO) {
                 chosen.forEach { r ->
                     val m = r.match ?: return@forEach
-                    if (artOnly || r.artistPicks) {
+                    if (coverOnly || r.artistPicks) {
                         // artwork only: keep the song's own name, artist and album
                         val cover = r.cover ?: return@forEach
                         out[r.song.id] = SongFix(r.song.title, r.song.artist, r.song.album, r.song.year, SongFixer.keepCover(ctx, r.song.id, cover))
@@ -695,7 +696,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             pendingWrite = chosen.filter { it.song.id in out }.map { r ->
                 val f = out[r.song.id]!!
                 val cover = f.art.takeIf { it.isNotEmpty() }
-                if (artOnly || r.artistPicks) FileFixer.Item(r.song, "", "", "", 0, cover)
+                if (coverOnly || r.artistPicks) FileFixer.Item(r.song, "", "", "", 0, cover)
                 else FileFixer.Item(r.song, f.title, f.artist, f.album, f.year, cover)
             }.takeIf { it.isNotEmpty() }
         }
@@ -707,7 +708,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
         rows = null
         if (only != null) {
             val s1 = lib.byId[only]
-            rows = listOfNotNull(s1?.let { FixRow(it, listOf("Artwork")) })
+            rows = listOfNotNull(s1?.let { FixRow(it, listOf("Metadata & artwork")) })
             return@LaunchedEffect
         }
         val skipped = SongFixer.skipped(ctx)
@@ -809,7 +810,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
     val list = rows
     LazyColumn(Modifier.fillMaxSize()) {
         item { Column {
-        Header(if (only != null) "Add artwork" else "Fix song info", onBack)
+        Header(if (only != null) "Metadata / artwork" else "Fix song info", onBack)
         // test 269 (Jarrod): the explanation folds away so the songs get the room; tap to read it
         var info by remember { mutableStateOf(false) }
         var keyText by remember { mutableStateOf("") }
@@ -881,7 +882,7 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
             list == null -> item { Text("Checking your songs…", Modifier.padding(16.dp)) }
             list.isEmpty() && checking.isNotEmpty() -> item { Text(checking, Modifier.padding(16.dp)) }
             list.isEmpty() && only != null -> item { Column(Modifier.padding(16.dp)) {
-                Text(if (applied > 0) "Artwork saved. ✓" else "Song not found.", fontSize = 17.sp)
+                Text(if (applied > 0) "Saved. ✓" else "Song not found.", fontSize = 17.sp)
                 TextButton(onBack) { Text("Back to the song", color = Accent) }
             } }
             list.isEmpty() -> item { Text("All your songs have their info and artwork. 🎉", Modifier.padding(16.dp)) }
@@ -894,7 +895,9 @@ internal fun FixerPage(lib: Library, onBack: () -> Unit, only: Long? = null, onC
                         SongFixer.skip(ctx, r.song.id, true); rows = rows?.minus(r)
                     }, onUndo = {
                         SongFixer.undo(ctx, r.song.id); Covers.clear(); onChanged()
-                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) }, artOnly = artOnly, onHide = {
+                    }, onFind = { scope.launch { lookUp(r) } }, onSave = { saveRows(listOf(r)) },
+                        onSaveArtOnly = if (!artOnly) ({ saveRows(listOf(r), coverOnly = true) }) else null,
+                        artOnly = artOnly, onHide = {
                         HiddenSongs.hide(ctx, r.song); dirty = true; rows = rows?.minus(r)
                         android.widget.Toast.makeText(ctx, "Hidden. Bring it back in Settings, Hidden songs.", android.widget.Toast.LENGTH_SHORT).show()
                     }, onPick = {
@@ -1028,7 +1031,7 @@ private fun LinkButton(label: String, color: Color, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, artOnly: Boolean = false, onHide: () -> Unit = {}, onPick: () -> Unit = {}) {
+private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onSkip: () -> Unit, onUndo: () -> Unit, onFind: () -> Unit, onSave: () -> Unit, onSaveArtOnly: (() -> Unit)? = null, artOnly: Boolean = false, onHide: () -> Unit = {}, onPick: () -> Unit = {}) {
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     // test 270 (Jarrod: "very big space between the lines"): tighter rows and compact link buttons
     // test 275 (Jarrod: "barely enough room to read one box"): tight line height for every line in the row,
@@ -1072,6 +1075,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
             r.busy -> Text("Looking…", Modifier.padding(top = 6.dp, start = 60.dp), fontSize = 13.sp, color = dim)
             r.matches == null -> FlowRow(Modifier.padding(start = 54.dp, top = 2.dp)) {
                 LinkButton("Find info", Accent, onFind)
+                LinkButton("Edit tags", Accent) { TagEdit.asking.value = r.song }
                 LinkButton("Search…", Accent, onSearch)
                 LinkButton("Pick picture", Accent, onPick)
                 if (r.song.fixed) LinkButton("Undo fix", Accent, onUndo)
@@ -1081,6 +1085,7 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
             m == null -> Column(Modifier.padding(start = 60.dp)) { // message on its own line (test 257: it was squeezed into a column of letters)
                 Text(r.note ?: "No match found.", Modifier.padding(top = 6.dp), fontSize = 13.sp, color = dim)
                 FlowRow(Modifier.padding(start = 0.dp)) {
+                    LinkButton("Edit tags", Accent) { TagEdit.asking.value = r.song }
                     LinkButton("Search…", Accent, onSearch)
                     LinkButton("Pick picture", Accent, onPick)
                     LinkButton("Skip", dim, onSkip)
@@ -1112,7 +1117,19 @@ private fun FixRowView(r: FixRow, onOther: () -> Unit, onSearch: () -> Unit, onS
                 FlowRow(Modifier.padding(start = 40.dp, top = 4.dp), verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
                     Button(onSave, Modifier.height(34.dp), enabled = !artOnly || r.cover != null, colors = ButtonDefaults.buttonColors(containerColor = Accent),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)) {
-                        Text(if (artOnly) "Save artwork" else "Save")
+                        Text(if (artOnly) "Save artwork" else "Save info & artwork")
+                    }
+                    if (!artOnly && onSaveArtOnly != null && r.cover != null) {
+                        Spacer(Modifier.width(6.dp))
+                        OutlinedButton(onSaveArtOnly, Modifier.height(34.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)) {
+                            Text("Save artwork only", color = Accent, fontSize = 13.sp)
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton({ TagEdit.asking.value = r.song }, Modifier.height(34.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)) {
+                        Text("Edit tags", color = Accent, fontSize = 13.sp)
                     }
                     if ((r.matches?.size ?: 0) > 1) LinkButton("Other (${r.pick + 1}/${r.matches!!.size})", Accent, onOther)
                     LinkButton("Search…", Accent, onSearch)
