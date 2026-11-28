@@ -575,7 +575,7 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                             val first = remember(s, lib) { SmartLists.songs(ctx, lib, s).firstOrNull() }
                             SmartTile("⚡ " + s.name, -1, first) { open(Page.SmartListPage(s.id)) }
                         }
-                        item { SmartTile("＋ Smart playlist", -1, null) { SmartLists.editing.value = SmartList(System.currentTimeMillis(), "Top rated", minStars = 4, sort = "rating") } }
+                        item { SmartTile("＋ Smart playlist", -1, null) { SmartLists.editing.value = SmartList(System.currentTimeMillis(), "", sort = "popular") } }
                     }
                 }
                 item {

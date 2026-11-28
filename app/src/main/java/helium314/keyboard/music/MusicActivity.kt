@@ -640,7 +640,7 @@ private fun MusicApp(ui: PlayerUi) {
         NotMusicDialog(ui)
         TagEditDialog()
         LyricsEditDialog(ui)
-        RateDialog(); SmartListDialog(); SpeedDialog(); SupportArtistDialogHost()
+        SmartListDialog(); SpeedDialog(); SupportArtistDialogHost()
     }
 }
 
@@ -761,7 +761,6 @@ internal fun SongRow(song: Song, ui: PlayerUi, lib: Library, open: (Page) -> Uni
             DropdownMenuItem({ Text("Go to Album") }, { open(Page.AlbumPage(song.albumId)); menu = false })
             DropdownMenuItem({ Text("Go to Artist") }, { open(Page.ArtistPage(song.albumArtist.ifBlank { song.artist })); menu = false })
             if (slim) DropdownMenuItem({ Text("Metadata / artwork") }, { menu = false; open(Page.FixOne(song.id)) })
-            if (!slim) DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = song })
             if (!slim) DropdownMenuItem({ Text("Share") }, { menu = false; SongActions.share(ctx, listOf(song)) })
             DropdownMenuItem({ Text("Track details") }, { menu = false; SongActions.details.value = song })
             DropdownMenuItem({ Text("Set as ringtone…") }, { menu = false; open(Page.Ringtone(song.id)) })
@@ -1069,7 +1068,6 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Add to playlist") }, { menu = false; PlaylistPicker.songs.value = listOf(s.id) })
                 DropdownMenuItem({ Text("Not music, hide it") }, { menu = false; NotMusic.asking.value = s })
                 Library.cached?.let { l -> DropdownMenuItem({ Text("📻 Radio from this song") }, { menu = false; Radio.start(ctx, ui, l, s) }) }
-                DropdownMenuItem({ Text("Rate ★") }, { menu = false; Ratings.asking.value = s })
                 DropdownMenuItem({ Text("Edit tags") }, { menu = false; TagEdit.asking.value = s })
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
                 DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass" + if (Stems.modeOn.value) " (on)" else "") }, { menu = false; open(Page.Stems(s.id)) })

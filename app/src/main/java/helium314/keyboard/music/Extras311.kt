@@ -45,60 +45,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/* Test 311, Jarrod's "do them all": star ratings, smart playlists with rules, playback speed, remembering your spot in
+/* Test 311, Jarrod's "do them all": smart playlists with rules, playback speed, remembering your spot in
    long tracks, and playing by itself when headphones or the car connect. */
-
-// ---------------- star ratings ----------------
-object Ratings {
-    private val map = java.util.concurrent.ConcurrentHashMap<Long, Int>()
-    private var loaded = false
-    val version = mutableIntStateOf(0)
-    /** the song the "Rate" box is open for */
-    val asking = mutableStateOf<Song?>(null)
-    private fun file(ctx: Context) = File(ctx.filesDir, "music/ratings.json")
-    @Synchronized fun load(ctx: Context) {
-        if (loaded) return
-        loaded = true
-        runCatching { val j = JSONObject(file(ctx).readText()); j.keys().forEach { map[it.toLong()] = j.getInt(it) } }
-    }
-    fun of(ctx: Context, id: Long): Int { load(ctx); return map[id] ?: 0 }
-    fun all(ctx: Context): Map<Long, Int> { load(ctx); return map }
-    @Synchronized fun set(ctx: Context, id: Long, stars: Int) {
-        load(ctx)
-        if (stars <= 0) map.remove(id) else map[id] = stars.coerceIn(1, 5)
-        val j = JSONObject(); map.forEach { (k, v) -> j.put(k.toString(), v) }
-        runCatching { file(ctx).apply { parentFile?.mkdirs() }.writeText(j.toString()) }
-        version.intValue++
-    }
-    /** for backups */
-    internal fun replace(ctx: Context, j: JSONObject) { map.clear(); loaded = true; j.keys().forEach { map[it.toLong()] = j.getInt(it) }; set(ctx, -1, 0) }
-}
-
-@Composable
-internal fun RateDialog() {
-    val ctx = LocalContext.current
-    val s = Ratings.asking.value ?: return
-    var stars by remember(s.id) { mutableIntStateOf(Ratings.of(ctx, s.id)) }
-    AlertDialog(onDismissRequest = { Ratings.asking.value = null },
-        title = { Text("Rate “${s.title}”") },
-        text = {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                for (i in 1..5) Text(if (i <= stars) "★" else "☆", fontSize = 40.sp, color = if (i <= stars) Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                    modifier = Modifier.clickable { stars = if (stars == i) i - 1 else i }.padding(4.dp))
-            }
-        },
-        confirmButton = { TextButton({ Ratings.set(ctx, s.id, stars); Ratings.asking.value = null }) { Text("Save", color = Accent) } },
-        dismissButton = { TextButton({ Ratings.asking.value = null }) { Text("Cancel") } })
-}
 
 // ---------------- smart playlists ----------------
 data class SmartList(
-    val id: Long, val name: String, val minStars: Int = 0, val minPlays: Int = 0, val maxPlays: Int = -1, val notPlayedDays: Int = 0,
+    val id: Long, val name: String, val minPlays: Int = 0, val maxPlays: Int = -1, val notPlayedDays: Int = 0,
     val addedDays: Int = 0, val genre: String = "", val yearFrom: Int = 0, val yearTo: Int = 0, val favsOnly: Boolean = false,
     val sort: String = "random", val limit: Int = 60,
     val chart: String = "", val decades: List<String> = emptyList(), val genres: List<String> = emptyList(),
 ) {
-    fun json() = JSONObject().put("id", id).put("name", name).put("stars", minStars).put("minPlays", minPlays).put("maxPlays", maxPlays)
+    fun json() = JSONObject().put("id", id).put("name", name).put("minPlays", minPlays).put("maxPlays", maxPlays)
         .put("notPlayed", notPlayedDays).put("added", addedDays).put("genre", genre).put("y1", yearFrom).put("y2", yearTo).put("favs", favsOnly)
         .put("sort", sort).put("limit", limit)
         .put("chart", chart).put("decades", JSONArray(decades)).put("genres", JSONArray(genres))
@@ -109,7 +66,6 @@ data class SmartList(
             decades.takeIf { it.isNotEmpty() }?.joinToString(" / "),
             allGenres.takeIf { it.isNotEmpty() }?.joinToString(" / "),
             if (favsOnly) "favourites" else null,
-            if (minStars > 0) "$minStars★+" else null,
             if (minPlays > 0) "played $minPlays+ times" else null,
             if (maxPlays >= 0) "played at most $maxPlays times" else null,
             if (notPlayedDays > 0) "not played for ${notPlayedDays}d" else null,
@@ -120,9 +76,9 @@ data class SmartList(
     companion object {
         private fun strList(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { a.optString(it) }.filter { it.isNotBlank() }
         fun from(o: JSONObject) = SmartList(
-            o.getLong("id"), o.optString("name", "Smart playlist"), o.optInt("stars"), o.optInt("minPlays"), o.optInt("maxPlays", -1),
+            o.getLong("id"), o.optString("name", "Smart playlist"), o.optInt("minPlays"), o.optInt("maxPlays", -1),
             o.optInt("notPlayed"), o.optInt("added"), o.optString("genre"), o.optInt("y1"), o.optInt("y2"), o.optBoolean("favs"),
-            o.optString("sort", "most"), o.optInt("limit", 100),
+            o.optString("sort", "popular").let { if (it == "rating") "popular" else it }, o.optInt("limit", 100),
             o.optString("chart", ""), strList(o.optJSONArray("decades")), strList(o.optJSONArray("genres")),
         )
     }
@@ -143,7 +99,6 @@ object SmartLists {
 
     fun songs(ctx: Context, lib: Library, s: SmartList): List<Song> {
         val now = System.currentTimeMillis(); val day = 86_400_000L
-        val ratings = if (s.minStars > 0 || s.sort == "rating") Ratings.all(ctx) else emptyMap()
         val wantedGenres = (s.genres + listOfNotNull(s.genre.takeIf { it.isNotBlank() })).map { it.trim().lowercase() }.distinct()
         val genreMap = if (wantedGenres.isNotEmpty()) Moods.genres(ctx, lib.uniqueSongs) else emptyMap()
         val needPop = s.chart.isNotEmpty() || s.decades.isNotEmpty() || s.sort == "popular" || s.sort == "oldest" || s.sort == "newest"
@@ -168,7 +123,6 @@ object SmartLists {
             val rg = song.genre.lowercase()
             val genreOk = wantedGenres.isEmpty() || wantedGenres.any { g -> sg == g || sg.contains(g) || rg.contains(g) }
             chartOk && decadeOk && genreOk &&
-                (s.minStars == 0 || (ratings[song.id] ?: 0) >= s.minStars) &&
                 (!s.favsOnly || song.id in Favourites.ids.value) &&
                 (s.minPlays == 0 || PlayStats.count(song.id) >= s.minPlays) &&
                 (s.maxPlays < 0 || PlayStats.count(song.id) <= s.maxPlays) &&
@@ -185,7 +139,6 @@ object SmartLists {
                 ))
             "most" -> list.sortedByDescending { PlayStats.count(it.id) }
             "least" -> list.sortedBy { PlayStats.count(it.id) }
-            "rating" -> list.sortedByDescending { ratings[it.id] ?: 0 }
             "newest" -> list.sortedWith(compareByDescending<Song> { popMap[it.id]?.year?.takeIf { y -> y > 0 } ?: it.year }.thenByDescending { it.dateAdded })
             "oldest" -> list.sortedWith(compareBy<Song> { (popMap[it.id]?.year?.takeIf { y -> y > 0 } ?: it.year).let { y -> if (y > 0) y else Int.MAX_VALUE } }.thenBy { it.dateAdded })
             "az" -> list.sortedBy { it.title.lowercase() }
@@ -199,7 +152,7 @@ object SmartLists {
 internal fun SmartListPage(id: Long, lib: Library, ui: PlayerUi, open: (Page) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val s = SmartLists.all.value.find { it.id == id } ?: run { onBack(); return }
-    val v = PlayStats.version.value + Ratings.version.intValue
+    val v = PlayStats.version.value
     val songs = remember(s, lib, v) { SmartLists.songs(ctx, lib, s) }
     LazyColumn(Modifier.fillMaxSize()) {
         item { Header(s.name, onBack) }
@@ -226,10 +179,9 @@ internal fun SmartListDialog() {
         val mergedGenres = (start.genres + listOfNotNull(start.genre.takeIf { it.isNotBlank() })).distinct()
         mutableStateOf(start.copy(genres = mergedGenres, genre = ""))
     }
-    var moreOpen by remember(start.id) { mutableStateOf(start.minPlays > 0 || start.notPlayedDays > 0 || start.addedDays > 0 || start.minStars > 0) }
+    var moreOpen by remember(start.id) { mutableStateOf(start.minPlays > 0 || start.notPlayedDays > 0 || start.addedDays > 0) }
     val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val chipColors = FilterChipDefaults.filterChipColors(selectedContainerColor = Accent.copy(alpha = 0.25f))
-    val hasRatings = remember(start.id) { Ratings.all(ctx).isNotEmpty() }
     val availGenres = remember(lib) {
         lib?.let {
             Moods.genres(ctx, it.uniqueSongs).values.filter { g -> g.isNotEmpty() }
@@ -247,8 +199,7 @@ internal fun SmartListDialog() {
     val matchCount = remember(s, lib) { lib?.let { SmartLists.songs(ctx, it, s.copy(limit = 0)).size } }
     val chartChoices = listOf("" to "Any", "Chart hits" to "Chart hits", "#1s" to "#1s", "Top 20s" to "Top 20s", "Top 20–50" to "Top 20–50", "Hidden gems" to "Hidden gems")
     val limitChoices = listOf(15 to "15", 30 to "30", 60 to "60", 100 to "100", 250 to "250", 0 to "All")
-    val sortChoices = listOf("popular" to "Popular", "random" to "Mixed up", "most" to "Most played", "least" to "Least played", "newest" to "Newest", "oldest" to "Oldest", "az" to "A–Z") +
-        (if (hasRatings) listOf("rating" to "Top rated") else emptyList())
+    val sortChoices = listOf("popular" to "Popular", "random" to "Mixed up", "most" to "Most played", "least" to "Least played", "newest" to "Newest", "oldest" to "Oldest", "az" to "A–Z")
 
     @Composable fun num(label: String, value: Int, range: IntRange, step: Int, show: (Int) -> String, set: (Int) -> Unit) {
         Text("$label: ${show(value)}", fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
@@ -329,9 +280,6 @@ internal fun SmartListDialog() {
                     num("Played at least", s.minPlays, 0..50, 1, { if (it == 0) "any" else "$it times" }) { s = s.copy(minPlays = it) }
                     num("Not played for", s.notPlayedDays, 0..365, 5, { if (it == 0) "any" else "$it days" }) { s = s.copy(notPlayedDays = it) }
                     num("Added in the last", s.addedDays, 0..365, 5, { if (it == 0) "any time" else "$it days" }) { s = s.copy(addedDays = it) }
-                    if (hasRatings || s.minStars > 0) {
-                        num("Stars", s.minStars, 0..5, 1, { if (it == 0) "any" else "$it★ or more" }) { s = s.copy(minStars = it) }
-                    }
                 }
             }
         },
