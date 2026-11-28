@@ -29,6 +29,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -326,7 +327,7 @@ object Playback {
 internal fun SpeedDialog() {
     val ctx = LocalContext.current
     if (!Playback.asking.value) return
-    val cur = Playback.speed.value
+    val cur by Playback.speed.collectAsState()
     AlertDialog(onDismissRequest = { Playback.asking.value = false },
         title = { Text("Playback speed") },
         text = {
@@ -380,9 +381,10 @@ internal fun PlaybackSettings() {
             }
             Switch(remember, { remember = it; Playback.setRememberOn(ctx, it) }, colors = SwitchDefaults.colors(checkedTrackColor = Accent))
         }
+        val curSpeed by Playback.speed.collectAsState()
         Row(Modifier.fillMaxWidth().clickable { Playback.asking.value = true }.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text("Playback speed", Modifier.weight(1f), fontSize = 16.sp)
-            Text(if (Playback.speed.value == 1f) "Normal" else "${Math.round(Playback.speed.value * 100)}%", color = Accent, fontWeight = FontWeight.SemiBold)
+            Text(if (curSpeed == 1f) "Normal" else "${Math.round(curSpeed * 100)}%", color = Accent, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(1.dp))
     }
