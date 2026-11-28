@@ -988,8 +988,8 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
                 fontWeight = FontWeight.Bold,
             )
         }
-        if (Eq.singState.value) {
-            IconButton({ Eq.sing = false; onHint("Sing mode off") }) {
+        if (Stems.singMode.value) {
+            IconButton({ Stems.setSingMode(ctx, false); onHint("Sing mode off") }) {
                 Text("🎤", fontSize = 20.sp)
             }
         }
@@ -1077,9 +1077,17 @@ private fun MoreMenu(song: Song?, ui: PlayerUi, open: (Page) -> Unit) {
                 DropdownMenuItem({ Text("Edit lyrics") }, { menu = false; LyricsEdit.editing.value = s })
                 DropdownMenuItem({ Text("🎛️ Stems: vocals, drums, bass" + if (Stems.modeOn.value) " (on)" else "") }, { menu = false; open(Page.Stems(s.id)) })
             }
-            DropdownMenuItem({ Text(if (Eq.sing) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
-                menu = false; Eq.sing = !Eq.sing
-                android.widget.Toast.makeText(ctx, if (Eq.sing) "Sing mode: the voice is taken out. Works best on studio songs." else "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
+            DropdownMenuItem({ Text(if (Stems.singMode.value) "🎤 Sing mode (on)" else "🎤 Sing mode") }, {
+                menu = false
+                if (Stems.singMode.value) {
+                    Stems.setSingMode(ctx, false)
+                    android.widget.Toast.makeText(ctx, "Sing mode off", android.widget.Toast.LENGTH_SHORT).show()
+                } else if (Stems.setSingMode(ctx, true)) {
+                    android.widget.Toast.makeText(ctx, "Sing mode on — splitting vocals out…", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    real?.let { open(Page.Stems(it.id)) }
+                    android.widget.Toast.makeText(ctx, "Download the Stem Splitter model first to use Sing mode.", android.widget.Toast.LENGTH_LONG).show()
+                }
             })
             DropdownMenuItem({ Text("Playback speed" + if (Playback.speed.value != 1f) " (${Playback.speed.value}×)" else "") }, { menu = false; Playback.asking.value = true })
             DropdownMenuItem({ Text(if (sleepAt != 0L) "Sleep timer (on)" else "Sleep timer") }, { menu = false; sleep = true })
