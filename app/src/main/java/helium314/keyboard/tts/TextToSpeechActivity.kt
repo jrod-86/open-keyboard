@@ -605,11 +605,11 @@ class TextToSpeechActivity : Activity(), Themed {
             val values = ContentValues().apply {
                 put(MediaStore.Audio.Media.DISPLAY_NAME, fileName())
                 put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
-                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/Open Keyboard")
+                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/O-Board")
             }
             val uri = contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)!!
             contentResolver.openOutputStream(uri)!!.use { writeWav(it, a, lastRate) }
-        }.onSuccess { toast("Saved to Music › Open Keyboard") }
+        }.onSuccess { toast("Saved to Music › O-Board") }
             .onFailure { Log.w(TAG, "save failed", it); toast("Couldn't save it") }
     }
 
@@ -640,7 +640,7 @@ class TextToSpeechActivity : Activity(), Themed {
                     "• Make a voice (Zonos): record or pick a 10 to 20 second clip of someone talking and it becomes one of your voices. " +
                     "Only copy your own voice or someone who said yes. Long-press one of your voices to rename or delete it.\n\n" +
                     "• Speak starts talking after the first sentence is ready, while it works on the rest. Stop ends it.\n\n" +
-                    "• Share sends the speech as a sound file to any app (Messenger, WhatsApp, email). Save keeps it in Music › Open Keyboard.\n\n" +
+                    "• Share sends the speech as a sound file to any app (Messenger, WhatsApp, email). Save keeps it in Music › O-Board.\n\n" +
                     "• Everything runs on your phone. Nothing you type is sent anywhere."
             )
             .setPositiveButton("OK", null)

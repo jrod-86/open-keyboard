@@ -1,9 +1,9 @@
 # Roadmap and open items (23 Nov 2026)
 
 ## Waiting on Jarrod (S24 phone checks)
-- **Open Waves tests 311–316** — see `HANDOFF.md` for the full test checklist (Custom LUFS volume, hide any tab + per-tab settings, Stem mode battery warning & live sliders, Measure all, Zonos DJ announcer timing/heat, 10-band EQ, Car mode / Android Auto, Sing mode, tag/lyrics editors).
-- **Voice in loud places:** Record in the work truck with "Keep my last recording" and send it with what was said.
-- **App name:** Keep "Open Keyboard" or pick a new one (`OpenBoard` clashes).
+- **O-Board + Open Hub (test 373):** Brand locked in as **O-Board** (keyboard) + **Open Hub** (mini app store / plugins) + **Open Waves** (music player).
+- **Open Waves confirmed working (28 Nov):** DJ Announcer (Heart Kokoro · Low battery, 65/35 dual-deck crossfade, scripts), Stem mode playback, Radio/Podcasts/Audiobooks + offline resume, random pausing fixed, voice typing in loud places fixed.
+- **Open Waves remaining optional checks:** Android Auto, Home player widget, and optional extras (Smart playlists, Star ratings, Tag/Lyrics editor, Sing mode, Year in music, Backup/Restore).
 - **Native-speaker check** of Khmer tile names.
 - **Full animated sticker packs** (96 yellow emojis, etc.) from PC pipeline → convert & publish to `stickers` branch.
 

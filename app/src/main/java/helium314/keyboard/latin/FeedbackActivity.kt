@@ -167,7 +167,7 @@ class FeedbackActivity : ComponentActivity() {
             val logcat = runCatching { Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-b", "all", "ImageMaker:I", "*:W")).inputStream.use { it.reader().readText() } }.getOrDefault("")
             val internal = helium314.keyboard.latin.utils.Log.getLog().joinToString("\n")
             val phone = "Phone: ${Build.MANUFACTURER} ${Build.MODEL}\nAndroid: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n" +
-                "Open Keyboard: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n\n"
+                "O-Board: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n\n"
             z.putNextEntry(java.util.zip.ZipEntry("log.txt"))
             z.write((phone + internal + "\n\n---- system log ----\n" + logcat).toByteArray())
             z.closeEntry()
@@ -183,7 +183,7 @@ class FeedbackActivity : ComponentActivity() {
     private fun shareLogs(zip: java.io.File) {
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.media", zip)
         val send = Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, uri)
-            .putExtra(Intent.EXTRA_SUBJECT, "Open Keyboard logs").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .putExtra(Intent.EXTRA_SUBJECT, "O-Board logs").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         startActivity(Intent.createChooser(send, "Share logs"))
     }
 
@@ -196,7 +196,7 @@ class FeedbackActivity : ComponentActivity() {
                 append("### Phone\n")
                 append("- Phone: ${Build.MANUFACTURER} ${Build.MODEL}\n")
                 append("- Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-                append("- Open Keyboard: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")
+                append("- O-Board: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")
             }
             append("\n_Sent from the keyboard's Feedback tile_")
         }

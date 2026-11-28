@@ -142,8 +142,8 @@ fun MainSettingsScreen(
                         icon = R.drawable.ic_menu_this_app
                     ) { NextScreenIcon() }
                     GroupItem(
-                        name = "Plugins",
-                        description = "Switch features on or off, and use your other apps from the keyboard",
+                        name = "Open Hub",
+                        description = "Mini app store, plugins, AI models & features inside O-Board",
                         onClick = onClickPlugins,
                         icon = R.drawable.ic_settings_advanced
                     ) { NextScreenIcon() }

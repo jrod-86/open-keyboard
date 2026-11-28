@@ -400,7 +400,7 @@ private fun ModelManagerSettings() {
                     when {
                         list == null -> "Checking downloaded models…"
                         list.isEmpty() -> "No AI models downloaded yet."
-                        else -> "${list.size} models · ${helium314.keyboard.latin.ModelManager.sizeText(totalBytes)} total (shared with Open Keyboard). Tap to ${if (expanded) "hide" else "manage"}."
+                        else -> "${list.size} models · ${helium314.keyboard.latin.ModelManager.sizeText(totalBytes)} total (shared with O-Board). Tap to ${if (expanded) "hide" else "manage"}."
                     },
                     fontSize = 12.sp, color = dim,
                 )

@@ -31,7 +31,7 @@ object Plugins {
         Plugin("fingers", "Learns your fingers", "Notices where you really tap each letter and moves the key's target to match"),
         Plugin("compose", "Smart compose", "Suggests the next few words when you pause (uses the writing help model)"),
         Plugin("scan", "Scan text", "Take a photo of text and type it in"),
-        Plugin("app_commands", "Commands from your apps", "Apps made for Open Keyboard can add their own / commands"),
+        Plugin("app_commands", "Commands from your apps", "Apps made for O-Board can add their own / commands"),
         Plugin("mcp", "MCP servers", "Connect AI tools and services you choose; their tools become / commands"),
         Plugin("app_actions", "Actions from your apps", "Apps on your phone that work on text appear in the keyboard menu"),
     )
