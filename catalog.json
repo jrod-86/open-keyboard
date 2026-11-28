@@ -60,6 +60,21 @@
       "alt": "fennec-fox-alt/",
       "size": 84119802,
       "version": 2
+    },
+    {
+      "id": "axolotl",
+      "name": "Axolotl",
+      "author": "jrod",
+      "license": "CC0",
+      "source": "https://github.com/jrod-86/open-keyboard",
+      "credit": "",
+      "count": 100,
+      "featured": true,
+      "icon": "axolotl-icon.png",
+      "zip": "axolotl.zip",
+      "alt": "axolotl-alt/",
+      "size": 100849890,
+      "version": 1
     }
   ]
 }
