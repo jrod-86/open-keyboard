@@ -403,9 +403,10 @@ private fun FavouritesTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SmartTile(label: String, count: Int, cover: Song?, onClick: () -> Unit) {
-    Column(Modifier.width(118.dp).clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
+private fun SmartTile(label: String, count: Int, cover: Song?, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    Column(Modifier.width(118.dp).combinedClickable(onClick = onClick, onLongClick = onLongClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(118.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
             if (cover != null) Cover(cover, 300, Modifier.fillMaxSize(), corner = 18)
             else Icon(MusicIcons.note, null, Modifier.size(44.dp))
@@ -483,6 +484,7 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
     var target by remember { mutableIntStateOf(-1) } // insert before this index of order (order.size = at the end)
     var listH by remember { mutableIntStateOf(1) }
     var releasedAt by remember { mutableLongStateOf(0L) }
+    var deletingSmart by remember { mutableStateOf<SmartList?>(null) }
     val head = 3 // items above the playlists: smart tiles, buttons, sort bar
 
     fun findTarget() {
@@ -571,9 +573,10 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
                         item { SmartTile("Recently played", recent.size, recent.firstOrNull()) { open(Page.Smart("recent")) } }
                         item { SmartTile("🎉 Your year", -1, null) { open(Page.Year) } }
                         // test 311: your own smart playlists (rules), and a tile to make one
+                        // test 378: long-press a custom smart playlist tile to edit or delete it
                         items(SmartLists.all.value, key = { "smart" + it.id }) { s ->
-                            val first = remember(s, lib) { SmartLists.songs(ctx, lib, s).firstOrNull() }
-                            SmartTile("⚡ " + s.name, -1, first) { open(Page.SmartListPage(s.id)) }
+                            val songs = remember(s, lib) { SmartLists.songs(ctx, lib, s) }
+                            SmartTile("⚡ " + s.name, songs.size, songs.firstOrNull(), onLongClick = { deletingSmart = s }) { open(Page.SmartListPage(s.id)) }
                         }
                         item { SmartTile("＋ Smart playlist", -1, null) { SmartLists.editing.value = SmartList(System.currentTimeMillis(), "", sort = "popular") } }
                     }
@@ -630,6 +633,20 @@ private fun PlaylistsTab(lib: Library, ui: PlayerUi, open: (Page) -> Unit) {
             }
             }
             if (TabOpts.az && order.size > 8) AzBar(Modifier, order.map { it.name }) { scope.launch { state.scrollToItem(it + head) } }
+        }
+        deletingSmart?.let { s ->
+            AlertDialog(
+                onDismissRequest = { deletingSmart = null },
+                title = { Text("⚡ ${s.name}") },
+                text = { Text(s.summary()) },
+                confirmButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton({ deletingSmart = null; SmartLists.editing.value = s }) { Text("Edit rules", color = Accent) }
+                        TextButton({ SmartLists.delete(ctx, s.id); deletingSmart = null }) { Text("Delete", color = Color(0xFFFF453A)) }
+                    }
+                },
+                dismissButton = { TextButton({ deletingSmart = null }) { Text("Cancel") } },
+            )
         }
         // test 289 (Jarrod): send the chosen playlists straight to the top or the bottom
         if (PlaylistSelect.active) Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 6.dp),
