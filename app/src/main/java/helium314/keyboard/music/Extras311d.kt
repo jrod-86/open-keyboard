@@ -15,10 +15,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -195,17 +199,53 @@ internal fun LyricsEditDialog(ui: PlayerUi) {
             ?: ""
     }
     fun close() { LyricsEdit.editing.value = null }
-    AlertDialog(onDismissRequest = ::close,
-        title = { Text("Lyrics: ${s.title}") },
-        text = {
-            Column {
+    // test 387 (Jarrod): full-screen IME-aware dialog so the text box shrinks cleanly above the keyboard
+    // and the lines being edited (plus Save/Cancel) are always clearly visible while typing.
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = ::close,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                Modifier.fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(::close) { Text("Cancel") }
+                    Text(
+                        s.title,
+                        Modifier.weight(1f).padding(horizontal = 8.dp),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    TextButton({
+                        text?.let { t ->
+                            if (t.isBlank()) runCatching { File(ctx.filesDir, "music/lyrics/${s.id}.lrc").delete() } else Lyrics.save(ctx, s, t.trim())
+                            LyricsEdit.version.intValue++
+                        }
+                        close()
+                    }, enabled = text != null) { Text("Save", color = Accent, fontWeight = FontWeight.Bold) }
+                }
                 val t = text
-                if (t == null) Text("Loading…")
-                else {
-                    OutlinedTextField(t, { text = it }, Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 380.dp), placeholder = { Text("Type or paste the lyrics, one line each") })
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // stamps the song's current time on the line where the text cursor would be: simplest is the next untimed line
+                if (t == null) {
+                    Text("Loading…", Modifier.padding(16.dp))
+                } else {
+                    OutlinedTextField(
+                        t,
+                        { text = it },
+                        Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp),
+                        placeholder = { Text("Type or paste the lyrics, one line each") },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton({
                             val pos = ui.position
                             val lines = t.split('\n').toMutableList()
@@ -216,22 +256,17 @@ internal fun LyricsEditDialog(ui: PlayerUi) {
                                 text = lines.joinToString("\n")
                             }
                         }) { Text("⏱ Time next line") }
+                        Text(
+                            "Tap ⏱ as each line starts",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            maxLines = 1,
+                        )
                     }
-                    Text("Play the song and tap ⏱ as each line starts to make the lyrics scroll in time.", fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
                 }
             }
-        },
-        confirmButton = {
-            TextButton({
-                text?.let { t ->
-                    if (t.isBlank()) runCatching { File(ctx.filesDir, "music/lyrics/${s.id}.lrc").delete() } else Lyrics.save(ctx, s, t.trim())
-                    LyricsEdit.version.intValue++
-                }
-                close()
-            }, enabled = text != null) { Text("Save") }
-        },
-        dismissButton = { TextButton(::close) { Text("Cancel") } })
+        }
+    }
 }
 
 // ---------------- AI radio announcer ----------------
