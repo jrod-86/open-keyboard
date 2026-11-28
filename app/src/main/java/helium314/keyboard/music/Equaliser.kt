@@ -80,8 +80,12 @@ data class EqSet(val on: Boolean = false, val gains: List<Float> = List(10) { 0f
  * on (phone speaker, wired headphones, each Bluetooth device such as earbuds or the car); it switches by itself.
  */
 object Eq {
-    /** test 311: Sing mode, takes the voice in the middle out so you can sing along (bass and drums mostly stay) */
-    @Volatile var sing = false
+    /** test 311 / 380: Sing mode, takes the center vocal band out while keeping bass, highs and overall loudness intact */
+    @Volatile private var singFlag = false
+    val singState = mutableStateOf(false)
+    var sing: Boolean
+        get() = singFlag
+        set(value) { singFlag = value; singState.value = value }
     /** test 311: how loud the music is (1 = normal), lowered while the radio announcer talks */
     @Volatile var duck = 1f
     val FREQS = floatArrayOf(31f, 62f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
@@ -222,7 +226,11 @@ class EqProcessor : BaseAudioProcessor() {
         return inputAudioFormat
     }
 
-    override fun onFlush() { ver = -1 }
+    override fun onFlush() {
+        ver = -1
+        lpA = 0.0; lpB = 0.0; hpA = 0.0; hpB = 0.0
+        inRms = 0.02; outRms = 0.02; singGain = 1.0
+    }
 
     private fun refresh() {
         val s = Eq.live
@@ -235,8 +243,11 @@ class EqProcessor : BaseAudioProcessor() {
     }
 
     private var gain = 1.0
-    // Sing mode: the middle's low end (bass, kick) is kept so the song doesn't go thin
+    // Sing mode (test 380): keep center low end (<220 Hz bass/kick) AND high end (>4.5 kHz cymbals/air),
+    // scoop only the 220–4500 Hz center vocal band, and auto-match RMS loudness so the song stays full volume.
     private var lpA = 0.0; private var lpB = 0.0
+    private var hpA = 0.0; private var hpB = 0.0
+    private var inRms = 0.02; private var outRms = 0.02; private var singGain = 1.0
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val n = inputBuffer.remaining()
@@ -245,14 +256,16 @@ class EqProcessor : BaseAudioProcessor() {
         if (ver != Eq.version) refresh()
         val sing = Eq.sing && ch == 2
         val duckTo = Eq.duck.toDouble().coerceIn(0.0, 1.0)
-        if (!on && !sing && duckTo >= 0.999 && gain >= 0.999) { gain = 1.0; out.put(inputBuffer); out.flip(); return }
+        if (!on && !sing && duckTo >= 0.999 && gain >= 0.999) { gain = 1.0; singGain = 1.0; out.put(inputBuffer); out.flip(); return }
         val start = inputBuffer.position()
         val frames = n / (2 * ch)
         val cs = if (on) coefs else emptyList()
         val p = if (on) pre else 1.0
         val samples = DoubleArray(ch)
         val glide = 1.0 / (rate * 0.25) // about a quarter second to duck or come back
-        val lpK = 1.0 - kotlin.math.exp(-2.0 * PI * 160.0 / rate)
+        val lpK = 1.0 - kotlin.math.exp(-2.0 * PI * 220.0 / rate)
+        val hpK = 1.0 - kotlin.math.exp(-2.0 * PI * 4500.0 / rate)
+        val rmsK = 1.0 - kotlin.math.exp(-1.0 / (rate * 0.15))
         for (f in 0 until frames) {
             for (c in 0 until ch) {
                 var x = inputBuffer.getShort(start + (f * ch + c) * 2) / 32768.0
@@ -271,9 +284,21 @@ class EqProcessor : BaseAudioProcessor() {
                 samples[0] = mid + side; samples[1] = mid - side
             }
             if (sing) {
-                val mid = (samples[0] + samples[1]) / 2; val side = (samples[0] - samples[1]) / 2
-                lpA += lpK * (mid - lpA); lpB += lpK * (lpA - lpB)
-                samples[0] = lpB + side * 1.4; samples[1] = lpB - side * 1.4
+                val origL = samples[0]; val origR = samples[1]
+                val mid = (origL + origR) * 0.5; val side = (origL - origR) * 0.5
+                lpA += lpK * (mid - lpA); lpB += lpK * (lpA - lpB) // < 220 Hz center (kick + bass)
+                hpA += hpK * (mid - hpA); hpB += hpK * (hpA - hpB) // < 4.5 kHz center
+                val hiMid = mid - hpB // > 4.5 kHz center (hi-hats, cymbals, air)
+                val keptMid = lpB + hiMid * 0.85
+                val rawL = keptMid + side * 1.45
+                val rawR = keptMid - side * 1.45
+                val inPow = (origL * origL + origR * origR) * 0.5
+                val outPow = (rawL * rawL + rawR * rawR) * 0.5
+                inRms += rmsK * (inPow - inRms)
+                outRms += rmsK * (outPow - outRms)
+                val targetGain = if (inRms > 1e-6 && outRms > 1e-7) kotlin.math.sqrt(inRms / outRms).coerceIn(1.0, 2.4) else 1.25
+                singGain += rmsK * (targetGain - singGain)
+                samples[0] = rawL * singGain; samples[1] = rawR * singGain
             }
             if (gain != duckTo) gain = if (gain < duckTo) minOf(duckTo, gain + glide) else maxOf(duckTo, gain - glide)
             for (c in 0 until ch) {

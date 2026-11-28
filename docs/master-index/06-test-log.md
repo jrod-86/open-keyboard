@@ -171,3 +171,4 @@
 | 377 | 28 Nov | Removed Star ratings completely (`Ratings`, `RateDialog`, `Rate ★` menu items, Smart Playlists star rule/sort, and `"Top rated"` default on `+ Smart playlist`) — Favourites (❤️) handles liking songs cleanly. |
 | 378 | 28 Nov | Added long-press on custom Smart Playlist tiles at the top of the Playlists tab to **Delete** or **Edit rules**, plus live track counts on each smart playlist tile. |
 | 379 | 28 Nov | Fixed frozen **Playback speed** dialog & Settings row (`SpeedDialog` and `PlaybackSettings` read `Playback.speed.value` instead of `collectAsState()`, preventing slider/chips/buttons from recomposing). |
+| 380 | 28 Nov | Upgraded **Sing mode** DSP (band-targeted `220–4500 Hz` center vocal removal keeping kick/bass and cymbals/air intact + automatic RMS loudness makeup so song volume stays consistent) + live **🎤** indicator icon in Now Playing and main top bar whenever Sing mode is on (tap to turn off). |

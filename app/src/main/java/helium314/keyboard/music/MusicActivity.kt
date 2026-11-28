@@ -988,6 +988,11 @@ private fun NowTopBar(song: Song?, ui: PlayerUi, open: (Page) -> Unit, onClose: 
                 fontWeight = FontWeight.Bold,
             )
         }
+        if (Eq.singState.value) {
+            IconButton({ Eq.sing = false; onHint("Sing mode off") }) {
+                Text("🎤", fontSize = 20.sp)
+            }
+        }
         IconButton({ open(Page.Equaliser) }) { Icon(MusicIcons.sEqualizer, "Equaliser", tint = Color.White, modifier = Modifier.size(27.dp)) }
         MoreMenu(song, ui, open)
     }
