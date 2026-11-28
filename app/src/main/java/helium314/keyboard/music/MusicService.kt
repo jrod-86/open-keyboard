@@ -109,7 +109,7 @@ class MusicService : MediaLibraryService() {
                     Radio.topUp(this@MusicService, p)
                     PlayerWidget.update(this@MusicService)
                     // test 314: stem mode on: get this song and the next one split, and play the split versions
-                    handler.post { runCatching { Stems.songChanged(this@MusicService); SingMode.songChanged(this@MusicService) } }
+                    handler.post { runCatching { Stems.songChanged(this@MusicService) } }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) Announcer.songStarted(this@MusicService, mediaItem?.mediaId?.toLongOrNull())
                     // test 311: long tracks carry on from where you stopped
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
@@ -154,7 +154,7 @@ class MusicService : MediaLibraryService() {
         scope.launch { Tuning.hz.collect { activeDeck?.let { Tuning.apply(it) } } }
         Playback.load(this)
         scope.launch { Playback.speed.collect { activeDeck?.let { Tuning.apply(it) } } }
-        scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService); SingMode.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level, Leveler.custom) { a, b, c -> Triple(a, b, c) }.collect { leveler?.apply() } }
+        scope.launch { Library.load(this@MusicService); handler.post { runCatching { Stems.songChanged(this@MusicService) } }; kotlinx.coroutines.flow.combine(Leveler.mode, Leveler.level, Leveler.custom) { a, b, c -> Triple(a, b, c) }.collect { leveler?.apply() } }
         restore(deckA)
         MusicSettings.load(this)
         floating = FloatingPlayer(this) { activeDeck ?: deckA }.also { it.start() }
@@ -177,7 +177,7 @@ class MusicService : MediaLibraryService() {
                 counted = -1L; count(newActive)
                 Radio.topUp(this@MusicService, newActive)
                 PlayerWidget.update(this@MusicService)
-                handler.post { runCatching { Stems.songChanged(this@MusicService); SingMode.songChanged(this@MusicService) } }
+                handler.post { runCatching { Stems.songChanged(this@MusicService) } }
                 Announcer.songStarted(this@MusicService, newActive.currentMediaItem?.mediaId?.toLongOrNull())
             },
         ).also { it.start() }
