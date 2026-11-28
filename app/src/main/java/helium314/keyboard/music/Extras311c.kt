@@ -68,13 +68,35 @@ import kotlinx.coroutines.launch
 class PlayerWidget : android.appwidget.AppWidgetProvider() {
     override fun onReceive(ctx: Context, intent: Intent) {
         super.onReceive(ctx, intent)
-        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            update(ctx)
-            val app = ctx.applicationContext
-            val pending = goAsync()
-            android.os.Handler(android.os.Looper.getMainLooper()).apply {
-                postDelayed({ update(app) }, 2_000L)
-                postDelayed({ update(app); runCatching { pending.finish() } }, 5_000L)
+        when (intent.action) {
+            ACT_PLAY, ACT_NEXT, ACT_PREV -> {
+                val p = player
+                if (p != null) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        when (intent.action) {
+                            ACT_PLAY -> if (p.isPlaying) p.pause() else p.play()
+                            ACT_NEXT -> p.seekToNext()
+                            ACT_PREV -> p.seekToPrevious()
+                        }
+                        update(ctx)
+                    }
+                } else if (intent.action == ACT_PLAY) {
+                    // Service is stopped: wake it up via MediaButtonReceiver so Play resumes playback
+                    val wake = Intent(Intent.ACTION_MEDIA_BUTTON)
+                        .setComponent(ComponentName(ctx, androidx.media3.session.MediaButtonReceiver::class.java))
+                        .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+                    runCatching { ctx.sendBroadcast(wake) }
+                }
+                return
+            }
+            Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_BOOT_COMPLETED -> {
+                update(ctx)
+                val app = ctx.applicationContext
+                val pending = goAsync()
+                android.os.Handler(android.os.Looper.getMainLooper()).apply {
+                    postDelayed({ update(app) }, 2_000L)
+                    postDelayed({ update(app); runCatching { pending.finish() } }, 5_000L)
+                }
             }
         }
     }
@@ -82,15 +104,18 @@ class PlayerWidget : android.appwidget.AppWidgetProvider() {
     override fun onAppWidgetOptionsChanged(ctx: Context, awm: AppWidgetManager, id: Int, newOptions: Bundle) { update(ctx) }
 
     companion object {
+        private const val ACT_PLAY = "helium314.keyboard.music.WIDGET_PLAY"
+        private const val ACT_NEXT = "helium314.keyboard.music.WIDGET_NEXT"
+        private const val ACT_PREV = "helium314.keyboard.music.WIDGET_PREV"
+
         /** the player, while Open Waves' music service runs */
         @Volatile var player: Player? = null
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         private var lastKey = ""
 
-        private fun button(ctx: Context, code: Int): PendingIntent {
-            val i = Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(ComponentName(ctx, androidx.media3.session.MediaButtonReceiver::class.java))
-                .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, code))
-            return PendingIntent.getBroadcast(ctx, code, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        private fun button(ctx: Context, action: String, reqCode: Int): PendingIntent {
+            val i = Intent(ctx, PlayerWidget::class.java).setAction(action)
+            return PendingIntent.getBroadcast(ctx, reqCode, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
 
         /** Redraws every Open Waves player widget with the song playing now. */
@@ -114,9 +139,9 @@ class PlayerWidget : android.appwidget.AppWidgetProvider() {
                     setTextViewText(R.id.ow_w_artist, song?.artist ?: "Tap play to carry on")
                     if (art != null) setImageViewBitmap(R.id.ow_w_cover, art) else setImageViewResource(R.id.ow_w_cover, R.drawable.open_waves_widget_icon)
                     setImageViewResource(R.id.ow_w_play, if (playing) R.drawable.ow_w_pause else R.drawable.ow_w_play)
-                    setOnClickPendingIntent(R.id.ow_w_play, button(app, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-                    setOnClickPendingIntent(R.id.ow_w_next, button(app, KeyEvent.KEYCODE_MEDIA_NEXT))
-                    setOnClickPendingIntent(R.id.ow_w_prev, button(app, KeyEvent.KEYCODE_MEDIA_PREVIOUS))
+                    setOnClickPendingIntent(R.id.ow_w_play, button(app, ACT_PLAY, 101))
+                    setOnClickPendingIntent(R.id.ow_w_next, button(app, ACT_NEXT, 102))
+                    setOnClickPendingIntent(R.id.ow_w_prev, button(app, ACT_PREV, 103))
                     setOnClickPendingIntent(R.id.ow_w_cover, PendingIntent.getActivity(app, 8, Intent(app, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
