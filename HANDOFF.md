@@ -30,8 +30,9 @@
 - ✅ Metadata / artwork (`Save info & artwork`, `Save artwork only`, `Edit tags`) (Test 374–375)
 - ✅ Backup / Restore
 - ✅ Smart playlists (Popular-style chips, one-tap `⚡ Smart` in Popular, long-press delete/edit) + Star ratings removed (Tests 376–378)
+- ✅ Playback speed slider (Test 379)
 - ✅ Old superseded GitHub PRs (#2–#9) cleaned up
 
 ## Outstanding S24 Phone Testing
-- [ ] **Open Waves optional extras (if desired):** Playback speed slider, Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now — car head unit connection issues.)*
+- [ ] **Open Waves optional extras (if desired):** Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now — car head unit connection issues.)*
 - [ ] **Keyboard remaining items:** Khmer tile names (native-speaker check), full animated sticker packs (PC pipeline).
