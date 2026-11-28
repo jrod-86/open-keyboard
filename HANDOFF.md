@@ -25,8 +25,12 @@
 - ✅ Radio, Podcasts & Audiobooks tabs (including offline download & exact resume)
 - ✅ Random music pausing resolved
 - ✅ Voice typing in loud places (work truck)
+- ✅ O-Board + Open Hub rebrand (Test 373 & 375)
+- ✅ Home screen player widget (Play/Pause, Previous, Next) (Test 374)
+- ✅ Metadata / artwork (`Save info & artwork`, `Save artwork only`, `Edit tags`) (Test 374–375)
+- ✅ Backup / Restore
+- ✅ Old superseded GitHub PRs (#2–#9) cleaned up
 
 ## Outstanding S24 Phone Testing
-- [ ] **O-Board + Open Hub rebrand (Test 373):** Verify app display name ("O-Board"), Settings → Open Hub, and Open Hub Store label after updating over existing install.
-- [ ] **Open Waves optional checks:** Android Auto, Home player widget, and optional extras if desired (Smart playlists, Star ratings, Playback speed slider, Tag/Lyrics editor, Sing mode, Year in music, Backup/Restore).
-- [ ] **Keyboard remaining items:** Khmer tile names (native-speaker check), full animated sticker packs (PC pipeline), clean up old superseded PRs (#1–#9).
+- [ ] **Open Waves optional extras (if desired):** Smart playlists, Star ratings, Playback speed slider, Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now — car head unit connection issues.)*
+- [ ] **Keyboard remaining items:** Khmer tile names (native-speaker check), full animated sticker packs (PC pipeline).
