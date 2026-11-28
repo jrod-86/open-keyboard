@@ -1,8 +1,8 @@
 # Roadmap and open items (23 Nov 2026)
 
 ## Waiting on Jarrod (S24 phone checks)
-- **Confirmed working (28 Nov):** O-Board + Open Hub rebrand, Home player widget, Metadata/artwork + Edit tags, Backup/Restore, Smart playlists (+ Star ratings removed), Playback speed slider, DJ Announcer (Heart Kokoro · Low battery, 65/35 dual-deck crossfade, scripts), Stem mode playback, Radio/Podcasts/Audiobooks + offline resume, random pausing fixed, voice typing in loud places fixed, old PRs cleaned up.
-- **Open Waves remaining optional checks:** Lyrics editor, Sing mode, Year in music. *(Android Auto skipped for now.)*
+- **Confirmed working (28 Nov):** O-Board + Open Hub rebrand, Home player widget, Metadata/artwork + Edit tags, Backup/Restore, Smart playlists (+ Star ratings removed), Playback speed slider, Sing mode (+ 4-line lyrics highlight), DJ Announcer (Heart Kokoro · Low battery, 65/35 dual-deck crossfade, scripts), Stem mode playback, Radio/Podcasts/Audiobooks + offline resume, random pausing fixed, voice typing in loud places fixed, old PRs cleaned up.
+- **Open Waves remaining optional checks:** Lyrics editor, Year in music. *(Android Auto skipped for now.)*
 - **Native-speaker check** of Khmer tile names.
 - **Full animated sticker packs** (96 yellow emojis, etc.) from PC pipeline → convert & publish to `stickers` branch.
 
