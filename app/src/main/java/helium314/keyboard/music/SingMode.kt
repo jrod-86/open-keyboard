@@ -223,21 +223,53 @@ object SingMode {
                 val dir = cacheDir(app).apply { mkdirs() }
                 val tmp = File(dir, "${song.id}.part")
                 val env = ai.onnxruntime.OrtEnvironment.getEnvironment()
-                val opts = ai.onnxruntime.OrtSession.SessionOptions().apply {
-                    setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
+                val threads = Runtime.getRuntime().availableProcessors().coerceIn(4, 6)
+                var provider = "CPU"
+                val session = runCatching {
+                    val o = ai.onnxruntime.OrtSession.SessionOptions().apply {
+                        setOptimizationLevel(ai.onnxruntime.OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                        setIntraOpNumThreads(threads)
+                        addNnapi(java.util.EnumSet.of(ai.onnxruntime.providers.NNAPIFlags.USE_FP16))
+                    }
+                    env.createSession(modelFile(app).path, o).also { provider = "NNAPI-FP16" }
+                }.getOrElse {
+                    runCatching {
+                        val o = ai.onnxruntime.OrtSession.SessionOptions().apply {
+                            setOptimizationLevel(ai.onnxruntime.OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                            setIntraOpNumThreads(threads)
+                            addXnnpack(mapOf("intra_op_num_threads" to threads.toString()))
+                        }
+                        env.createSession(modelFile(app).path, o).also { provider = "XNNPACK" }
+                    }.getOrElse {
+                        val o = ai.onnxruntime.OrtSession.SessionOptions().apply {
+                            setOptimizationLevel(ai.onnxruntime.OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                            setIntraOpNumThreads(threads)
+                        }
+                        env.createSession(modelFile(app).path, o)
+                    }
                 }
-                env.createSession(modelFile(app).path, opts).use { session ->
-                    val inputName = session.inputNames.first()
+                android.util.Log.w("OpenWaves", "sing: loaded UVR-MDX-NET-Inst_HQ_3 with $provider ($threads threads)")
+                val t0 = System.currentTimeMillis()
+                session.use { s ->
+                    val inputName = s.inputNames.first()
                     SingDsp.separateToWav(l, r, tmp, { frac, step, total ->
                         progress.value = frac
-                        status.value = "Removing vocals from “${song.title}” ($step/$total)…"
+                        val elapsed = System.currentTimeMillis() - t0
+                        val remSec = if (step > 0 && step < total) ((elapsed.toDouble() / step) * (total - step) / 1000.0).toInt() else 0
+                        val eta = when {
+                            remSec >= 60 -> " · ~${remSec / 60}m ${remSec % 60}s left"
+                            remSec > 0 -> " · ~${remSec}s left"
+                            else -> ""
+                        }
+                        status.value = "Removing vocals ($step/$total)$eta"
+                        if (step == 1 || step == total) android.util.Log.w("OpenWaves", "sing: $provider chunk $step/$total elapsed=${elapsed}ms")
                     }) { inputTensorData ->
                         ai.onnxruntime.OnnxTensor.createTensor(
                             env,
                             FloatBuffer.wrap(inputTensorData),
                             longArrayOf(1L, 4L, SingDsp.DIM_F.toLong(), SingDsp.DIM_T.toLong()),
                         ).use { tensor ->
-                            session.run(mapOf(inputName to tensor)).use { res ->
+                            s.run(mapOf(inputName to tensor)).use { res ->
                                 val fb = (res[0] as ai.onnxruntime.OnnxTensor).floatBuffer
                                 FloatArray(fb.remaining()).also { fb.get(it) }
                             }
